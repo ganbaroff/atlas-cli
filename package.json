@@ -1,5 +1,5 @@
 {
-  "name": "@volaura/atlas-cli",
+  "name": "@ganbaroff/atlas-cli",
   "version": "0.1.0",
   "description": "Atlas — persistent AI agent CLI, core of the VOLAURA ecosystem",
   "type": "module",
