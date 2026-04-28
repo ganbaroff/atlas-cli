@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Atlas Swarm — Live</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#0a0a0a; color:#ccc; font-family:system-ui,sans-serif; padding:20px; }
+h1 { color:#444; font-size:13px; letter-spacing:4px; text-transform:uppercase; text-align:center; margin-bottom:20px; }
+.grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:16px; }
+.card { background:#111; border:1px solid #222; border-radius:8px; padding:16px; transition:border-color .3s; }
+.card.working { border-color:#7c3aed; box-shadow:0 0 12px rgba(124,58,237,.2); }
+.card.idle { border-color:#333; }
+.card.done { border-color:#22c55e; }
+.card.error { border-color:#ef4444; }
+.name { font-size:14px; font-weight:600; margin-bottom:4px; }
+.role { font-size:11px; color:#666; letter-spacing:2px; text-transform:uppercase; margin-bottom:12px; }
+.status { display:inline-block; padding:2px 8px; border-radius:3px; font-size:11px; margin-bottom:8px; }
+.status.working { background:#7c3aed33; color:#a78bfa; }
+.status.idle { background:#33333366; color:#888; }
+.status.done { background:#22c55e33; color:#4ade80; }
+.status.error { background:#ef444433; color:#f87171; }
+.task { font-size:12px; color:#999; line-height:1.6; margin-bottom:8px; }
+.time { font-size:10px; color:#555; }
+.pulse { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; animation:pulse 1.5s infinite; }
+.pulse.working { background:#7c3aed; }
+.pulse.idle { background:#555; animation:none; }
+.pulse.done { background:#22c55e; animation:none; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+.stats { text-align:center; margin:20px 0; font-size:12px; color:#555; }
+.refresh { text-align:center; margin-top:16px; }
+.refresh button { background:#1a1a2e; color:#7c3aed; border:1px solid #7c3aed; padding:6px 16px; border-radius:4px; cursor:pointer; font-size:12px; }
+</style>
+</head>
+<body>
+
+<h1>Atlas Swarm Dashboard</h1>
+<div class="stats" id="stats">Loading...</div>
+<div class="grid" id="grid"></div>
+<div class="refresh"><button onclick="loadState()">Refresh</button> <span style="color:#333;font-size:10px;">auto-refreshes every 5s</span></div>
+
+<script>
+const AGENTS = [
+  { id:'lead', name:'Lead Orchestrator', role:'Coordination', color:'#7c3aed' },
+  { id:'architect', name:'Architect', role:'Systems Design', color:'#e94560' },
+  { id:'pragmatist', name:'Pragmatist', role:'Reality Check', color:'#e8c547' },
+  { id:'quality', name:'Inspector', role:'Quality Gate', color:'#cc3333' },
+  { id:'security', name:'Security Auditor', role:'Threat Surface', color:'#4caf50' },
+  { id:'scaling', name:'Scaling Engineer', role:'Infrastructure', color:'#5b9bd5' },
+  { id:'product', name:'Product Strategist', role:'Market & Growth', color:'#ff8c42' },
+  { id:'watchdog', name:'CTO Watchdog', role:'Drift Monitor', color:'#c084fc' },
+  { id:'risk', name:'Risk Manager', role:'Threat Assessment', color:'#f87171' },
+  { id:'readiness', name:'Readiness Manager', role:'Launch Gate', color:'#2dd4bf' },
+  { id:'ecosystem', name:'Ecosystem Auditor', role:'Cross-Product', color:'#818cf8' },
+  { id:'cultural', name:'Cultural Intelligence', role:'AZ/CIS Context', color:'#fbbf24' },
+  { id:'assessment', name:'Assessment Science', role:'IRT/CAT', color:'#60a5fa' },
+];
+
+let state = {};
+
+async function loadState() {
+  try {
+    const r = await fetch('swarm-state.json?t=' + Date.now());
+    if (r.ok) state = await r.json();
+  } catch(e) {
+    // Use default idle state
+  }
+  render();
+}
+
+function render() {
+  const grid = document.getElementById('grid');
+  const working = AGENTS.filter(a => (state[a.id]||{}).status === 'working').length;
+  const done = AGENTS.filter(a => (state[a.id]||{}).status === 'done').length;
+  document.getElementById('stats').innerHTML =
+    `<span style="color:#7c3aed">${working} working</span> · ` +
+    `<span style="color:#22c55e">${done} done</span> · ` +
+    `<span style="color:#555">${AGENTS.length - working - done} idle</span> · ` +
+    `${AGENTS.length} total`;
+
+  grid.innerHTML = AGENTS.map(a => {
+    const s = state[a.id] || { status:'idle', task:'Waiting for task', time:'' };
+    return `<div class="card ${s.status}">
+      <div class="name" style="color:${a.color}"><span class="pulse ${s.status}"></span>${a.name}</div>
+      <div class="role">${a.role}</div>
+      <div class="status ${s.status}">${s.status}</div>
+      <div class="task">${s.task || 'No active task'}</div>
+      <div class="time">${s.time || ''}</div>
+    </div>`;
+  }).join('');
+}
+
+loadState();
+setInterval(loadState, 5000);
+</script>
+</body>
+</html>

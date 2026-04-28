@@ -1,0 +1,52 @@
+{
+  "name": "@volaura/atlas-cli",
+  "version": "0.1.0",
+  "description": "Atlas — persistent AI agent CLI, core of the VOLAURA ecosystem",
+  "type": "module",
+  "bin": {
+    "atlas": "dist/cli.js"
+  },
+  "author": "Yusif Ganbarov <ganbarov.y@gmail.com>",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ganbaroff/atlas-cli.git"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "public"
+  },
+  "keywords": ["ai", "agent", "cli", "atlas", "volaura", "swarm", "persistent-memory"],
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "files": ["dist", "README.md", "LICENSE", ".env.example"],
+  "scripts": {
+    "dev": "tsx src/cli.ts",
+    "build": "tsup src/cli.ts --format esm --dts --clean",
+    "start": "node dist/cli.js",
+    "test": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.71",
+    "@ai-sdk/cerebras": "^2.0.45",
+    "@ai-sdk/openai": "^3.0.53",
+    "@ai-sdk/openai-compatible": "^2.0.41",
+    "@anthropic-ai/sdk": "^0.91.1",
+    "@mastra/core": "latest",
+    "@openrouter/ai-sdk-provider": "^2.8.1",
+    "commander": "^12.0.0",
+    "dotenv": "^17.4.2",
+    "ollama-ai-provider": "^1.2.0",
+    "telegraf": "^4.16.3",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0"
+  }
+}

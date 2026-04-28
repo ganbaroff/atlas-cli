@@ -1,0 +1,13 @@
+_salvage/
+src/
+memory/
+.github/
+.claude/
+.env
+.env.example
+*.test.ts
+vitest.config.ts
+tsconfig.json
+ATLAS-HANDOFF.md
+ARCHITECTURE-DECISION.md
+RESEARCH-REPOS.md
