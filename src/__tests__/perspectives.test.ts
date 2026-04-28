@@ -2,19 +2,14 @@ import { describe, it, expect } from 'vitest';
 import { PERSPECTIVES, getPerspective, assignPerspectives } from '../atlas/perspectives.js';
 
 describe('swarm perspectives', () => {
-  it('has exactly 5 named perspectives', () => {
-    expect(PERSPECTIVES).toHaveLength(5);
-    const names = PERSPECTIVES.map(p => p.name);
-    expect(names).toContain('architect');
-    expect(names).toContain('pragmatist');
-    expect(names).toContain('qa');
-    expect(names).toContain('devils_advocate');
-    expect(names).toContain('security');
+  it('loads at least 3 perspectives (defaults or config)', () => {
+    expect(PERSPECTIVES.length).toBeGreaterThanOrEqual(3);
   });
 
-  it('each perspective has non-empty instruction', () => {
+  it('each perspective has non-empty name and instruction', () => {
     for (const p of PERSPECTIVES) {
-      expect(p.instruction.length).toBeGreaterThan(20);
+      expect(p.name.length).toBeGreaterThan(0);
+      expect(p.instruction.length).toBeGreaterThan(10);
     }
   });
 
@@ -25,10 +20,11 @@ describe('swarm perspectives', () => {
     }
   });
 
-  it('getPerspective returns correct perspective by name', () => {
-    const qa = getPerspective('qa');
-    expect(qa).toBeDefined();
-    expect(qa!.instruction).toContain('breaks');
+  it('getPerspective returns match by name', () => {
+    const first = PERSPECTIVES[0];
+    const found = getPerspective(first.name);
+    expect(found).toBeDefined();
+    expect(found!.name).toBe(first.name);
   });
 
   it('getPerspective returns undefined for unknown name', () => {
@@ -36,21 +32,14 @@ describe('swarm perspectives', () => {
   });
 
   it('assignPerspectives limits to requested count', () => {
-    const three = assignPerspectives(3);
-    expect(three).toHaveLength(3);
+    const two = assignPerspectives(2);
+    expect(two).toHaveLength(2);
     const all = assignPerspectives();
-    expect(all).toHaveLength(5);
+    expect(all).toHaveLength(PERSPECTIVES.length);
   });
 
-  it('each perspective has a provider assigned for model diversity', () => {
-    for (const p of PERSPECTIVES) {
-      expect(p.provider).toBeTruthy();
-      expect(typeof p.provider).toBe('string');
-    }
-  });
-
-  it('perspectives use at least 2 different providers', () => {
-    const providers = new Set(PERSPECTIVES.map(p => p.provider));
-    expect(providers.size).toBeGreaterThanOrEqual(2);
+  it('no duplicate perspective names', () => {
+    const names = PERSPECTIVES.map(p => p.name);
+    expect(new Set(names).size).toBe(names.length);
   });
 });

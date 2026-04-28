@@ -1,55 +1,93 @@
 # Atlas CLI
 
-Persistent AI agent. Terminal surface of the VOLAURA ecosystem.
+Persistent AI agent for the terminal. Multi-model, multi-perspective, memory-backed.
 
-Built on Mastra + Vercel AI SDK. 28 source files, 21 test files, 88 tests — all green.
+Part of the [VOLAURA](https://volaura.app) ecosystem.
+
+## Install
+
+```bash
+npm install @volaura/atlas-cli
+# or clone and build:
+git clone https://github.com/ganbaroff/atlas-cli.git
+cd atlas-cli && npm install && npm run build
+```
+
+## Quick start
+
+```bash
+cp .env.example .env     # add at least one API key
+atlas ping               # verify setup
+atlas chat               # start talking
+```
 
 ## Commands
 
-```bash
-atlas chat                # interactive chat (multi-model)
-atlas run <skill>         # execute a VOLAURA skill by name
-atlas swarm <task>        # fork-based parallel agents with Jidoka gate
-atlas swarm-deep <task>   # route to VOLAURA Python swarm (13 perspectives, 4 DAG waves)
-atlas hive                # show Python hive agent profiles
-atlas wake                # identity recall from filesystem memory (no LLM needed)
-atlas boot                # Jarvis-like boot — identity + health + last session
-atlas cron                # 30-min autonomous health check cycle
-atlas health              # quick health diagnostics (7 checks)
-atlas identity            # Atlas identity JSON
-atlas models              # list available providers
-atlas skills              # list VOLAURA skills
-atlas telegram            # Telegram bot (Whisper voice input)
-atlas ping                # fast health check
+| Command | What it does |
+|---------|-------------|
+| `atlas chat` | Interactive multi-model chat |
+| `atlas run <skill>` | Execute a named skill |
+| `atlas swarm <task>` | Fork-based parallel analysis with quality gate |
+| `atlas swarm-deep <task>` | Route to Python swarm (13 perspectives, 4 DAG waves) |
+| `atlas hive` | Show Python hive agent profiles |
+| `atlas wake` | Identity recall from filesystem (no LLM call) |
+| `atlas boot` | Full boot: identity + health + last session |
+| `atlas cron` | Start 30-min autonomous health check cycle |
+| `atlas health` | Run 7 diagnostic checks |
+| `atlas identity` | Print identity JSON |
+| `atlas models` | List available model providers |
+| `atlas skills` | List available skills |
+| `atlas telegram` | Start Telegram bot with voice input |
+| `atlas ping` | Fast connectivity check |
+
+## Configuration
+
+### API keys (.env)
+
+Set at least one. Cost order: free first, paid last.
+
+| Variable | Provider | Cost |
+|----------|----------|------|
+| `CEREBRAS_API_KEY` | Cerebras | Free |
+| `NVIDIA_API_KEY` | NVIDIA NIM | Free |
+| `OLLAMA_URL` | Ollama (local) | Free |
+| `OPENROUTER_API_KEY` | OpenRouter | Paid |
+| `ANTHROPIC_API_KEY` | Anthropic | Paid |
+| `OPENAI_API_KEY` | OpenAI (voice only) | Paid |
+| `TELEGRAM_BOT_TOKEN` | Telegram bot | Free |
+
+### Custom perspectives
+
+Swarm perspectives are loaded from `~/.atlas/perspectives.json`:
+
+```json
+[
+  {
+    "name": "reviewer-1",
+    "instruction": "Review for correctness and edge cases.",
+    "provider": "cerebras"
+  }
+]
 ```
+
+Override path: `ATLAS_PERSPECTIVES_PATH=/path/to/perspectives.json`
 
 ## Architecture
 
-- **Multi-model fallback**: Cerebras → Ollama → NVIDIA → OpenRouter → Anthropic
-- **Memory**: Obsidian vault (`C:\Projects\VOLAURA\memory\atlas\`) — persistent across sessions
-- **Swarm**: fork-based parallel agents, named perspectives (Engineer/Strategist/Skeptic/Product/Operator)
-- **Cron**: 30-min self-check, writes health reports to memory vault
-- **Telegram**: full bot with voice (Whisper), 2.3K-token brain context
-- **Python bridge**: calls VOLAURA Python swarm via subprocess
-- **Dedup**: Cloudflare-inspired content deduplication for memory writes
-- **Conversation store**: per-session message persistence
-- **Dashboard**: `dashboard.html` — visual agent state
-
-## Setup
-
-```bash
-cp .env.example .env   # add at least one API key
-npm install
-npx tsx src/cli.ts ping
-```
+- **Multi-model fallback**: Cerebras -> Ollama -> NVIDIA -> OpenRouter -> Anthropic
+- **Memory**: Obsidian-compatible vault, persistent across sessions
+- **Swarm**: fork-based parallel agents with Jidoka quality gate
+- **Cron**: 30-min self-check, health reports to memory vault
+- **Dedup**: content deduplication for memory writes
+- **Python bridge**: subprocess call to VOLAURA Python swarm
 
 ## Tests
 
 ```bash
-npm test                 # 88 tests across 21 files
+npm test    # 87 tests across 21 files
 ```
 
-Includes unit tests, integration tests, and E2E binary tests (build → run compiled binary → verify output).
+Unit, integration, and E2E binary tests (build -> run compiled binary -> verify output).
 
 ## License
 

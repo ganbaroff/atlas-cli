@@ -1,8 +1,17 @@
 /**
- * Named swarm perspectives — behavioral instructions, not personas.
- * Each prompt is a decision filter that changes output.
- * Pragmatist designed these: "cosplay vs instruction" distinction.
+ * Swarm perspectives — loaded from user config, not bundled in package.
+ * Perspective names, instructions, and provider assignments are internal
+ * architecture. Published dist ships only generic defaults.
+ *
+ * Resolution order:
+ *   1. ATLAS_PERSPECTIVES_PATH env var
+ *   2. ~/.atlas/perspectives.json
+ *   3. Built-in generic defaults
  */
+
+import { readFileSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
 
 export interface Perspective {
   name: string;
@@ -10,33 +19,49 @@ export interface Perspective {
   provider?: string;
 }
 
-export const PERSPECTIVES: Perspective[] = [
+const DEFAULT_PERSPECTIVES: Perspective[] = [
   {
-    name: 'architect',
-    provider: 'anthropic',
-    instruction: 'Optimize for changeability. When reviewing code, ask: what happens when requirements change in 6 months? Flag tight coupling and missing interfaces.',
+    name: 'reviewer-1',
+    instruction: 'Review for correctness, edge cases, and potential failures.',
   },
   {
-    name: 'pragmatist',
-    provider: 'cerebras',
-    instruction: 'Ship the smallest thing that works. When you see abstraction, ask: do we need this today or is this insurance for a future that may never come? Cut scope ruthlessly.',
+    name: 'reviewer-2',
+    instruction: 'Review for simplicity. Flag unnecessary complexity.',
   },
   {
-    name: 'qa',
-    provider: 'cerebras',
-    instruction: 'Find the input that breaks it. Think: empty strings, nulls, concurrent calls, 10x expected load, unicode, timezone midnight. List specific failing scenarios.',
-  },
-  {
-    name: 'devils_advocate',
-    provider: 'nvidia',
-    instruction: 'Argue against the current approach. Find one concrete scenario where this design fails or a simpler alternative wins. Never agree just because others do.',
-  },
-  {
-    name: 'security',
-    provider: 'anthropic',
-    instruction: 'Assume hostile input on every boundary. Check: injection, auth bypass, secret leakage, dependency supply chain, error messages that leak internals.',
+    name: 'reviewer-3',
+    instruction: 'Review for security. Assume hostile input on every boundary.',
   },
 ];
+
+function loadFromFile(path: string): Perspective[] | null {
+  try {
+    if (!existsSync(path)) return null;
+    const raw = JSON.parse(readFileSync(path, 'utf-8'));
+    if (!Array.isArray(raw)) return null;
+    return raw.filter(
+      (p: any) => typeof p.name === 'string' && typeof p.instruction === 'string',
+    );
+  } catch {
+    return null;
+  }
+}
+
+function loadPerspectives(): Perspective[] {
+  const envPath = process.env.ATLAS_PERSPECTIVES_PATH;
+  if (envPath) {
+    const loaded = loadFromFile(envPath);
+    if (loaded?.length) return loaded;
+  }
+
+  const homePath = join(homedir(), '.atlas', 'perspectives.json');
+  const loaded = loadFromFile(homePath);
+  if (loaded?.length) return loaded;
+
+  return DEFAULT_PERSPECTIVES;
+}
+
+export const PERSPECTIVES: Perspective[] = loadPerspectives();
 
 export function getPerspective(name: string): Perspective | undefined {
   return PERSPECTIVES.find(p => p.name === name);
