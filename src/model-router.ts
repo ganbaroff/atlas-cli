@@ -1,7 +1,7 @@
 /**
- * Atlas model router — cost-ordered fallback with role-based selection.
+ * Atlas model router — cost-ordered routing with role-based selection.
  *
- * Tries providers in cost order: free/local first, paid last.
+ * Selects one provider in cost order: free/local first, paid last.
  * Skips providers without API keys configured.
  */
 
@@ -17,6 +17,7 @@ export type ModelRole = 'FAST' | 'WORKER' | 'JUDGE' | 'CRITICAL';
 export type ProviderName =
   | 'ollama'
   | 'cerebras'
+  | 'groq'
   | 'nvidia'
   | 'openai'
   | 'openrouter'
@@ -48,7 +49,13 @@ const MODEL_REGISTRY: ModelConfig[] = [
     provider: 'cerebras',
     modelId: 'qwen-3-235b-a22b-instruct-2507',
     costTier: 0,
-    roles: ['FAST'],
+    roles: ['FAST', 'WORKER', 'JUDGE'],
+  },
+  {
+    provider: 'groq',
+    modelId: 'llama-3.3-70b-versatile',
+    costTier: 0,
+    roles: ['FAST', 'WORKER', 'JUDGE'],
   },
   {
     provider: 'nvidia',
@@ -80,6 +87,7 @@ function getEnvKey(provider: ProviderName): string | undefined {
   const map: Record<ProviderName, string> = {
     ollama: 'OLLAMA_URL',
     cerebras: 'CEREBRAS_API_KEY',
+    groq: 'GROQ_API_KEY',
     nvidia: 'NVIDIA_API_KEY',
     openai: 'OPENAI_API_KEY',
     openrouter: 'OPENROUTER_API_KEY',
@@ -105,6 +113,15 @@ function createModel(config: ModelConfig): any {
       return createCerebras({
         apiKey: process.env['CEREBRAS_API_KEY'],
       })(config.modelId);
+
+    case 'groq':
+      return createOpenAICompatible({
+        name: 'groq',
+        baseURL: 'https://api.groq.com/openai/v1',
+        headers: {
+          Authorization: `Bearer ${process.env['GROQ_API_KEY']}`,
+        },
+      }).languageModel(config.modelId);
 
     case 'nvidia':
       return createOpenAICompatible({
@@ -170,6 +187,66 @@ export function routeModel(opts: RouterOptions = {}): RouteResult {
     modelId: config.modelId,
     costTier: config.costTier,
   };
+}
+
+/**
+ * Route with runtime fallback — tries each candidate in cost order.
+ * If a provider fails (quota, rate limit, network), moves to next.
+ * Returns the first successful result.
+ *
+ * Codex P0: "if chosen provider is alive by key but falls by quota,
+ * agent dies instead of falling back to next."
+ */
+export async function routeModelWithFallback(
+  opts: RouterOptions = {},
+  callFn: (route: RouteResult) => Promise<unknown>,
+): Promise<{ result: unknown; route: RouteResult }> {
+  const envPref = process.env['ATLAS_PREFERRED_PROVIDER'] as ProviderName | undefined;
+  const { role = 'WORKER', maxCostTier = 3, preferredProvider = envPref } = opts;
+
+  const candidates = MODEL_REGISTRY.filter(
+    (m) =>
+      m.roles.includes(role) &&
+      m.costTier <= maxCostTier &&
+      isAvailable(m.provider),
+  ).sort((a, b) => {
+    if (preferredProvider) {
+      if (a.provider === preferredProvider && b.provider !== preferredProvider)
+        return -1;
+      if (b.provider === preferredProvider && a.provider !== preferredProvider)
+        return 1;
+    }
+    return a.costTier - b.costTier;
+  });
+
+  if (candidates.length === 0) {
+    throw new Error(
+      `No model available for role=${role} maxCost=${maxCostTier}. Set API keys in env.`,
+    );
+  }
+
+  const errors: Array<{ provider: ProviderName; error: string }> = [];
+
+  for (const config of candidates) {
+    try {
+      const route: RouteResult = {
+        model: createModel(config),
+        provider: config.provider,
+        modelId: config.modelId,
+        costTier: config.costTier,
+      };
+      const result = await callFn(route);
+      return { result, route };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      errors.push({ provider: config.provider, error: msg.slice(0, 200) });
+      // Continue to next provider
+    }
+  }
+
+  throw new Error(
+    `All ${candidates.length} providers failed for role=${role}: ${JSON.stringify(errors)}`,
+  );
 }
 
 export function listAvailableModels(): ModelConfig[] {
