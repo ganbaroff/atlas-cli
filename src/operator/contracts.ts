@@ -109,6 +109,19 @@ export const operatorEvaluationSchema = z.object({
   attempts: z.array(operatorEvaluationAttemptSchema).default([]),
 });
 
+export const operatorPromotionSchema = z.object({
+  promoted: z.boolean(),
+  status: z.enum(['promoted', 'blocked']),
+  reason: z.string().min(1),
+  safe_reply: z.string().min(1),
+  proof_tokens: z.array(z.string().min(1)).default([]),
+  current_turn_proof_tokens: z.array(z.string().min(1)).default([]),
+  winning_result_path: z.string().min(1).optional(),
+  source_result_path: z.string().min(1).optional(),
+  retry_result_path: z.string().min(1).optional(),
+  final_verdict: z.enum(['passed', 'blocked']).optional(),
+});
+
 export const operatorResultSchema = z.object({
   task_id: z.string().regex(/^[a-z0-9][a-z0-9._-]{2,80}$/),
   status: z.enum(['success', 'failure', 'blocked', 'skipped']),
@@ -120,12 +133,14 @@ export const operatorResultSchema = z.object({
   errors: z.array(z.string()).default([]),
   trace_path: z.string().optional(),
   evaluation: operatorEvaluationSchema.optional(),
+  promotion: operatorPromotionSchema.optional(),
 });
 
 export type OperatorTask = z.infer<typeof operatorTaskSchema>;
 export type OperatorEvidence = z.infer<typeof operatorEvidenceSchema>;
 export type OperatorEvaluationAttempt = z.infer<typeof operatorEvaluationAttemptSchema>;
 export type OperatorEvaluation = z.infer<typeof operatorEvaluationSchema>;
+export type OperatorPromotion = z.infer<typeof operatorPromotionSchema>;
 export type OperatorResult = z.infer<typeof operatorResultSchema>;
 
 export function parseOperatorTask(input: unknown): OperatorTask {

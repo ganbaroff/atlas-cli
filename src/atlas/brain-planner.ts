@@ -56,6 +56,7 @@ export function buildOperatorContext(state: OperatorStateRecord = readOperatorSt
   const lastRun = state.last_run;
   const proofTokens = lastRun?.proof_tokens ?? [];
   const evidenceTypes = lastRun?.evidence_types ?? [];
+  const promotion = lastRun?.promotion;
 
   return [
     '## OPERATOR STATE',
@@ -68,6 +69,7 @@ export function buildOperatorContext(state: OperatorStateRecord = readOperatorSt
       : 'last run: none',
     lastRun?.trace_path ? `trace path: ${lastRun.trace_path}` : '',
     lastRun?.reason ? `reason: ${lastRun.reason}` : '',
+    promotion ? `promotion: ${promotion.status} (${promotion.reason})` : 'promotion: none',
     `proof tokens:\n${toBulletList(proofTokens)}`,
     `evidence types: ${evidenceTypes.length > 0 ? evidenceTypes.join(', ') : 'none'}`,
   ].filter((line) => line.trim().length > 0).join('\n');

@@ -17,6 +17,7 @@ import {
   validateResultEvidence,
 } from './contracts.js';
 import { evaluateOperatorResultWithRetry } from './evaluator.js';
+import { decidePromotion } from './promotion.js';
 
 const REPO_ROOT = process.cwd();
 const STATE_PATH = resolve(REPO_ROOT, 'operator/state/operator-state.json');
@@ -50,20 +51,33 @@ export function writeOperatorTrace(result: OperatorResult, options: DispatchWrit
   if (options.persistState !== false) {
     const state = loadOperatorState() as Record<string, unknown>;
     const proofTokens = [...new Set(withBrowserTrace.evidence.map((item) => item.proof_token ?? item.id))];
+    const lastRun = {
+      task_id: withBrowserTrace.task_id,
+      status: withBrowserTrace.status,
+      reason: withBrowserTrace.summary,
+      executor: withBrowserTrace.executor,
+      started_at: withBrowserTrace.started_at,
+      completed_at: withBrowserTrace.completed_at,
+      trace_path: withBrowserTrace.trace_path,
+      proof_tokens: proofTokens,
+      evidence_types: [...new Set(withBrowserTrace.evidence.map((item) => item.type))],
+      evaluation: withBrowserTrace.evaluation,
+      promotion: withBrowserTrace.promotion,
+    };
+    const stateWithLastRun = {
+      ...state,
+      last_run: lastRun,
+    };
+    const promotion = withBrowserTrace.promotion ?? decidePromotion({
+      state: stateWithLastRun,
+      result: withBrowserTrace,
+    });
     const nextState = {
       ...state,
       updated_at: new Date().toISOString(),
       last_run: {
-        task_id: withBrowserTrace.task_id,
-        status: withBrowserTrace.status,
-        reason: withBrowserTrace.summary,
-        executor: withBrowserTrace.executor,
-        started_at: withBrowserTrace.started_at,
-        completed_at: withBrowserTrace.completed_at,
-        trace_path: withBrowserTrace.trace_path,
-        proof_tokens: proofTokens,
-        evidence_types: [...new Set(withBrowserTrace.evidence.map((item) => item.type))],
-        evaluation: withBrowserTrace.evaluation,
+        ...lastRun,
+        promotion,
       },
     };
     writeFileSync(STATE_PATH, JSON.stringify(nextState, null, 2) + '\n', 'utf-8');
@@ -496,6 +510,107 @@ function dispatchManualEvaluationTask(
   return writeOperatorTrace(resultWithPath, options);
 }
 
+function dispatchManualPromotionTask(
+  task: OperatorTask,
+  startedAt: string,
+  foundEvidence: OperatorEvidence[],
+  options: DispatchWriteOptions = {},
+): OperatorResult {
+  const targetTaskId = typeof task.inputs.promotion_result_task_id === 'string' && task.inputs.promotion_result_task_id.trim().length > 0
+    ? task.inputs.promotion_result_task_id.trim()
+    : '';
+
+  if (!targetTaskId) {
+    return writeOperatorTrace(createBlockedResult(
+      task,
+      startedAt,
+      ['promotion_result_task_id missing'],
+      foundEvidence,
+      'Promotion blocked: no target result.',
+    ), options);
+  }
+
+  const targetResultPath = resolve(RUNS_DIR, `${targetTaskId}.result.json`);
+  if (!existsSync(targetResultPath)) {
+    return writeOperatorTrace(createBlockedResult(
+      task,
+      startedAt,
+      [`target result missing: ${targetResultPath}`],
+      foundEvidence,
+      'Promotion blocked: source result missing.',
+    ), options);
+  }
+
+  const sourceResult = loadOperatorResult(`operator/runs/${targetTaskId}.result.json`);
+  const promotion = decidePromotion({ result: sourceResult });
+
+  foundEvidence.push(evidence(
+    `${task.id}.result`,
+    task,
+    'file_read',
+    targetResultPath,
+    `Loaded result ${sourceResult.task_id} for promotion`,
+  ));
+  foundEvidence.push({
+    ...evidence(
+      `${task.id}.verdict`,
+      task,
+      'manual_note',
+      targetResultPath,
+      promotion.reason,
+    ),
+    data: {
+      target_task_id: sourceResult.task_id,
+      target_result_path: targetResultPath,
+      promotion,
+    },
+  });
+  foundEvidence.push({
+    ...evidence(
+      `${task.id}.trace`,
+      task,
+      'log_trace',
+      targetResultPath,
+      JSON.stringify({
+        target_task_id: sourceResult.task_id,
+        target_result: sourceResult.status,
+        promotion,
+      }, null, 2).slice(0, 4000),
+    ),
+    data: {
+      target_task_id: sourceResult.task_id,
+      target_result_path: targetResultPath,
+      promotion,
+    },
+  });
+
+  const result: OperatorResult = {
+    task_id: task.id,
+    status: promotion.promoted ? 'success' : 'blocked',
+    executor: 'manual',
+    started_at: startedAt,
+    completed_at: new Date().toISOString(),
+    summary: promotion.reason,
+    evidence: foundEvidence,
+    errors: promotion.promoted ? [] : [promotion.reason],
+    evaluation: sourceResult.evaluation,
+    promotion,
+  };
+
+  const resultWithPath = { ...result, trace_path: resultTracePath(task, options) };
+  const evidenceGate = validateResultEvidence(task, resultWithPath);
+  if (!evidenceGate.passed) {
+    return writeOperatorTrace({
+      ...resultWithPath,
+      status: 'blocked',
+      summary: 'Promotion task did not produce required evidence.',
+      errors: [...result.errors, `missing evidence: ${evidenceGate.missing.join(', ')}`],
+    }, options);
+  }
+
+  return writeOperatorTrace(resultWithPath, options);
+}
+
 function dispatchOctogentTask(
   task: OperatorTask,
   startedAt: string,
@@ -921,6 +1036,9 @@ export function dispatchOperatorTask(task: OperatorTask, options: DispatchWriteO
   }
 
   if (task.route === 'manual') {
+    if (typeof task.inputs.promotion_result_task_id === 'string') {
+      return dispatchManualPromotionTask(task, startedAt, foundEvidence, options);
+    }
     return dispatchManualEvaluationTask(task, startedAt, foundEvidence, options);
   }
 
@@ -974,6 +1092,7 @@ export function ensureOperatorArtifacts(): string[] {
     resolve(REPO_ROOT, 'operator/tasks/octogent-channel-delivery-smoke.json'),
     resolve(REPO_ROOT, 'operator/tasks/octogent-live-child-ack-smoke.json'),
     resolve(REPO_ROOT, 'operator/tasks/result-quality-evaluator-smoke.json'),
+    resolve(REPO_ROOT, 'operator/tasks/result-promotion-smoke.json'),
   ].filter((path) => existsSync(path));
 }
 

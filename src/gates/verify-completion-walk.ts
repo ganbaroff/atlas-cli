@@ -21,7 +21,16 @@ export interface CompletionEmitDecision {
   claimDetected: boolean;
   proofTokens: string[];
   matchedProofTokens: string[];
+  promotion?: {
+    promoted: boolean;
+    status: 'promoted' | 'blocked';
+    reason: string;
+  };
   reason?: string;
+}
+
+export interface CompletionEmitOptions {
+  promotion?: CompletionEmitDecision['promotion'];
 }
 
 const COMPLETION_CLAIM_KEYWORDS = [
@@ -54,10 +63,12 @@ function hasCompletionClaim(reply: string): boolean {
 export function decideCompletionEmit(
   reply: string,
   evidence?: TurnEvidenceSource,
+  options: CompletionEmitOptions = {},
 ): CompletionEmitDecision {
   const claimDetected = hasCompletionClaim(reply);
   const proofTokens = collectProofTokens(evidence);
   const matchedProofTokens = matchProofTokens(reply, proofTokens);
+  const promotion = options.promotion;
 
   if (!claimDetected) {
     return {
@@ -66,16 +77,18 @@ export function decideCompletionEmit(
       claimDetected: false,
       proofTokens,
       matchedProofTokens,
+      promotion,
     };
   }
 
-  if (proofTokens.length > 0 && hasProofCitation(reply, proofTokens)) {
+  if (proofTokens.length > 0 && hasProofCitation(reply, proofTokens) && promotion?.promoted) {
     return {
       emitReply: reply,
       emitOriginalReply: true,
       claimDetected: true,
       proofTokens,
       matchedProofTokens,
+      promotion,
     };
   }
 
@@ -85,8 +98,11 @@ export function decideCompletionEmit(
     claimDetected: true,
     proofTokens,
     matchedProofTokens,
+    promotion,
     reason: proofTokens.length > 0
-      ? 'completion claim without cited proof-token'
+      ? (hasProofCitation(reply, proofTokens)
+        ? `completion claim without promoted task result: ${promotion?.reason ?? 'promotion missing'}`
+        : 'completion claim without cited proof-token')
       : 'completion claim without proof-token',
   };
 }

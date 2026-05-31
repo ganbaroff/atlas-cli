@@ -24,6 +24,7 @@ First slice is real and executable.
 - Octogent live child-ack smoke passed
 - OpenManus browser trace proof passed
 - Result quality evaluator smoke passed
+- Result promotion smoke passed
 
 ## Current Blocker
 
@@ -36,12 +37,14 @@ npm run dev -- control validate
 npm run dev -- operator status
 npm run dev -- operator validate operator/tasks/octogent-live-child-ack-smoke.json
 npm run dev -- operator dispatch operator/tasks/octogent-live-child-ack-smoke.json
+npm run dev -- operator validate operator/tasks/result-promotion-smoke.json
+npm run dev -- operator dispatch operator/tasks/result-promotion-smoke.json
 npm run dev -- operator dispatch operator/tasks/openmanus-smoke-readonly.json
 ```
 
 ## Next Physical Step
 
-Evaluator loop.
+End-to-end autonomous task lifecycle.
 
 Proofs already exist:
 
@@ -51,3 +54,5 @@ Proofs already exist:
 - `log_trace`
 - `manual_note`
 - `proof_tokens`
+- `evaluation.final_verdict`
+- `promotion.status`

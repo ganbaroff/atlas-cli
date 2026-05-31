@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import type { OperatorEvaluation } from '../operator/contracts.js';
+import type { OperatorEvaluation, OperatorPromotion } from '../operator/contracts.js';
 
 export type ControlMode = 'active' | 'paused' | 'stopped';
 export type ControlCommandName = 'pause' | 'stop' | 'resume' | 'reroute' | 'validate';
@@ -59,6 +59,7 @@ export interface OperatorStateRecord {
     proof_tokens?: string[];
     evidence_types?: string[];
     evaluation?: OperatorEvaluation;
+    promotion?: OperatorPromotion;
     [key: string]: unknown;
   };
   control?: ControlState;
@@ -131,6 +132,7 @@ export function buildControlContext(state: OperatorStateRecord = readOperatorSta
   const control = getControlState(state);
   const lastRun = state.last_run;
   const evaluation = lastRun?.evaluation;
+  const promotion = lastRun?.promotion;
   const lastCommand = control.last_command
     ? `${control.last_command.command} via ${control.last_command.source}`
     : 'none';
@@ -140,6 +142,9 @@ export function buildControlContext(state: OperatorStateRecord = readOperatorSta
   const lastEvaluation = evaluation
     ? `${evaluation.final_verdict ?? (evaluation.passed ? 'passed' : 'blocked')}${evaluation.retry_used ? ' after retry' : ''}`
     : 'none';
+  const lastPromotion = promotion
+    ? `${promotion.status}: ${promotion.reason}`
+    : 'none';
 
   return [
     '## CONTROL',
@@ -147,6 +152,7 @@ export function buildControlContext(state: OperatorStateRecord = readOperatorSta
     `next lane: ${control.next_lane}`,
     `last command: ${lastCommand}`,
     `last evaluation: ${lastEvaluation}`,
+    `last promotion: ${lastPromotion}`,
     `validation: ${validation}`,
   ].join('\n');
 }
@@ -218,6 +224,27 @@ function summarizeValidation(state: OperatorStateRecord): ControlValidationRepor
 
       if (evaluation.final_verdict === 'passed' && !evaluation.winning_result_path) {
         issues.push('last_run.evaluation winning_result_path missing for passed verdict');
+      }
+    }
+
+    const promotion = lastRun.promotion;
+    if (promotion?.status === 'promoted') {
+      if (!promotion.promoted) {
+        issues.push('last_run.promotion status promoted but promoted=false');
+      }
+
+      if (!Array.isArray(promotion.proof_tokens) || promotion.proof_tokens.length === 0) {
+        issues.push('last_run.promotion proof_tokens missing');
+      }
+
+      if (!promotion.winning_result_path) {
+        issues.push('last_run.promotion winning_result_path missing');
+      } else if (!existsSync(promotion.winning_result_path)) {
+        issues.push(`promotion winning result missing: ${promotion.winning_result_path}`);
+      }
+
+      if (promotion.final_verdict !== 'passed') {
+        issues.push('last_run.promotion final_verdict is not passed');
       }
     }
   }

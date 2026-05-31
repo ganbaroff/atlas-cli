@@ -131,6 +131,18 @@ describe('control plane', () => {
             },
           ],
         },
+        promotion: {
+          promoted: true,
+          status: 'promoted',
+          reason: 'promotion passed: evaluator verdict and durable proof present',
+          safe_reply: 'Не подтверждено. Проверю.',
+          proof_tokens: ['proof:result-quality'],
+          current_turn_proof_tokens: [],
+          winning_result_path: tracePath,
+          source_result_path: tracePath,
+          retry_result_path: tracePath,
+          final_verdict: 'passed',
+        },
       },
     });
 

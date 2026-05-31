@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { collectProofTokens, decideCompletionEmit } from '../gates/verify-completion-walk.js';
 
+const promoted = {
+  promoted: true,
+  status: 'promoted' as const,
+  reason: 'promotion passed',
+};
+
 describe('verify_completion_walk', () => {
   it('passes clean reply with no completion claim', () => {
     const result = decideCompletionEmit('Слышу. Запускаю миграцию.', { steps: [] });
@@ -32,7 +38,11 @@ describe('verify_completion_walk', () => {
     expect(blocked.emitOriginalReply).toBe(false);
     expect(blocked.reason).toBe('completion claim without cited proof-token');
 
-    const result = decideCompletionEmit('Готово. proof:call-1 всё починил.', evidence);
+    const missingPromotion = decideCompletionEmit('Готово. proof:call-1 всё починил.', evidence);
+    expect(missingPromotion.emitOriginalReply).toBe(false);
+    expect(missingPromotion.reason).toContain('promotion');
+
+    const result = decideCompletionEmit('Готово. proof:call-1 всё починил.', evidence, { promotion: promoted });
     expect(result.emitOriginalReply).toBe(true);
     expect(result.emitReply).toBe('Готово. proof:call-1 всё починил.');
     expect(result.proofTokens.length).toBeGreaterThan(0);
