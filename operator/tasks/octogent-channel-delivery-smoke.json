@@ -1,0 +1,34 @@
+{
+  "id": "octogent-channel-delivery-smoke",
+  "title": "Octogent channel delivery smoke",
+  "created_at": "2026-05-30T08:50:00.000Z",
+  "route": "octogent",
+  "mode": "read_only",
+  "cwd": "C:/Projects/octogent",
+  "allowed_paths": [
+    "C:/Projects/octogent"
+  ],
+  "objective": "Verify in-memory channel queue and delivery model docs.",
+  "inputs": {
+    "doc_paths": [
+      "docs/guides/inter-agent-messaging.md",
+      "docs/reference/cli.md",
+      "docs/concepts/mental-model.md"
+    ],
+    "expected_terms": [
+      "in-memory",
+      "undelivered",
+      "channel send",
+      "terminal-id"
+    ]
+  },
+  "expected_evidence": [
+    "file_read",
+    "log_trace"
+  ],
+  "safety": {
+    "sandbox_required": false,
+    "network_allowed": false,
+    "write_allowed": false
+  }
+}

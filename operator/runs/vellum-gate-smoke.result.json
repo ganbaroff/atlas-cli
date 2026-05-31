@@ -1,0 +1,92 @@
+{
+  "task_id": "vellum-gate-smoke",
+  "status": "success",
+  "executor": "vellum",
+  "started_at": "2026-05-30T07:50:51.635Z",
+  "completed_at": "2026-05-30T07:50:51.640Z",
+  "summary": "Vellum gate verified.",
+  "evidence": [
+    {
+      "id": "vellum-gate-smoke.cwd",
+      "task_id": "vellum-gate-smoke",
+      "type": "file_exists",
+      "source": "C:\\Projects\\vellum-assistant",
+      "observed_at": "2026-05-30T07:50:51.637Z",
+      "summary": "Task cwd exists",
+      "data": {},
+      "verifier": "atlas-operator-dispatcher"
+    },
+    {
+      "id": "vellum-gate-smoke.readme",
+      "task_id": "vellum-gate-smoke",
+      "type": "file_read",
+      "source": "C:\\Projects\\vellum-assistant\\README.md",
+      "observed_at": "2026-05-30T07:50:51.640Z",
+      "summary": "README describes memory and security",
+      "data": {},
+      "verifier": "atlas-operator-dispatcher"
+    },
+    {
+      "id": "vellum-gate-smoke.agents",
+      "task_id": "vellum-gate-smoke",
+      "type": "file_read",
+      "source": "C:\\Projects\\vellum-assistant\\AGENTS.md",
+      "observed_at": "2026-05-30T07:50:51.640Z",
+      "summary": "AGENTS define assistant/gateway boundaries and runtime rules",
+      "data": {},
+      "verifier": "atlas-operator-dispatcher"
+    },
+    {
+      "id": "vellum-gate-smoke.package",
+      "task_id": "vellum-gate-smoke",
+      "type": "file_read",
+      "source": "C:\\Projects\\vellum-assistant\\assistant\\package.json",
+      "observed_at": "2026-05-30T07:50:51.640Z",
+      "summary": "assistant package @vellumai/assistant; scripts dev, daemon:restart:http, db:generate, db:push, generate:openapi, format, format:check, lint, lint:unused, lint:circular, lint:unused:production, typecheck, test, test:coverage, test:stable, test:bench, test:filesystem-tools, postinstall, prepack",
+      "data": {},
+      "verifier": "atlas-operator-dispatcher"
+    },
+    {
+      "id": "vellum-gate-smoke.security",
+      "task_id": "vellum-gate-smoke",
+      "type": "file_read",
+      "source": "C:\\Projects\\vellum-assistant\\assistant\\docs\\architecture\\security.md",
+      "observed_at": "2026-05-30T07:50:51.640Z",
+      "summary": "security doc mentions trust and sandbox",
+      "data": {},
+      "verifier": "atlas-operator-dispatcher"
+    },
+    {
+      "id": "vellum-gate-smoke.memory",
+      "task_id": "vellum-gate-smoke",
+      "type": "file_read",
+      "source": "C:\\Projects\\vellum-assistant\\assistant\\docs\\architecture\\memory.md",
+      "observed_at": "2026-05-30T07:50:51.640Z",
+      "summary": "memory doc mentions turn_context and workspace persistence",
+      "data": {},
+      "verifier": "atlas-operator-dispatcher"
+    },
+    {
+      "id": "vellum-gate-smoke.env",
+      "task_id": "vellum-gate-smoke",
+      "type": "file_read",
+      "source": "C:\\Projects\\vellum-assistant\\assistant\\.env.example",
+      "observed_at": "2026-05-30T07:50:51.640Z",
+      "summary": "env example exposes platform url and runtime hints",
+      "data": {},
+      "verifier": "atlas-operator-dispatcher"
+    },
+    {
+      "id": "vellum-gate-smoke.trace",
+      "task_id": "vellum-gate-smoke",
+      "type": "log_trace",
+      "source": "C:\\Projects\\vellum-assistant",
+      "observed_at": "2026-05-30T07:50:51.640Z",
+      "summary": "Vellum repo present; assistant scripts: dev, daemon:restart:http, db:generate, db:push, generate:openapi, format, format:check, lint, lint:unused, lint:circular, lint:unused:production, typecheck, test, test:coverage, test:stable, test:bench, test:filesystem-tools, postinstall, prepack; security and memory docs present",
+      "data": {},
+      "verifier": "atlas-operator-dispatcher"
+    }
+  ],
+  "errors": [],
+  "trace_path": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\operator\\runs\\vellum-gate-smoke.result.json"
+}

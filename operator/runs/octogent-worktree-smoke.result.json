@@ -1,0 +1,62 @@
+{
+  "task_id": "octogent-worktree-smoke",
+  "status": "success",
+  "executor": "octogent",
+  "started_at": "2026-05-30T08:19:27.186Z",
+  "completed_at": "2026-05-30T08:19:27.189Z",
+  "summary": "Octogent docs gate verified.",
+  "evidence": [
+    {
+      "id": "octogent-worktree-smoke.cwd",
+      "task_id": "octogent-worktree-smoke",
+      "type": "file_exists",
+      "source": "C:\\Projects\\octogent",
+      "observed_at": "2026-05-30T08:19:27.187Z",
+      "summary": "Task cwd exists",
+      "data": {},
+      "verifier": "atlas-operator-dispatcher"
+    },
+    {
+      "id": "octogent-worktree-smoke.0",
+      "task_id": "octogent-worktree-smoke",
+      "type": "file_read",
+      "source": "C:\\Projects\\octogent\\docs\\concepts\\mental-model.md",
+      "observed_at": "2026-05-30T08:19:27.188Z",
+      "summary": "# Mental Model",
+      "data": {},
+      "verifier": "atlas-operator-dispatcher"
+    },
+    {
+      "id": "octogent-worktree-smoke.1",
+      "task_id": "octogent-worktree-smoke",
+      "type": "file_read",
+      "source": "C:\\Projects\\octogent\\docs\\reference\\filesystem-layout.md",
+      "observed_at": "2026-05-30T08:19:27.188Z",
+      "summary": "# Filesystem Layout",
+      "data": {},
+      "verifier": "atlas-operator-dispatcher"
+    },
+    {
+      "id": "octogent-worktree-smoke.2",
+      "task_id": "octogent-worktree-smoke",
+      "type": "file_read",
+      "source": "C:\\Projects\\octogent\\docs\\guides\\orchestrating-child-agents.md",
+      "observed_at": "2026-05-30T08:19:27.188Z",
+      "summary": "# Orchestrating Child Agents",
+      "data": {},
+      "verifier": "atlas-operator-dispatcher"
+    },
+    {
+      "id": "octogent-worktree-smoke.trace",
+      "task_id": "octogent-worktree-smoke",
+      "type": "log_trace",
+      "source": "C:\\Projects\\octogent",
+      "observed_at": "2026-05-30T08:19:27.189Z",
+      "summary": "C:\\Projects\\octogent\\docs\\concepts\\mental-model.md: # Mental Model; C:\\Projects\\octogent\\docs\\reference\\filesystem-layout.md: # Filesystem Layout; C:\\Projects\\octogent\\docs\\guides\\orchestrating-child-agents.md: # Orchestrating Child Agents; matched terms: worktree, .octogent/worktrees, octogent/<worker-terminal-id>, shared",
+      "data": {},
+      "verifier": "atlas-operator-dispatcher"
+    }
+  ],
+  "errors": [],
+  "trace_path": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\operator\\runs\\octogent-worktree-smoke.result.json"
+}

@@ -1,0 +1,23 @@
+{
+  "id": "openmanus-smoke-readonly",
+  "title": "OpenManus read-only smoke",
+  "created_at": "2026-05-29T15:16:00.000Z",
+  "route": "openmanus",
+  "mode": "read_only",
+  "cwd": "C:/Projects/OpenManus",
+  "allowed_paths": [
+    "C:/Projects/OpenManus",
+    "C:/Projects/VOLAURA/memory/atlas/hands-runs"
+  ],
+  "objective": "Verify OpenManus can run as hands/body without write access or fake success.",
+  "inputs": {
+    "smoke_url": "https://example.com",
+    "expected_text": "Example Domain"
+  },
+  "expected_evidence": ["browser_observation", "log_trace"],
+  "safety": {
+    "sandbox_required": true,
+    "network_allowed": true,
+    "write_allowed": false
+  }
+}

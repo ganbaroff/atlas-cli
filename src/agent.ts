@@ -6,6 +6,7 @@ import { Agent } from '@mastra/core/agent';
 import { IDENTITY } from './atlas/identity.js';
 import { routeModel, type ModelRole } from './model-router.js';
 import { loadLessons } from './atlas/memory-manager.js';
+import { BRIEFING_TEMPLATE } from './atlas/briefing.js';
 import { readFileTool } from './tools/read-file.js';
 import { writeFileTool } from './tools/write-file.js';
 import { globTool } from './tools/glob.js';
@@ -43,8 +44,8 @@ export async function createAtlasAgent(role: ModelRole = 'WORKER', wakeContext =
   const lessons = await getLessons();
   const lessonsBlock = lessons ? `\n\n## ERROR CLASSES (do NOT repeat)\n${lessons}` : '';
   const instructions = wakeContext
-    ? `${ATLAS_SYSTEM_PROMPT}${lessonsBlock}\n\n${wakeContext}`
-    : `${ATLAS_SYSTEM_PROMPT}${lessonsBlock}`;
+    ? `${ATLAS_SYSTEM_PROMPT}\n\n${BRIEFING_TEMPLATE}${lessonsBlock}\n\n${wakeContext}`
+    : `${ATLAS_SYSTEM_PROMPT}\n\n${BRIEFING_TEMPLATE}${lessonsBlock}`;
 
   return new Agent({
     id: 'atlas-core',

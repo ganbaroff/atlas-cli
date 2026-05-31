@@ -1,26 +1,38 @@
 /**
  * Atlas Telegram bot — rewritten for reliability.
- * Zero abstraction layers. Anthropic SDK direct. One file.
+ * Direct Telegram polling with multi-provider model fallback. One file.
  */
 
 import 'dotenv/config';
 import { Telegraf } from 'telegraf';
-import Anthropic from '@anthropic-ai/sdk';
+import { Agent } from '@mastra/core/agent';
 import { readFileSync, existsSync, writeFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { validateCompletion } from './gates/verify-before-done.js';
+import { repairReply, summarizeReplyGate } from './atlas/reply-gates.js';
+import { BRIEFING_TEMPLATE } from './atlas/briefing.js';
+import { verifyCompletionWalk, type TurnEvidenceSource } from './gates/verify-completion-walk.js';
 import { loadLessons } from './atlas/memory-manager.js';
 import { appendMessage, loadConversation, compactIfNeeded, type StoredMessage } from './atlas/conversation-store.js';
+import { listAvailableModels, routeModelWithFallback } from './model-router.js';
 
 // ── Env verification ────────────────────────────────────────────────
-const REQUIRED = ['TELEGRAM_BOT_TOKEN', 'ANTHROPIC_API_KEY'] as const;
+const REQUIRED = ['TELEGRAM_BOT_TOKEN'] as const;
 for (const key of REQUIRED) {
   if (!process.env[key]) { console.error(`FATAL: ${key} missing from .env`); process.exit(1); }
 }
 
-const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY']! });
+if (!process.env['OLLAMA_URL'] && !process.env['OLLAMA_HOST']) {
+  process.env['OLLAMA_URL'] = 'http://127.0.0.1:11434';
+  console.log('[model] defaulting to local Ollama at http://127.0.0.1:11434');
+}
+
 const bot = new Telegraf(process.env['TELEGRAM_BOT_TOKEN']!);
+const availableModels = listAvailableModels();
+if (availableModels.length === 0) {
+  console.error('FATAL: no model provider keys configured in .env');
+  process.exit(1);
+}
 
 // ── Brain — loaded once, cached in RAM ──────────────────────────────
 const BRAIN_PATH = join(
@@ -28,7 +40,7 @@ const BRAIN_PATH = join(
   'memory', 'atlas', 'TELEGRAM-BRAIN.md',
 );
 const BRAIN = existsSync(BRAIN_PATH) ? readFileSync(BRAIN_PATH, 'utf-8') : 'You are Atlas, AI assistant for VOLAURA. Respond in Russian unless asked otherwise.';
-let SYSTEM = `${BRAIN}\n\nToday: ${new Date().toISOString().slice(0, 10)}. You are talking to CEO Yusif via Telegram. Be concise.`;
+let SYSTEM = `${BRAIN}\n\n${BRIEFING_TEMPLATE}\n\nToday: ${new Date().toISOString().slice(0, 10)}. You are talking to CEO Yusif via Telegram. Be concise.`;
 console.log(`[brain] loaded ${BRAIN.length} chars from ${existsSync(BRAIN_PATH) ? BRAIN_PATH : 'fallback'}`);
 
 // Lessons loaded before bot.launch() — no race condition
@@ -40,6 +52,45 @@ async function injectLessons(): Promise<void> {
       console.log(`[lessons] injected ${lessons.length} chars into system prompt`);
     }
   } catch { /* vault unreachable — continue without lessons */ }
+}
+
+type ModelReply = {
+  modelId: string;
+  provider: string;
+  reply: string;
+  evidence: TurnEvidenceSource;
+};
+
+async function generateWithFallback(
+  messages: Msg[],
+  system: string,
+): Promise<ModelReply> {
+  const { result } = await routeModelWithFallback(
+    { role: 'WORKER' },
+    async (route) => {
+      const agent = new Agent({
+        id: 'atlas-telegram',
+        name: 'Atlas',
+        instructions: system,
+        model: route.model,
+      });
+      const response = route.provider === 'ollama'
+        ? await agent.generateLegacy(messages as any)
+        : await agent.generate(messages as any);
+      return {
+        modelId: route.modelId,
+        provider: route.provider,
+        reply: response.text,
+        evidence: {
+          steps: response.steps as TurnEvidenceSource['steps'],
+          toolCalls: response.toolCalls as TurnEvidenceSource['toolCalls'],
+          toolResults: response.toolResults as TurnEvidenceSource['toolResults'],
+        } satisfies TurnEvidenceSource,
+      } satisfies ModelReply;
+    },
+  );
+
+  return result as ModelReply;
 }
 
 // ── Conversation history — in-memory + persistent JSONL ────────────
@@ -92,32 +143,29 @@ async function ask(chatId: number, text: string): Promise<string> {
   const messages = buildMessages(chatId);
   console.log(`[in]  chat=${chatId} msg="${text.slice(0, 100)}"`);
 
-  const res = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: 1024,
-    system: SYSTEM,
-    messages,
+  const firstPass = await generateWithFallback(messages, SYSTEM);
+  console.log(`[out] chat=${chatId} provider=${firstPass.provider}/${firstPass.modelId} reply="${firstPass.reply.slice(0, 100)}"`);
+  const repaired = await repairReply(firstPass.reply, async (prompt) => {
+    const retry = await generateWithFallback(
+      [...messages, { role: 'user', content: prompt }],
+      SYSTEM,
+    );
+    console.log(`[out-retry] chat=${chatId} provider=${retry.provider}/${retry.modelId} reply="${retry.reply.slice(0, 100)}"`);
+    return retry.reply;
   });
-
-  const reply = res.content.map(b => b.type === 'text' ? b.text : '').join('');
-  addMsg(chatId, 'assistant', reply);
-  console.log(`[out] chat=${chatId} reply="${reply.slice(0, 100)}" tokens=${res.usage.input_tokens}+${res.usage.output_tokens}`);
-
-  const jidoka = validateCompletion(reply);
-  if (!jidoka.passed) {
-    console.warn(`[jidoka] chat=${chatId} violation: ${jidoka.violation}`);
-    const retry = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1024,
-      system: `${SYSTEM}\n\nYour previous answer was blocked by Jidoka gate: "${jidoka.violation}". Rephrase without claiming completion unless you used a tool to verify. Be honest about what you know vs don't know.`,
-      messages: [{ role: 'user', content: text }],
-    });
-    const fixed = retry.content.map(b => b.type === 'text' ? b.text : '').join('');
-    addMsg(chatId, 'assistant', fixed);
-    return fixed || reply;
+  const walk = verifyCompletionWalk(repaired.reply, firstPass.evidence);
+  let reply = walk.reply;
+  if (repaired.retried) {
+    console.warn(`[reply-gate] chat=${chatId} ${summarizeReplyGate(repaired.firstPass)} -> ${summarizeReplyGate(repaired.retryPass ?? repaired.firstPass)}`);
   }
+  if (!walk.allowed) {
+    console.warn(`[verify_completion_walk] chat=${chatId} ${walk.reason ?? 'blocked'} proof=${walk.proofTokens.length}`);
+  }
+  console.log(`[out-final] chat=${chatId} reply="${reply.slice(0, 100)}"`);
 
-  return reply || 'Молчу. Повтори?';
+  const finalReply = reply.trim() || 'Молчу. Повтори?';
+  addMsg(chatId, 'assistant', finalReply);
+  return finalReply;
 }
 
 // ── Voice transcription — graceful fallback ─────────────────────────
@@ -183,14 +231,20 @@ bot.on('voice', async (ctx) => {
 });
 
 // ── Launch with crash recovery ──────────────────────────────────────
+function fatal(label: string, error: unknown): never {
+  console.error(label, error);
+  process.exit(1);
+}
+
 async function boot(): Promise<void> {
   await injectLessons();
-  bot.launch();
-  console.log(`[bot] Atlas Telegram alive — ${new Date().toISOString()}`);
+  void bot.launch(() => {
+    console.log(`[bot] Atlas Telegram alive @${bot.botInfo?.username ?? 'unknown'} — ${new Date().toISOString()} fallback=routeModelWithFallback providers=${availableModels.map((m) => m.provider).join(',')}`);
+  }).catch((error) => fatal('[LAUNCH FAILED]', error));
 }
-boot();
+boot().catch((error) => fatal('[BOOT FAILED]', error));
 
 process.once('SIGINT', () => bot.stop('SIGINT'));
 process.once('SIGTERM', () => bot.stop('SIGTERM'));
-process.on('uncaughtException', (e) => { console.error('[CRASH]', e); });
-process.on('unhandledRejection', (e) => { console.error('[UNHANDLED]', e); });
+process.on('uncaughtException', (e) => fatal('[CRASH]', e));
+process.on('unhandledRejection', (e) => fatal('[UNHANDLED]', e));

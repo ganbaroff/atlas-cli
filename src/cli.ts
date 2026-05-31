@@ -10,11 +10,14 @@ import { createAtlasAgent, listAvailableModels } from './agent.js';
 import { appendMessage, loadConversation } from './atlas/conversation-store.js';
 import { IDENTITY } from './atlas/identity.js';
 import { loadWakeContext, appendJournal, writeHeartbeat } from './atlas/memory-manager.js';
+import { repairReply, summarizeReplyGate } from './atlas/reply-gates.js';
+import { verifyCompletionWalk } from './gates/verify-completion-walk.js';
 import { callPythonSwarm, isPythonSwarmAvailable, loadHiveProfiles } from './atlas/python-bridge.js';
 import { runAndPersist, readLastReport, startCron } from './atlas/cron.js';
 import { runHealthCheck, formatHealthReport } from './atlas/health-check.js';
 import type { ModelRole } from './model-router.js';
 import * as readline from 'node:readline';
+import { capture, shutdown } from './analytics.js';
 
 // Load .env without dependency
 const envPath = resolve(process.cwd(), '.env');
@@ -70,6 +73,7 @@ program
       output: process.stdout,
     });
 
+    capture('atlas_chat_started', { role });
     console.log(`\n${IDENTITY.name} здесь. Role: ${role}\n`);
 
     const closeSession = async () => {
@@ -95,6 +99,8 @@ program
       } catch {
         // vault write failed — silent, don't break exit
       }
+      capture('atlas_chat_ended', { role, turns: turns.length, duration_s: duration });
+      await shutdown();
       console.log('Я здесь.');
       rl.close();
     };
@@ -116,7 +122,18 @@ program
 
         try {
           const response = await agent.generate(messages);
-          const reply = response.text;
+          const repaired = await repairReply(response.text, async (prompt) => {
+            const retryResponse = await agent.generate([...messages, { role: 'user', content: prompt }]);
+            return retryResponse.text;
+          });
+          const walk = verifyCompletionWalk(repaired.reply, response);
+          if (repaired.retried) {
+            console.warn(`[reply-gate] ${summarizeReplyGate(repaired.firstPass)} -> ${summarizeReplyGate(repaired.retryPass ?? repaired.firstPass)}`);
+          }
+          if (!walk.allowed) {
+            console.warn(`[verify_completion_walk] ${walk.reason ?? 'blocked'} proof=${walk.proofTokens.length}`);
+          }
+          const reply = walk.reply;
           console.log(`\n${reply}\n`);
           messages.push({ role: 'assistant', content: reply });
           appendMessage(CLI_CHAT_ID, { ts: new Date().toISOString(), role: 'assistant', text: reply })
@@ -144,6 +161,7 @@ program
     const contextExtra = opts.context ? `\nAdditional context: ${opts.context}` : '';
     const prompt = `Load the skill "${skill}" using the load-skill tool and execute it against the current working directory (${process.cwd()}). Follow the skill spec precisely. Use your other tools (read-file, glob, grep, shell) as needed to gather the input data the skill requires.${contextExtra}`;
 
+    capture('atlas_skill_run', { skill, role });
     console.log(`\n${IDENTITY.name} запускает скилл: ${skill}\n`);
 
     try {
@@ -154,6 +172,7 @@ program
       console.error(`Error: ${msg}`);
       process.exit(1);
     }
+    await shutdown();
   });
 
 program
@@ -177,6 +196,68 @@ program
     }
   });
 
+const operatorCmd = program
+  .command('operator')
+  .description('Atlas operator integration controls');
+
+operatorCmd
+  .command('status')
+  .description('Show operator state and required artifacts')
+  .action(async () => {
+    const {
+      ensureOperatorArtifacts,
+      loadOperatorState,
+      operatorStatePath,
+    } = await import('./operator/dispatcher.js');
+
+    const state = loadOperatorState();
+    const artifacts = ensureOperatorArtifacts();
+    console.log(JSON.stringify({
+      state_path: operatorStatePath(),
+      artifacts_found: artifacts.length,
+      artifacts,
+      state,
+    }, null, 2));
+  });
+
+operatorCmd
+  .command('validate <task>')
+  .description('Validate an operator task contract')
+  .action(async (taskPath: string) => {
+    const { loadOperatorTask } = await import('./operator/dispatcher.js');
+    try {
+      const task = loadOperatorTask(taskPath);
+      console.log(JSON.stringify({
+        valid: true,
+        id: task.id,
+        route: task.route,
+        mode: task.mode,
+        expected_evidence: task.expected_evidence,
+      }, null, 2));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(JSON.stringify({ valid: false, error: msg }, null, 2));
+      process.exit(1);
+    }
+  });
+
+operatorCmd
+  .command('dispatch <task>')
+  .description('Dispatch an operator task and write trace')
+  .action(async (taskPath: string) => {
+    const { dispatchOperatorTask, loadOperatorTask } = await import('./operator/dispatcher.js');
+    try {
+      const task = loadOperatorTask(taskPath);
+      const result = dispatchOperatorTask(task);
+      console.log(JSON.stringify(result, null, 2));
+      process.exit(result.status === 'success' ? 0 : 2);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(JSON.stringify({ status: 'failure', error: msg }, null, 2));
+      process.exit(1);
+    }
+  });
+
 program
   .command('skills')
   .description('List available VOLAURA skills')
@@ -196,6 +277,7 @@ program
   .description('Decompose task into parallel agent workers across providers')
   .action(async (task: string) => {
     const { runSwarm } = await import('./swarm.js');
+    capture('atlas_swarm_run', { type: 'ts' });
     console.log(`\n${IDENTITY.name} запускает swarm\n`);
     try {
       const result = await runSwarm(task);
@@ -205,6 +287,7 @@ program
       console.error(`Swarm failed: ${msg}`);
       process.exit(1);
     }
+    await shutdown();
   });
 
 program
@@ -212,12 +295,14 @@ program
   .description('Route task to VOLAURA Python swarm (13 perspectives, 4 DAG waves)')
   .option('-m, --mode <mode>', 'Swarm mode: coordinator, daily-ideation, code-review', 'coordinator')
   .action(async (task: string, opts) => {
+    capture('atlas_swarm_run', { type: 'python', mode: opts.mode });
     if (!isPythonSwarmAvailable()) {
       console.error('VOLAURA Python swarm not found at C:\\Projects\\VOLAURA');
       console.log('Falling back to TypeScript swarm...');
       const { runSwarm } = await import('./swarm.js');
       const result = await runSwarm(task);
       console.log('\n' + result);
+      await shutdown();
       return;
     }
 
@@ -236,6 +321,7 @@ program
       const fallback = await runSwarm(task);
       console.log('\n' + fallback);
     }
+    await shutdown();
   });
 
 program

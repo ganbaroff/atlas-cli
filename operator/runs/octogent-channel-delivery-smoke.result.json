@@ -1,0 +1,62 @@
+{
+  "task_id": "octogent-channel-delivery-smoke",
+  "status": "success",
+  "executor": "octogent",
+  "started_at": "2026-05-30T08:39:26.545Z",
+  "completed_at": "2026-05-30T08:39:26.547Z",
+  "summary": "Octogent docs gate verified.",
+  "evidence": [
+    {
+      "id": "octogent-channel-delivery-smoke.cwd",
+      "task_id": "octogent-channel-delivery-smoke",
+      "type": "file_exists",
+      "source": "C:\\Projects\\octogent",
+      "observed_at": "2026-05-30T08:39:26.546Z",
+      "summary": "Task cwd exists",
+      "data": {},
+      "verifier": "atlas-operator-dispatcher"
+    },
+    {
+      "id": "octogent-channel-delivery-smoke.0",
+      "task_id": "octogent-channel-delivery-smoke",
+      "type": "file_read",
+      "source": "C:\\Projects\\octogent\\docs\\guides\\inter-agent-messaging.md",
+      "observed_at": "2026-05-30T08:39:26.546Z",
+      "summary": "# Inter-Agent Messaging",
+      "data": {},
+      "verifier": "atlas-operator-dispatcher"
+    },
+    {
+      "id": "octogent-channel-delivery-smoke.1",
+      "task_id": "octogent-channel-delivery-smoke",
+      "type": "file_read",
+      "source": "C:\\Projects\\octogent\\docs\\reference\\cli.md",
+      "observed_at": "2026-05-30T08:39:26.547Z",
+      "summary": "# CLI Reference",
+      "data": {},
+      "verifier": "atlas-operator-dispatcher"
+    },
+    {
+      "id": "octogent-channel-delivery-smoke.2",
+      "task_id": "octogent-channel-delivery-smoke",
+      "type": "file_read",
+      "source": "C:\\Projects\\octogent\\docs\\concepts\\mental-model.md",
+      "observed_at": "2026-05-30T08:39:26.547Z",
+      "summary": "# Mental Model",
+      "data": {},
+      "verifier": "atlas-operator-dispatcher"
+    },
+    {
+      "id": "octogent-channel-delivery-smoke.trace",
+      "task_id": "octogent-channel-delivery-smoke",
+      "type": "log_trace",
+      "source": "C:\\Projects\\octogent",
+      "observed_at": "2026-05-30T08:39:26.547Z",
+      "summary": "C:\\Projects\\octogent\\docs\\guides\\inter-agent-messaging.md: # Inter-Agent Messaging; C:\\Projects\\octogent\\docs\\reference\\cli.md: # CLI Reference; C:\\Projects\\octogent\\docs\\concepts\\mental-model.md: # Mental Model; matched terms: in-memory, undelivered, channel send, terminal-id",
+      "data": {},
+      "verifier": "atlas-operator-dispatcher"
+    }
+  ],
+  "errors": [],
+  "trace_path": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\operator\\runs\\octogent-channel-delivery-smoke.result.json"
+}

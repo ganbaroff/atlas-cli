@@ -1,0 +1,33 @@
+{
+  "id": "octogent-inter-agent-message-smoke",
+  "title": "Octogent inter-agent message smoke",
+  "created_at": "2026-05-30T08:00:00.000Z",
+  "route": "octogent",
+  "mode": "read_only",
+  "cwd": "C:/Projects/octogent",
+  "allowed_paths": [
+    "C:/Projects/octogent"
+  ],
+  "objective": "Verify inter-agent messaging docs and channel CLI exist.",
+  "inputs": {
+    "doc_paths": [
+      "docs/guides/inter-agent-messaging.md",
+      "docs/reference/cli.md"
+    ],
+    "expected_terms": [
+      "channel send",
+      "terminal-id",
+      "undelivered",
+      "in-memory"
+    ]
+  },
+  "expected_evidence": [
+    "file_read",
+    "log_trace"
+  ],
+  "safety": {
+    "sandbox_required": false,
+    "network_allowed": false,
+    "write_allowed": false
+  }
+}

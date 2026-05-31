@@ -1,0 +1,32 @@
+{
+  "updated_at": "2026-05-30T08:55:14.634Z",
+  "status": "first_slice_contract_live",
+  "operator": {
+    "primary": "atlas-anus",
+    "hands": "openmanus",
+    "parallel": "octogent",
+    "experimental": "vellum"
+  },
+  "route": {
+    "default": ["atlas-anus", "openmanus", "octogent"],
+    "telegram_model_fallback": ["ollama", "cerebras", "nvidia", "anthropic"],
+    "vellum_policy": "not_critical_path"
+  },
+  "rules": [
+    "no_evidence_no_success",
+    "openmanus_requires_sandbox",
+    "vellum_not_critical_path",
+    "green_smoke_before_scope_expand"
+  ],
+  "phase": {
+    "name": "contract_first",
+    "implemented": true,
+    "next": "pick next lane"
+  },
+  "last_run": {
+    "task_id": "octogent-live-child-ack-smoke",
+    "status": "success",
+    "reason": "Real parent/child spawn, channel send, ack, and delivery trace verified.",
+    "trace_path": "operator/runs/octogent-live-child-ack-smoke.result.json"
+  }
+}

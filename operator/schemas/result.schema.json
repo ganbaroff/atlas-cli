@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://volaura.local/operator/result.schema.json",
+  "title": "Atlas Operator Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "task_id",
+    "status",
+    "executor",
+    "started_at",
+    "completed_at",
+    "summary",
+    "evidence"
+  ],
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{2,80}$"
+    },
+    "status": {
+      "enum": ["success", "failure", "blocked", "skipped"]
+    },
+    "executor": {
+      "enum": ["atlas", "openmanus", "octogent", "vellum", "manual"]
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 3
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "evidence.schema.json"
+      }
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "trace_path": {
+      "type": "string"
+    }
+  }
+}

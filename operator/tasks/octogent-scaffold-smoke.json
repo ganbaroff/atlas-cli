@@ -1,0 +1,22 @@
+{
+  "id": "octogent-scaffold-smoke",
+  "title": "Octogent scaffold smoke",
+  "created_at": "2026-05-29T19:20:00.000Z",
+  "route": "octogent",
+  "mode": "read_only",
+  "cwd": "C:/Projects/octogent",
+  "allowed_paths": [
+    "C:/Projects/octogent"
+  ],
+  "objective": "Verify Octogent repo scaffold exists and exposes the expected orchestration surface.",
+  "inputs": {
+    "expected_script": "dev",
+    "expected_terms": ["tentacle", "todo.md", "terminal"]
+  },
+  "expected_evidence": ["file_read", "log_trace"],
+  "safety": {
+    "sandbox_required": false,
+    "network_allowed": false,
+    "write_allowed": false
+  }
+}

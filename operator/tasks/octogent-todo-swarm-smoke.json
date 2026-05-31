@@ -1,0 +1,35 @@
+{
+  "id": "octogent-todo-swarm-smoke",
+  "title": "Octogent todo swarm smoke",
+  "created_at": "2026-05-30T08:25:00.000Z",
+  "route": "octogent",
+  "mode": "read_only",
+  "cwd": "C:/Projects/octogent",
+  "allowed_paths": [
+    "C:/Projects/octogent"
+  ],
+  "objective": "Verify todo-driven swarm flow and worker index rules.",
+  "inputs": {
+    "doc_paths": [
+      "docs/guides/working-with-todos.md",
+      "docs/concepts/mental-model.md",
+      "docs/reference/cli.md"
+    ],
+    "expected_terms": [
+      "todo.md",
+      "swarm",
+      "worker",
+      "parent",
+      "checkbox"
+    ]
+  },
+  "expected_evidence": [
+    "file_read",
+    "log_trace"
+  ],
+  "safety": {
+    "sandbox_required": false,
+    "network_allowed": false,
+    "write_allowed": false
+  }
+}

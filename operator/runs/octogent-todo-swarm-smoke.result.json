@@ -1,0 +1,62 @@
+{
+  "task_id": "octogent-todo-swarm-smoke",
+  "status": "success",
+  "executor": "octogent",
+  "started_at": "2026-05-30T08:18:55.183Z",
+  "completed_at": "2026-05-30T08:18:55.186Z",
+  "summary": "Octogent docs gate verified.",
+  "evidence": [
+    {
+      "id": "octogent-todo-swarm-smoke.cwd",
+      "task_id": "octogent-todo-swarm-smoke",
+      "type": "file_exists",
+      "source": "C:\\Projects\\octogent",
+      "observed_at": "2026-05-30T08:18:55.184Z",
+      "summary": "Task cwd exists",
+      "data": {},
+      "verifier": "atlas-operator-dispatcher"
+    },
+    {
+      "id": "octogent-todo-swarm-smoke.0",
+      "task_id": "octogent-todo-swarm-smoke",
+      "type": "file_read",
+      "source": "C:\\Projects\\octogent\\docs\\guides\\working-with-todos.md",
+      "observed_at": "2026-05-30T08:18:55.184Z",
+      "summary": "# Working With Todos",
+      "data": {},
+      "verifier": "atlas-operator-dispatcher"
+    },
+    {
+      "id": "octogent-todo-swarm-smoke.1",
+      "task_id": "octogent-todo-swarm-smoke",
+      "type": "file_read",
+      "source": "C:\\Projects\\octogent\\docs\\concepts\\mental-model.md",
+      "observed_at": "2026-05-30T08:18:55.185Z",
+      "summary": "# Mental Model",
+      "data": {},
+      "verifier": "atlas-operator-dispatcher"
+    },
+    {
+      "id": "octogent-todo-swarm-smoke.2",
+      "task_id": "octogent-todo-swarm-smoke",
+      "type": "file_read",
+      "source": "C:\\Projects\\octogent\\docs\\reference\\cli.md",
+      "observed_at": "2026-05-30T08:18:55.185Z",
+      "summary": "# CLI Reference",
+      "data": {},
+      "verifier": "atlas-operator-dispatcher"
+    },
+    {
+      "id": "octogent-todo-swarm-smoke.trace",
+      "task_id": "octogent-todo-swarm-smoke",
+      "type": "log_trace",
+      "source": "C:\\Projects\\octogent",
+      "observed_at": "2026-05-30T08:18:55.186Z",
+      "summary": "C:\\Projects\\octogent\\docs\\guides\\working-with-todos.md: # Working With Todos; C:\\Projects\\octogent\\docs\\concepts\\mental-model.md: # Mental Model; C:\\Projects\\octogent\\docs\\reference\\cli.md: # CLI Reference; matched terms: todo.md, swarm, worker, parent, checkbox",
+      "data": {},
+      "verifier": "atlas-operator-dispatcher"
+    }
+  ],
+  "errors": [],
+  "trace_path": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\operator\\runs\\octogent-todo-swarm-smoke.result.json"
+}
