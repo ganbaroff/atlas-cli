@@ -336,17 +336,19 @@ function dispatchOpenManusLocalTask(task: OperatorTask, startedAt: string, found
 
 function dispatchManualEvaluationTask(task: OperatorTask, startedAt: string, foundEvidence: OperatorEvidence[]): OperatorResult {
   const state = loadOperatorState() as Record<string, unknown>;
-  const targetTaskId = typeof task.inputs.result_task_id === 'string' && task.inputs.result_task_id.trim().length > 0
+  const explicitTargetTaskId = typeof task.inputs.result_task_id === 'string' && task.inputs.result_task_id.trim().length > 0
     ? task.inputs.result_task_id.trim()
-    : (typeof state.last_run === 'object' && state.last_run !== null
-      ? String((state.last_run as Record<string, unknown>).task_id ?? '').trim()
-      : '');
+    : '';
+  const fallbackTargetTaskId = typeof state.last_run === 'object' && state.last_run !== null
+    ? String((state.last_run as Record<string, unknown>).task_id ?? '').trim()
+    : '';
+  const targetTaskId = explicitTargetTaskId || (fallbackTargetTaskId && fallbackTargetTaskId !== task.id ? fallbackTargetTaskId : '');
 
   if (!targetTaskId) {
     return writeOperatorTrace(createBlockedResult(
       task,
       startedAt,
-      ['result_task_id missing and operator state has no last_run.task_id'],
+      ['result_task_id missing or points back at evaluator task'],
       foundEvidence,
       'Evaluator blocked: no target result.',
     ));
