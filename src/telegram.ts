@@ -9,9 +9,10 @@ import { Agent } from '@mastra/core/agent';
 import { readFileSync, existsSync, writeFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { repairReply, summarizeReplyGate } from './atlas/reply-gates.js';
+import { summarizeReplyGate } from './atlas/reply-gates.js';
 import { BRIEFING_TEMPLATE } from './atlas/briefing.js';
-import { verifyCompletionWalk, type TurnEvidenceSource } from './gates/verify-completion-walk.js';
+import { deliverReply } from './atlas/reply-delivery.js';
+import type { TurnEvidenceSource } from './gates/verify-completion-walk.js';
 import { loadLessons } from './atlas/memory-manager.js';
 import { appendMessage, loadConversation, compactIfNeeded, type StoredMessage } from './atlas/conversation-store.js';
 import { listAvailableModels, routeModelWithFallback } from './model-router.js';
@@ -145,7 +146,7 @@ async function ask(chatId: number, text: string): Promise<string> {
 
   const firstPass = await generateWithFallback(messages, SYSTEM);
   console.log(`[out] chat=${chatId} provider=${firstPass.provider}/${firstPass.modelId} reply="${firstPass.reply.slice(0, 100)}"`);
-  const repaired = await repairReply(firstPass.reply, async (prompt) => {
+  const delivery = await deliverReply(firstPass.reply, async (prompt) => {
     const retry = await generateWithFallback(
       [...messages, { role: 'user', content: prompt }],
       SYSTEM,
@@ -153,13 +154,12 @@ async function ask(chatId: number, text: string): Promise<string> {
     console.log(`[out-retry] chat=${chatId} provider=${retry.provider}/${retry.modelId} reply="${retry.reply.slice(0, 100)}"`);
     return retry.reply;
   }, firstPass.evidence);
-  const walk = verifyCompletionWalk(repaired.reply, firstPass.evidence);
-  let reply = walk.reply;
-  if (repaired.retried) {
-    console.warn(`[reply-gate] chat=${chatId} ${summarizeReplyGate(repaired.firstPass)} -> ${summarizeReplyGate(repaired.retryPass ?? repaired.firstPass)}`);
+  const reply = delivery.reply;
+  if (delivery.repaired.retried) {
+    console.warn(`[reply-gate] chat=${chatId} ${summarizeReplyGate(delivery.repaired.firstPass)} -> ${summarizeReplyGate(delivery.repaired.retryPass ?? delivery.repaired.firstPass)}`);
   }
-  if (!walk.allowed) {
-    console.warn(`[verify_completion_walk] chat=${chatId} ${walk.reason ?? 'blocked'} proof=${walk.proofTokens.length}`);
+  if (!delivery.emitDecision.emitOriginalReply) {
+    console.warn(`[verify_completion_walk] chat=${chatId} ${delivery.emitDecision.reason ?? 'blocked'} proof=${delivery.emitDecision.proofTokens.length}`);
   }
   console.log(`[out-final] chat=${chatId} reply="${reply.slice(0, 100)}"`);
 

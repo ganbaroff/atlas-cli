@@ -10,8 +10,8 @@ import { createAtlasAgent, listAvailableModels } from './agent.js';
 import { appendMessage, loadConversation } from './atlas/conversation-store.js';
 import { IDENTITY } from './atlas/identity.js';
 import { loadWakeContext, appendJournal, writeHeartbeat } from './atlas/memory-manager.js';
-import { repairReply, summarizeReplyGate } from './atlas/reply-gates.js';
-import { verifyCompletionWalk } from './gates/verify-completion-walk.js';
+import { summarizeReplyGate } from './atlas/reply-gates.js';
+import { deliverReply } from './atlas/reply-delivery.js';
 import { callPythonSwarm, isPythonSwarmAvailable, loadHiveProfiles } from './atlas/python-bridge.js';
 import { runAndPersist, readLastReport, startCron } from './atlas/cron.js';
 import { runHealthCheck, formatHealthReport } from './atlas/health-check.js';
@@ -122,18 +122,17 @@ program
 
         try {
           const response = await agent.generate(messages);
-          const repaired = await repairReply(response.text, async (prompt) => {
+          const delivery = await deliverReply(response.text, async (prompt) => {
             const retryResponse = await agent.generate([...messages, { role: 'user', content: prompt }]);
             return retryResponse.text;
           }, response);
-          const walk = verifyCompletionWalk(repaired.reply, response);
-          if (repaired.retried) {
-            console.warn(`[reply-gate] ${summarizeReplyGate(repaired.firstPass)} -> ${summarizeReplyGate(repaired.retryPass ?? repaired.firstPass)}`);
+          if (delivery.repaired.retried) {
+            console.warn(`[reply-gate] ${summarizeReplyGate(delivery.repaired.firstPass)} -> ${summarizeReplyGate(delivery.repaired.retryPass ?? delivery.repaired.firstPass)}`);
           }
-          if (!walk.allowed) {
-            console.warn(`[verify_completion_walk] ${walk.reason ?? 'blocked'} proof=${walk.proofTokens.length}`);
+          if (!delivery.emitDecision.emitOriginalReply) {
+            console.warn(`[verify_completion_walk] ${delivery.emitDecision.reason ?? 'blocked'} proof=${delivery.emitDecision.proofTokens.length}`);
           }
-          const reply = walk.reply;
+          const reply = delivery.reply;
           console.log(`\n${reply}\n`);
           messages.push({ role: 'assistant', content: reply });
           appendMessage(CLI_CHAT_ID, { ts: new Date().toISOString(), role: 'assistant', text: reply })

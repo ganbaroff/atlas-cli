@@ -1,5 +1,5 @@
 /**
- * verify_completion_walk — hard emit gate for completion claims.
+ * verify_completion_walk — emit decision for completion claims.
  *
  * If reply claims completion but current turn has no tool evidence, downgrade
  * claim before emit. No retry loop here. Substrate only.
@@ -14,12 +14,12 @@ export interface TurnEvidenceSource {
   toolResults?: unknown[];
 }
 
-export interface CompletionWalkDecision {
-  allowed: boolean;
+export interface CompletionEmitDecision {
+  emitReply: string;
+  emitOriginalReply: boolean;
   claimDetected: boolean;
   proofTokens: string[];
   reason?: string;
-  reply: string;
 }
 
 const COMPLETION_CLAIM_KEYWORDS = [
@@ -84,36 +84,38 @@ export function collectProofTokens(evidence: TurnEvidenceSource | undefined): st
   return [...new Set(tokens)];
 }
 
-export function verifyCompletionWalk(
+export function decideCompletionEmit(
   reply: string,
   evidence?: TurnEvidenceSource,
-): CompletionWalkDecision {
+): CompletionEmitDecision {
   const claimDetected = hasCompletionClaim(reply);
   const proofTokens = collectProofTokens(evidence);
 
   if (!claimDetected) {
     return {
-      allowed: true,
+      emitReply: reply,
+      emitOriginalReply: true,
       claimDetected: false,
       proofTokens,
-      reply,
     };
   }
 
   if (proofTokens.length > 0) {
     return {
-      allowed: true,
+      emitReply: reply,
+      emitOriginalReply: true,
       claimDetected: true,
       proofTokens,
-      reply,
     };
   }
 
   return {
-    allowed: false,
+    emitReply: SAFE_DOWNGRADE,
+    emitOriginalReply: false,
     claimDetected: true,
     proofTokens,
     reason: 'completion claim without proof-token',
-    reply: SAFE_DOWNGRADE,
   };
 }
+
+export const verifyCompletionWalk = decideCompletionEmit;
