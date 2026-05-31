@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import type { OperatorEvaluation } from '../operator/contracts.js';
 
 export type ControlMode = 'active' | 'paused' | 'stopped';
 export type ControlCommandName = 'pause' | 'stop' | 'resume' | 'reroute' | 'validate';
@@ -57,6 +58,7 @@ export interface OperatorStateRecord {
     trace_path?: string;
     proof_tokens?: string[];
     evidence_types?: string[];
+    evaluation?: OperatorEvaluation;
     [key: string]: unknown;
   };
   control?: ControlState;
@@ -127,18 +129,24 @@ export function describeControlBlock(state: OperatorStateRecord = readOperatorSt
 
 export function buildControlContext(state: OperatorStateRecord = readOperatorState()): string {
   const control = getControlState(state);
+  const lastRun = state.last_run;
+  const evaluation = lastRun?.evaluation;
   const lastCommand = control.last_command
     ? `${control.last_command.command} via ${control.last_command.source}`
     : 'none';
   const validation = control.last_validation
     ? `${control.last_validation.passed ? 'ok' : 'blocked'} @ ${control.last_validation.at}`
     : 'not run';
+  const lastEvaluation = evaluation
+    ? `${evaluation.final_verdict ?? (evaluation.passed ? 'passed' : 'blocked')}${evaluation.retry_used ? ' after retry' : ''}`
+    : 'none';
 
   return [
     '## CONTROL',
     `mode: ${control.mode}`,
     `next lane: ${control.next_lane}`,
     `last command: ${lastCommand}`,
+    `last evaluation: ${lastEvaluation}`,
     `validation: ${validation}`,
   ].join('\n');
 }
@@ -192,6 +200,25 @@ function summarizeValidation(state: OperatorStateRecord): ControlValidationRepor
 
     if (typeof lastRun.trace_path === 'string' && lastRun.trace_path.trim().length > 0 && !existsSync(lastRun.trace_path)) {
       issues.push(`trace missing: ${lastRun.trace_path}`);
+    }
+
+    const evaluation = lastRun.evaluation;
+    if (evaluation && Array.isArray(evaluation.attempts) && evaluation.attempts.length > 0) {
+      if (evaluation.retry_used === true && evaluation.attempts.length < 2) {
+        issues.push('last_run.evaluation retry_used without retry attempt');
+      }
+
+      if (evaluation.retry_used === true && (!Array.isArray(evaluation.result_chain_paths) || evaluation.result_chain_paths.length < 2)) {
+        issues.push('last_run.evaluation result chain missing retry path');
+      }
+
+      if (evaluation.retry_used === false && Array.isArray(evaluation.result_chain_paths) && evaluation.result_chain_paths.length > 1) {
+        issues.push('last_run.evaluation retry chain present without retry_used');
+      }
+
+      if (evaluation.final_verdict === 'passed' && !evaluation.winning_result_path) {
+        issues.push('last_run.evaluation winning_result_path missing for passed verdict');
+      }
     }
   }
 

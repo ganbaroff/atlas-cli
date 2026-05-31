@@ -73,16 +73,40 @@ export const operatorEvidenceSchema = z.object({
   verifier: z.string().optional(),
 });
 
+const operatorEvaluationIssueSchema = z.object({
+  code: z.string().min(1),
+  message: z.string().min(1),
+});
+
+export const operatorEvaluationAttemptSchema = z.object({
+  attempt: z.enum(['source', 'retry']),
+  result_path: z.string().min(1),
+  result_status: z.enum(['success', 'failure', 'blocked', 'skipped']),
+  verdict: z.enum(['passed', 'blocked']),
+  score: z.number().int().min(0).max(100),
+  summary: z.string().min(3),
+  issues: z.array(operatorEvaluationIssueSchema),
+  proof_tokens: z.array(z.string().min(1)).default([]),
+  evidence_paths: z.array(z.string().min(1)).default([]),
+});
+
 export const operatorEvaluationSchema = z.object({
   passed: z.boolean(),
   score: z.number().int().min(0).max(100),
   summary: z.string().min(3),
-  issues: z.array(z.object({
-    code: z.string().min(1),
-    message: z.string().min(1),
-  })),
+  issues: z.array(operatorEvaluationIssueSchema),
   evaluated_at: z.string().datetime(),
   evaluator: z.string().min(1),
+  final_verdict: z.enum(['passed', 'blocked']).optional(),
+  retryable_route: z.boolean().optional(),
+  retry_used: z.boolean().optional(),
+  source_result_path: z.string().min(1).optional(),
+  retry_result_path: z.string().min(1).optional(),
+  winning_result_path: z.string().min(1).optional(),
+  retry_reason: z.string().min(3).optional(),
+  result_chain_paths: z.array(z.string().min(1)).default([]),
+  evidence_chain_paths: z.array(z.string().min(1)).default([]),
+  attempts: z.array(operatorEvaluationAttemptSchema).default([]),
 });
 
 export const operatorResultSchema = z.object({
@@ -100,6 +124,7 @@ export const operatorResultSchema = z.object({
 
 export type OperatorTask = z.infer<typeof operatorTaskSchema>;
 export type OperatorEvidence = z.infer<typeof operatorEvidenceSchema>;
+export type OperatorEvaluationAttempt = z.infer<typeof operatorEvaluationAttemptSchema>;
 export type OperatorEvaluation = z.infer<typeof operatorEvaluationSchema>;
 export type OperatorResult = z.infer<typeof operatorResultSchema>;
 

@@ -96,6 +96,114 @@
             }
           }
         },
+        "final_verdict": {
+          "enum": ["passed", "blocked"]
+        },
+        "retryable_route": {
+          "type": "boolean"
+        },
+        "retry_used": {
+          "type": "boolean"
+        },
+        "source_result_path": {
+          "type": "string"
+        },
+        "retry_result_path": {
+          "type": "string"
+        },
+        "winning_result_path": {
+          "type": "string"
+        },
+        "retry_reason": {
+          "type": "string",
+          "minLength": 3
+        },
+        "result_chain_paths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "evidence_chain_paths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "attempts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "attempt",
+              "result_path",
+              "result_status",
+              "verdict",
+              "score",
+              "summary",
+              "issues"
+            ],
+            "properties": {
+              "attempt": {
+                "enum": ["source", "retry"]
+              },
+              "result_path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "result_status": {
+                "enum": ["success", "failure", "blocked", "skipped"]
+              },
+              "verdict": {
+                "enum": ["passed", "blocked"]
+              },
+              "score": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "summary": {
+                "type": "string",
+                "minLength": 3
+              },
+              "issues": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["code", "message"],
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "message": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                }
+              },
+              "proof_tokens": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "evidence_paths": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          }
+        },
         "evaluated_at": {
           "type": "string",
           "format": "date-time"

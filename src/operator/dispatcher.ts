@@ -16,11 +16,16 @@ import {
   parseOperatorResult,
   validateResultEvidence,
 } from './contracts.js';
-import { evaluateOperatorResult } from './evaluator.js';
+import { evaluateOperatorResultWithRetry } from './evaluator.js';
 
 const REPO_ROOT = process.cwd();
 const STATE_PATH = resolve(REPO_ROOT, 'operator/state/operator-state.json');
 const RUNS_DIR = resolve(REPO_ROOT, 'operator/runs');
+
+export interface DispatchWriteOptions {
+  tracePath?: string;
+  persistState?: boolean;
+}
 
 export function loadOperatorState(): unknown {
   return JSON.parse(readFileSync(STATE_PATH, 'utf-8'));
@@ -36,32 +41,38 @@ export function loadOperatorResult(resultPath: string): OperatorResult {
   return parseOperatorResult(raw);
 }
 
-export function writeOperatorTrace(result: OperatorResult): OperatorResult {
+export function writeOperatorTrace(result: OperatorResult, options: DispatchWriteOptions = {}): OperatorResult {
   mkdirSync(RUNS_DIR, { recursive: true });
-  const tracePath = resolve(RUNS_DIR, `${result.task_id}.result.json`);
+  const tracePath = options.tracePath ?? result.trace_path ?? resolve(RUNS_DIR, `${result.task_id}.result.json`);
   const withPath = { ...result, trace_path: tracePath };
   const withBrowserTrace = withBrowserSessionTrace(withPath);
   writeFileSync(tracePath, JSON.stringify(withBrowserTrace, null, 2) + '\n', 'utf-8');
-  const state = loadOperatorState() as Record<string, unknown>;
-  const proofTokens = [...new Set(withBrowserTrace.evidence.map((item) => item.proof_token ?? item.id))];
-  const nextState = {
-    ...state,
-    updated_at: new Date().toISOString(),
-    last_run: {
-      task_id: withBrowserTrace.task_id,
-      status: withBrowserTrace.status,
-      reason: withBrowserTrace.summary,
-      executor: withBrowserTrace.executor,
-      started_at: withBrowserTrace.started_at,
-      completed_at: withBrowserTrace.completed_at,
-      trace_path: withBrowserTrace.trace_path,
-      proof_tokens: proofTokens,
-      evidence_types: [...new Set(withBrowserTrace.evidence.map((item) => item.type))],
-      evaluation: withBrowserTrace.evaluation,
-    },
-  };
-  writeFileSync(STATE_PATH, JSON.stringify(nextState, null, 2) + '\n', 'utf-8');
+  if (options.persistState !== false) {
+    const state = loadOperatorState() as Record<string, unknown>;
+    const proofTokens = [...new Set(withBrowserTrace.evidence.map((item) => item.proof_token ?? item.id))];
+    const nextState = {
+      ...state,
+      updated_at: new Date().toISOString(),
+      last_run: {
+        task_id: withBrowserTrace.task_id,
+        status: withBrowserTrace.status,
+        reason: withBrowserTrace.summary,
+        executor: withBrowserTrace.executor,
+        started_at: withBrowserTrace.started_at,
+        completed_at: withBrowserTrace.completed_at,
+        trace_path: withBrowserTrace.trace_path,
+        proof_tokens: proofTokens,
+        evidence_types: [...new Set(withBrowserTrace.evidence.map((item) => item.type))],
+        evaluation: withBrowserTrace.evaluation,
+      },
+    };
+    writeFileSync(STATE_PATH, JSON.stringify(nextState, null, 2) + '\n', 'utf-8');
+  }
   return withBrowserTrace;
+}
+
+function resultTracePath(task: OperatorTask, options: DispatchWriteOptions = {}): string {
+  return options.tracePath ?? resolve(RUNS_DIR, `${task.id}.result.json`);
 }
 
 function evidence(id: string, task: OperatorTask, type: OperatorEvidence['type'], source: string, summary: string): OperatorEvidence {
@@ -129,11 +140,16 @@ function createBlockedResult(
   };
 }
 
-function dispatchOpenManusTask(task: OperatorTask, startedAt: string, foundEvidence: OperatorEvidence[]): OperatorResult {
+function dispatchOpenManusTask(
+  task: OperatorTask,
+  startedAt: string,
+  foundEvidence: OperatorEvidence[],
+  options: DispatchWriteOptions = {},
+): OperatorResult {
   if (!task.safety.sandbox_required || task.safety.write_allowed || task.mode !== 'read_only') {
     return writeOperatorTrace(createBlockedResult(task, startedAt, [
       'OpenManus adapter accepts only sandboxed read_only tasks with write_allowed=false',
-    ], foundEvidence));
+    ], foundEvidence), options);
   }
 
   const smokeUrl = typeof task.inputs.smoke_url === 'string' ? task.inputs.smoke_url : '';
@@ -160,7 +176,7 @@ function dispatchOpenManusTask(task: OperatorTask, startedAt: string, foundEvide
 
     return writeOperatorTrace(createBlockedResult(task, startedAt, [
       'DAYTONA_API_KEY missing for OpenManus sandbox',
-    ], foundEvidence, 'OpenManus adapter ready; sandbox credential missing.'));
+    ], foundEvidence, 'OpenManus adapter ready; sandbox credential missing.'), options);
   }
 
   const proc = spawnSync(python.command, [...python.argsPrefix, 'sandbox_main.py', '--prompt', prompt], {
@@ -220,7 +236,7 @@ function dispatchOpenManusTask(task: OperatorTask, startedAt: string, foundEvide
     errors,
   };
 
-  const resultWithPath = { ...result, trace_path: resolve(RUNS_DIR, `${task.id}.result.json`) };
+  const resultWithPath = { ...result, trace_path: resultTracePath(task, options) };
   const resultWithBrowserTrace = withBrowserSessionTrace(resultWithPath);
   const evidenceGate = validateResultEvidence(task, resultWithBrowserTrace);
   if (!evidenceGate.passed) {
@@ -229,13 +245,18 @@ function dispatchOpenManusTask(task: OperatorTask, startedAt: string, foundEvide
       status: 'blocked',
       summary: 'OpenManus smoke did not produce required evidence.',
       errors: [...errors, `missing evidence: ${evidenceGate.missing.join(', ')}`],
-    });
+    }, options);
   }
 
-  return writeOperatorTrace(resultWithBrowserTrace);
+  return writeOperatorTrace(resultWithBrowserTrace, options);
 }
 
-function dispatchOpenManusLocalTask(task: OperatorTask, startedAt: string, foundEvidence: OperatorEvidence[]): OperatorResult {
+function dispatchOpenManusLocalTask(
+  task: OperatorTask,
+  startedAt: string,
+  foundEvidence: OperatorEvidence[],
+  options: DispatchWriteOptions = {},
+): OperatorResult {
   const smokeUrl = typeof task.inputs.smoke_url === 'string' ? task.inputs.smoke_url : '';
   const expectedText = typeof task.inputs.expected_text === 'string' ? task.inputs.expected_text : '';
   const prompt = [
@@ -319,7 +340,7 @@ function dispatchOpenManusLocalTask(task: OperatorTask, startedAt: string, found
     errors,
   };
 
-  const resultWithPath = { ...result, trace_path: resolve(RUNS_DIR, `${task.id}.result.json`) };
+  const resultWithPath = { ...result, trace_path: resultTracePath(task, options) };
   const resultWithBrowserTrace = withBrowserSessionTrace(resultWithPath);
   const evidenceGate = validateResultEvidence(task, resultWithBrowserTrace);
   if (!evidenceGate.passed) {
@@ -328,13 +349,18 @@ function dispatchOpenManusLocalTask(task: OperatorTask, startedAt: string, found
       status: 'blocked',
       summary: 'OpenManus local smoke did not produce required evidence.',
       errors: [...errors, `missing evidence: ${evidenceGate.missing.join(', ')}`],
-    });
+    }, options);
   }
 
-  return writeOperatorTrace(resultWithBrowserTrace);
+  return writeOperatorTrace(resultWithBrowserTrace, options);
 }
 
-function dispatchManualEvaluationTask(task: OperatorTask, startedAt: string, foundEvidence: OperatorEvidence[]): OperatorResult {
+function dispatchManualEvaluationTask(
+  task: OperatorTask,
+  startedAt: string,
+  foundEvidence: OperatorEvidence[],
+  options: DispatchWriteOptions = {},
+): OperatorResult {
   const state = loadOperatorState() as Record<string, unknown>;
   const explicitTargetTaskId = typeof task.inputs.result_task_id === 'string' && task.inputs.result_task_id.trim().length > 0
     ? task.inputs.result_task_id.trim()
@@ -351,7 +377,7 @@ function dispatchManualEvaluationTask(task: OperatorTask, startedAt: string, fou
       ['result_task_id missing or points back at evaluator task'],
       foundEvidence,
       'Evaluator blocked: no target result.',
-    ));
+    ), options);
   }
 
   const targetTaskPath = resolve(REPO_ROOT, 'operator/tasks', `${targetTaskId}.json`);
@@ -364,7 +390,7 @@ function dispatchManualEvaluationTask(task: OperatorTask, startedAt: string, fou
       [`target task missing: ${targetTaskPath}`],
       foundEvidence,
       'Evaluator blocked: source task missing.',
-    ));
+    ), options);
   }
 
   if (!existsSync(targetResultPath)) {
@@ -374,13 +400,22 @@ function dispatchManualEvaluationTask(task: OperatorTask, startedAt: string, fou
       [`target result missing: ${targetResultPath}`],
       foundEvidence,
       'Evaluator blocked: source result missing.',
-    ));
+    ), options);
   }
 
   const sourceTask = loadOperatorTask(`operator/tasks/${targetTaskId}.json`);
   const sourceResult = loadOperatorResult(`operator/runs/${targetTaskId}.result.json`);
-  const evaluation = evaluateOperatorResult(sourceTask, sourceResult);
   const verdictSource = targetResultPath;
+  const evaluationBundle = evaluateOperatorResultWithRetry({
+    task: sourceTask,
+    sourceResult,
+    sourceResultPath: targetResultPath,
+    retryDispatcher: ({ task: retryTask, tracePath }) => dispatchOperatorTask(retryTask, {
+      tracePath,
+      persistState: false,
+    }),
+  });
+  const evaluation = evaluationBundle.evaluation;
 
   foundEvidence.push(evidence(
     `${task.id}.task`,
@@ -408,6 +443,9 @@ function dispatchManualEvaluationTask(task: OperatorTask, startedAt: string, fou
       target_task_id: sourceTask.id,
       target_result_path: targetResultPath,
       evaluation,
+      source_attempt: evaluationBundle.sourceAttempt,
+      retry_attempt: evaluationBundle.retryAttempt,
+      retry_result_path: evaluationBundle.retryResultPath,
     },
   });
   foundEvidence.push({
@@ -426,6 +464,9 @@ function dispatchManualEvaluationTask(task: OperatorTask, startedAt: string, fou
       target_task_id: sourceTask.id,
       target_result_path: targetResultPath,
       evaluation,
+      source_attempt: evaluationBundle.sourceAttempt,
+      retry_attempt: evaluationBundle.retryAttempt,
+      retry_result_path: evaluationBundle.retryResultPath,
     },
   });
 
@@ -441,20 +482,26 @@ function dispatchManualEvaluationTask(task: OperatorTask, startedAt: string, fou
     evaluation,
   };
 
-  const evidenceGate = validateResultEvidence(task, result);
+  const resultWithPath = { ...result, trace_path: resultTracePath(task, options) };
+  const evidenceGate = validateResultEvidence(task, resultWithPath);
   if (!evidenceGate.passed) {
     return writeOperatorTrace({
-      ...result,
+      ...resultWithPath,
       status: 'blocked',
       summary: 'Evaluator task did not produce required evidence.',
       errors: [...result.errors, `missing evidence: ${evidenceGate.missing.join(', ')}`],
-    });
+    }, options);
   }
 
-  return writeOperatorTrace(result);
+  return writeOperatorTrace(resultWithPath, options);
 }
 
-function dispatchOctogentTask(task: OperatorTask, startedAt: string, foundEvidence: OperatorEvidence[]): OperatorResult {
+function dispatchOctogentTask(
+  task: OperatorTask,
+  startedAt: string,
+  foundEvidence: OperatorEvidence[],
+  options: DispatchWriteOptions = {},
+): OperatorResult {
   const repoRoot = resolve(task.cwd);
   const packagePath = resolve(repoRoot, 'package.json');
   const readmePath = resolve(repoRoot, 'README.md');
@@ -530,13 +577,18 @@ function dispatchOctogentTask(task: OperatorTask, startedAt: string, foundEviden
       status: 'blocked',
       summary: 'Octogent scaffold did not produce required evidence.',
       errors: [...errors, `missing evidence: ${evidenceGate.missing.join(', ')}`],
-    });
+    }, options);
   }
 
-  return writeOperatorTrace(result);
+  return writeOperatorTrace({ ...result, trace_path: resultTracePath(task, options) }, options);
 }
 
-function dispatchOctogentLiveChildAckTask(task: OperatorTask, startedAt: string, foundEvidence: OperatorEvidence[]): OperatorResult {
+function dispatchOctogentLiveChildAckTask(
+  task: OperatorTask,
+  startedAt: string,
+  foundEvidence: OperatorEvidence[],
+  options: DispatchWriteOptions = {},
+): OperatorResult {
   const repoRoot = resolve(task.cwd);
   const scriptPath = resolve(REPO_ROOT, 'scripts/octogent-live-child-ack-smoke.mjs');
   const livePort = typeof task.inputs.start_port === 'number' ? task.inputs.start_port : 8795;
@@ -679,13 +731,18 @@ function dispatchOctogentLiveChildAckTask(task: OperatorTask, startedAt: string,
       status: 'blocked',
       summary: 'Octogent live child-ack smoke did not produce required evidence.',
       errors: [...errors, `missing evidence: ${evidenceGate.missing.join(', ')}`],
-    });
+    }, options);
   }
 
-  return writeOperatorTrace(result);
+  return writeOperatorTrace({ ...result, trace_path: resultTracePath(task, options) }, options);
 }
 
-function dispatchVellumTask(task: OperatorTask, startedAt: string, foundEvidence: OperatorEvidence[]): OperatorResult {
+function dispatchVellumTask(
+  task: OperatorTask,
+  startedAt: string,
+  foundEvidence: OperatorEvidence[],
+  options: DispatchWriteOptions = {},
+): OperatorResult {
   const repoRoot = resolve(task.cwd);
   const files = [
     'README.md',
@@ -708,7 +765,7 @@ function dispatchVellumTask(task: OperatorTask, startedAt: string, foundEvidence
       missing.map(({ relativePath }) => `missing required file: ${relativePath}`),
       foundEvidence,
       'Vellum gate blocked: required files missing.',
-    ));
+    ), options);
   }
 
   const readme = readFileSync(resolve(repoRoot, 'README.md'), 'utf-8');
@@ -794,13 +851,13 @@ function dispatchVellumTask(task: OperatorTask, startedAt: string, foundEvidence
       status: 'blocked',
       summary: 'Vellum gate did not produce required evidence.',
       errors: [`missing evidence: ${evidenceGate.missing.join(', ')}`],
-    });
+    }, options);
   }
 
-  return writeOperatorTrace(result);
+  return writeOperatorTrace({ ...result, trace_path: resultTracePath(task, options) }, options);
 }
 
-export function dispatchOperatorTask(task: OperatorTask): OperatorResult {
+export function dispatchOperatorTask(task: OperatorTask, options: DispatchWriteOptions = {}): OperatorResult {
   const startedAt = new Date().toISOString();
   const foundEvidence: OperatorEvidence[] = [];
 
@@ -831,7 +888,7 @@ export function dispatchOperatorTask(task: OperatorTask): OperatorResult {
       [describeControlBlock(controlState)],
       foundEvidence,
       describeControlBlock(controlState),
-    ));
+    ), options);
   }
 
   const missingAllowedPaths = task.allowed_paths.filter((path) => !existsSync(resolve(path)));
@@ -841,30 +898,30 @@ export function dispatchOperatorTask(task: OperatorTask): OperatorResult {
       startedAt,
       missingAllowedPaths.map((path) => `allowed path missing: ${path}`),
       foundEvidence,
-    ));
+    ), options);
   }
 
   if (task.route === 'openmanus') {
     if (openManusUsesSandbox(task.cwd)) {
-      return dispatchOpenManusTask(task, startedAt, foundEvidence);
+      return dispatchOpenManusTask(task, startedAt, foundEvidence, options);
     }
-    return dispatchOpenManusLocalTask(task, startedAt, foundEvidence);
+    return dispatchOpenManusLocalTask(task, startedAt, foundEvidence, options);
   }
 
   if (task.route === 'octogent') {
     const runtimeMode = task.inputs.runtime_mode;
     if (typeof runtimeMode === 'string' && runtimeMode === 'live_child_ack') {
-      return dispatchOctogentLiveChildAckTask(task, startedAt, foundEvidence);
+      return dispatchOctogentLiveChildAckTask(task, startedAt, foundEvidence, options);
     }
-    return dispatchOctogentTask(task, startedAt, foundEvidence);
+    return dispatchOctogentTask(task, startedAt, foundEvidence, options);
   }
 
   if (task.route === 'vellum') {
-    return dispatchVellumTask(task, startedAt, foundEvidence);
+    return dispatchVellumTask(task, startedAt, foundEvidence, options);
   }
 
   if (task.route === 'manual') {
-    return dispatchManualEvaluationTask(task, startedAt, foundEvidence);
+    return dispatchManualEvaluationTask(task, startedAt, foundEvidence, options);
   }
 
   if (task.route !== 'local') {
@@ -873,7 +930,7 @@ export function dispatchOperatorTask(task: OperatorTask): OperatorResult {
       startedAt,
       [`runner adapter not implemented: ${task.route}`],
       foundEvidence,
-    ));
+    ), options);
   }
 
   const result: OperatorResult = {
@@ -894,10 +951,10 @@ export function dispatchOperatorTask(task: OperatorTask): OperatorResult {
       status: 'blocked',
       summary: 'Success blocked: expected evidence missing.',
       errors: [`missing evidence: ${evidenceGate.missing.join(', ')}`],
-    });
+    }, options);
   }
 
-  return writeOperatorTrace(result);
+  return writeOperatorTrace({ ...result, trace_path: resultTracePath(task, options) }, options);
 }
 
 export function ensureOperatorArtifacts(): string[] {

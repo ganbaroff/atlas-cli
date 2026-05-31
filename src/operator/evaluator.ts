@@ -1,5 +1,11 @@
 import { existsSync } from 'node:fs';
-import type { OperatorEvidence, OperatorResult, OperatorTask } from './contracts.js';
+import type {
+  OperatorEvidence,
+  OperatorEvaluation,
+  OperatorEvaluationAttempt,
+  OperatorResult,
+  OperatorTask,
+} from './contracts.js';
 import { validateResultEvidence } from './contracts.js';
 
 export interface OperatorEvaluationIssue {
@@ -7,14 +13,26 @@ export interface OperatorEvaluationIssue {
   message: string;
 }
 
-export interface OperatorEvaluation {
-  passed: boolean;
-  score: number;
-  summary: string;
-  issues: OperatorEvaluationIssue[];
-  evaluated_at: string;
-  evaluator: string;
+export interface EvaluateWithRetryRequest {
+  task: OperatorTask;
+  sourceResult: OperatorResult;
+  sourceResultPath: string;
+  retryTracePath?: string;
+  retryDispatcher?: (request: {
+    task: OperatorTask;
+    tracePath: string;
+  }) => OperatorResult;
 }
+
+export interface EvaluateWithRetryResponse {
+  evaluation: OperatorEvaluation;
+  sourceAttempt: OperatorEvaluationAttempt;
+  retryAttempt?: OperatorEvaluationAttempt;
+  retryResult?: OperatorResult;
+  retryResultPath?: string;
+}
+
+const RETRYABLE_ROUTES = new Set<OperatorTask['route']>(['local', 'openmanus', 'octogent']);
 
 function uniqueProofTokens(evidence: OperatorEvidence[]): string[] {
   return [...new Set(
@@ -24,8 +42,50 @@ function uniqueProofTokens(evidence: OperatorEvidence[]): string[] {
   )];
 }
 
+function uniqueEvidencePaths(evidence: OperatorEvidence[]): string[] {
+  return [...new Set(
+    evidence
+      .map((item) => item.source.trim())
+      .filter((source) => source.length > 0),
+  )];
+}
+
 function addIssue(issues: OperatorEvaluationIssue[], code: string, message: string): void {
   issues.push({ code, message });
+}
+
+function resultAttemptVerdict(passed: boolean): 'passed' | 'blocked' {
+  return passed ? 'passed' : 'blocked';
+}
+
+function deriveRetryResultPath(sourceResultPath: string): string {
+  if (sourceResultPath.endsWith('.result.json')) {
+    return sourceResultPath.replace(/\.result\.json$/i, '.retry-1.result.json');
+  }
+  return `${sourceResultPath}.retry-1.result.json`;
+}
+
+export function isRetryableRoute(route: OperatorTask['route']): boolean {
+  return RETRYABLE_ROUTES.has(route);
+}
+
+export function buildOperatorEvaluationAttempt(
+  attempt: 'source' | 'retry',
+  resultPath: string,
+  result: OperatorResult,
+  evaluation: OperatorEvaluation,
+): OperatorEvaluationAttempt {
+  return {
+    attempt,
+    result_path: resultPath,
+    result_status: result.status,
+    verdict: resultAttemptVerdict(evaluation.passed),
+    score: evaluation.score,
+    summary: evaluation.summary,
+    issues: evaluation.issues,
+    proof_tokens: uniqueProofTokens(result.evidence),
+    evidence_paths: uniqueEvidencePaths(result.evidence),
+  };
 }
 
 export function evaluateOperatorResult(
@@ -78,5 +138,111 @@ export function evaluateOperatorResult(
     issues,
     evaluated_at: new Date().toISOString(),
     evaluator: 'atlas-operator-evaluator',
+    result_chain_paths: result.trace_path ? [result.trace_path] : [],
+    evidence_chain_paths: uniqueEvidencePaths(result.evidence),
+    attempts: [],
+  };
+}
+
+export function composeOperatorEvaluation(input: {
+  task: OperatorTask;
+  sourceResultPath: string;
+  sourceAttempt: OperatorEvaluationAttempt;
+  retryableRoute: boolean;
+  retryUsed: boolean;
+  retryReason?: string;
+  retryResultPath?: string;
+  retryAttempt?: OperatorEvaluationAttempt;
+}): OperatorEvaluation {
+  const attempts = input.retryAttempt
+    ? [input.sourceAttempt, input.retryAttempt]
+    : [input.sourceAttempt];
+  const finalAttempt = attempts[attempts.length - 1];
+  const passed = finalAttempt.verdict === 'passed';
+  const resultChainPaths = attempts.map((attempt) => attempt.result_path);
+  const evidenceChainPaths = [...new Set(attempts.flatMap((attempt) => attempt.evidence_paths))];
+
+  return {
+    passed,
+    score: finalAttempt.score,
+    summary: input.retryAttempt
+      ? (passed
+        ? `Result quality passed for ${input.task.id} after retry.`
+        : `Result quality blocked for ${input.task.id} after retry.`)
+      : finalAttempt.summary,
+    issues: passed ? [] : finalAttempt.issues,
+    evaluated_at: new Date().toISOString(),
+    evaluator: 'atlas-operator-evaluator',
+    final_verdict: passed ? 'passed' : 'blocked',
+    retryable_route: input.retryableRoute,
+    retry_used: input.retryUsed,
+    source_result_path: input.sourceResultPath,
+    retry_result_path: input.retryResultPath,
+    winning_result_path: passed ? finalAttempt.result_path : undefined,
+    retry_reason: input.retryReason,
+    result_chain_paths: resultChainPaths,
+    evidence_chain_paths: evidenceChainPaths,
+    attempts,
+  };
+}
+
+export function evaluateOperatorResultWithRetry(
+  input: EvaluateWithRetryRequest,
+): EvaluateWithRetryResponse {
+  const sourceEvaluation = evaluateOperatorResult(input.task, input.sourceResult);
+  const sourceAttempt = buildOperatorEvaluationAttempt(
+    'source',
+    input.sourceResultPath,
+    input.sourceResult,
+    sourceEvaluation,
+  );
+  const retryableRoute = isRetryableRoute(input.task.route);
+
+  if (sourceEvaluation.passed || !retryableRoute) {
+    return {
+      evaluation: composeOperatorEvaluation({
+        task: input.task,
+        sourceResultPath: input.sourceResultPath,
+        sourceAttempt,
+        retryableRoute,
+        retryUsed: false,
+      }),
+      sourceAttempt,
+    };
+  }
+
+  if (!input.retryDispatcher) {
+    throw new Error(`Retry dispatcher required for retryable route ${input.task.route}`);
+  }
+
+  const retryTracePath = input.retryTracePath ?? deriveRetryResultPath(input.sourceResultPath);
+  const retryResult = input.retryDispatcher({
+    task: input.task,
+    tracePath: retryTracePath,
+  });
+  const retryResultPath = retryResult.trace_path ?? retryTracePath;
+  const retryEvaluation = evaluateOperatorResult(input.task, retryResult);
+  const retryAttempt = buildOperatorEvaluationAttempt(
+    'retry',
+    retryResultPath,
+    retryResult,
+    retryEvaluation,
+  );
+
+  return {
+    evaluation: composeOperatorEvaluation({
+      task: input.task,
+      sourceResultPath: input.sourceResultPath,
+      sourceAttempt,
+      retryableRoute,
+      retryUsed: true,
+      retryReason: sourceAttempt.summary,
+      retryResultPath,
+      retryAttempt,
+    }),
+    sourceAttempt,
+    retryAttempt,
+    retryResult,
+    retryResultPath,
   };
 }

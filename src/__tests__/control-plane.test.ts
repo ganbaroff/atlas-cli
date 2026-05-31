@@ -1,3 +1,4 @@
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   buildControlContext,
@@ -80,5 +81,60 @@ describe('control plane', () => {
 
     expect(validation.passed).toBe(false);
     expect(validation.issues).toContain('phase.next and control.next_lane drift: browser-proof != executor-proof');
+  });
+
+  it('accepts retry-aware evaluation chain when proof is durable', () => {
+    const tracePath = resolve(process.cwd(), 'README.md');
+    const validation = validateControlState({
+      phase: { next: 'evaluator loop' },
+      control: { mode: 'active' as const, next_lane: 'evaluator loop' },
+      last_run: {
+        proof_tokens: ['proof:result-quality'],
+        trace_path: tracePath,
+        evaluation: {
+          passed: true,
+          score: 100,
+          summary: 'Result quality passed after retry.',
+          issues: [],
+          evaluated_at: '2026-06-01T00:00:00.000Z',
+          evaluator: 'atlas-operator-evaluator',
+          final_verdict: 'passed',
+          retryable_route: true,
+          retry_used: true,
+          source_result_path: tracePath,
+          retry_result_path: tracePath,
+          winning_result_path: tracePath,
+          result_chain_paths: [tracePath, tracePath],
+          evidence_chain_paths: [tracePath],
+          attempts: [
+            {
+              attempt: 'source',
+              result_path: tracePath,
+              result_status: 'success',
+              verdict: 'blocked',
+              score: 40,
+              summary: 'Source result failed quality.',
+              issues: [],
+              proof_tokens: ['proof:source'],
+              evidence_paths: [tracePath],
+            },
+            {
+              attempt: 'retry',
+              result_path: tracePath,
+              result_status: 'success',
+              verdict: 'passed',
+              score: 100,
+              summary: 'Retry passed quality.',
+              issues: [],
+              proof_tokens: ['proof:retry'],
+              evidence_paths: [tracePath],
+            },
+          ],
+        },
+      },
+    });
+
+    expect(validation.passed).toBe(true);
+    expect(validation.issues).toHaveLength(0);
   });
 });

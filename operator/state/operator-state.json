@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-05-31T20:11:28.114Z",
+  "updated_at": "2026-05-31T20:27:23.102Z",
   "status": "first_slice_contract_live",
   "operator": {
     "primary": "atlas-anus",
@@ -37,8 +37,8 @@
     "status": "success",
     "reason": "Result quality passed for octogent-live-child-ack-smoke.",
     "executor": "manual",
-    "started_at": "2026-05-31T20:10:40.407Z",
-    "completed_at": "2026-05-31T20:10:40.414Z",
+    "started_at": "2026-05-31T20:27:05.049Z",
+    "completed_at": "2026-05-31T20:27:05.057Z",
     "trace_path": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\operator\\runs\\result-quality-evaluator-smoke.result.json",
     "proof_tokens": [
       "result-quality-evaluator-smoke.cwd",
@@ -58,8 +58,40 @@
       "score": 100,
       "summary": "Result quality passed for octogent-live-child-ack-smoke.",
       "issues": [],
-      "evaluated_at": "2026-05-31T20:10:40.414Z",
-      "evaluator": "atlas-operator-evaluator"
+      "evaluated_at": "2026-05-31T20:27:05.057Z",
+      "evaluator": "atlas-operator-evaluator",
+      "final_verdict": "passed",
+      "retryable_route": true,
+      "retry_used": false,
+      "source_result_path": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\operator\\runs\\octogent-live-child-ack-smoke.result.json",
+      "winning_result_path": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\operator\\runs\\octogent-live-child-ack-smoke.result.json",
+      "result_chain_paths": [
+        "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\operator\\runs\\octogent-live-child-ack-smoke.result.json"
+      ],
+      "evidence_chain_paths": [
+        "C:\\Projects\\octogent",
+        "node C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\scripts\\octogent-live-child-ack-smoke.mjs"
+      ],
+      "attempts": [
+        {
+          "attempt": "source",
+          "result_path": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\operator\\runs\\octogent-live-child-ack-smoke.result.json",
+          "result_status": "success",
+          "verdict": "passed",
+          "score": 100,
+          "summary": "Result quality passed for octogent-live-child-ack-smoke.",
+          "issues": [],
+          "proof_tokens": [
+            "octogent-live-child-ack-smoke.cwd",
+            "octogent-live-child-ack-smoke.command",
+            "octogent-live-child-ack-smoke.trace"
+          ],
+          "evidence_paths": [
+            "C:\\Projects\\octogent",
+            "node C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\scripts\\octogent-live-child-ack-smoke.mjs"
+          ]
+        }
+      ]
     }
   },
   "control": {
@@ -68,10 +100,10 @@
     "last_command": {
       "command": "validate",
       "source": "cli",
-      "at": "2026-05-31T20:11:28.114Z"
+      "at": "2026-05-31T20:27:23.102Z"
     },
     "last_validation": {
-      "at": "2026-05-31T20:11:28.114Z",
+      "at": "2026-05-31T20:27:23.102Z",
       "passed": true,
       "issues": [],
       "summary": "control state valid"
