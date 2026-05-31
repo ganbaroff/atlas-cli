@@ -20,6 +20,15 @@ describe('control plane', () => {
     expect(parseControlCommand('hello there')).toBeNull();
   });
 
+  it('does not treat caveman style escape as control stop', () => {
+    expect(parseControlCommand('stop caveman')).toBeNull();
+    expect(parseControlCommand('stop caveman please')).toBeNull();
+    expect(parseControlCommand('/stop maintenance')).toEqual({
+      command: 'stop',
+      note: 'maintenance',
+    });
+  });
+
   it('transitions pause, resume, and reroute in one state machine', () => {
     const initial = {
       phase: { next: 'pick next lane' },

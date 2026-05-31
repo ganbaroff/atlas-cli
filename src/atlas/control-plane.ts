@@ -144,7 +144,10 @@ export function buildControlContext(state: OperatorStateRecord = readOperatorSta
 }
 
 export function parseControlCommand(text: string): ControlCommandInput | null {
-  const normalized = text.trim().replace(/^\/+/, '').replace(/^control\s+/i, '').trim();
+  const raw = text.trim();
+  if (/^stop\s+caveman\b/i.test(raw)) return null;
+
+  const normalized = raw.replace(/^\/+/, '').replace(/^control\s+/i, '').trim();
   if (!normalized) return null;
 
   const match = normalized.match(/^(pause|stop|resume|reroute|validate)(?:\s+([\s\S]+))?$/i);
