@@ -6,6 +6,8 @@ describe('Atlas system prompt', () => {
     const prompt = buildAtlasSystemPrompt({
       brainContext: 'brain-context',
       wakeContext: 'wake-context',
+      operatorContext: 'operator-context',
+      controlContext: 'control-context',
       lessons: 'lesson-context',
       channelNote: 'Telegram channel note',
       today: '2026-05-31',
@@ -13,8 +15,10 @@ describe('Atlas system prompt', () => {
 
     expect(prompt).toContain('brain-context');
     expect(prompt).toContain('wake-context');
+    expect(prompt).toContain('operator-context');
     expect(prompt).toContain('lesson-context');
     expect(prompt).toContain('Telegram channel note');
+    expect(prompt).toContain('control-context');
     expect(prompt).toContain('Completion claims need cited proof token from current turn.');
     expect(prompt).toContain('Operator state is source of truth for last run and next step.');
   });

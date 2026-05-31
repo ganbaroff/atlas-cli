@@ -13,6 +13,13 @@ import { loadWakeContext, appendJournal, writeHeartbeat } from './atlas/memory-m
 import { summarizeReplyGate } from './atlas/reply-gates.js';
 import { deliverReply } from './atlas/reply-delivery.js';
 import { extractTurnEvidence } from './atlas/turn-evidence.js';
+import {
+  applyControlCommand,
+  controlAllowsModelCalls,
+  describeControlBlock,
+  parseControlCommand,
+  type ControlSource,
+} from './atlas/control-plane.js';
 import { callPythonSwarm, isPythonSwarmAvailable, loadHiveProfiles } from './atlas/python-bridge.js';
 import { runAndPersist, readLastReport, startCron } from './atlas/cron.js';
 import { runHealthCheck, formatHealthReport } from './atlas/health-check.js';
@@ -33,6 +40,37 @@ if (existsSync(envPath)) {
     const val = trimmed.slice(eq + 1).trim();
     if (!process.env[key]) process.env[key] = val;
   }
+}
+
+function printControlResult(message: string, control: unknown, validation?: unknown): void {
+  console.log(JSON.stringify({
+    message,
+    control,
+    validation: validation ?? null,
+  }, null, 2));
+}
+
+function runControlCommand(
+  command: string,
+  lane: string | undefined,
+  source: ControlSource,
+): { message: string; control: unknown; validation?: unknown } {
+  const normalized = parseControlCommand(
+    `${command}${lane ? ` ${lane}` : ''}`,
+  );
+  if (!normalized) {
+    return {
+      message: 'Unknown control command.',
+      control: null,
+    };
+  }
+
+  const result = applyControlCommand(normalized, source);
+  return {
+    message: result.message,
+    control: result.state.control ?? null,
+    validation: result.validation,
+  };
 }
 
 program
@@ -60,15 +98,6 @@ program
     }
     if (restored.length > 0) console.log(`[memory] restored ${restored.length} messages from last session`);
 
-    // Wake protocol: inject persistent memory into system prompt
-    let wakeContext = '';
-    try {
-      wakeContext = await loadWakeContext();
-    } catch {
-      // vault unreachable — continue without memory
-    }
-
-    const agent = await createAtlasAgent(role, wakeContext);
     const rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout,
@@ -121,7 +150,29 @@ program
         appendMessage(CLI_CHAT_ID, { ts: new Date().toISOString(), role: 'user', text: trimmed })
           .catch(() => {});
 
+        const controlCommand = parseControlCommand(trimmed);
+        if (controlCommand) {
+          const result = applyControlCommand(controlCommand, 'cli');
+          messages.push({ role: 'assistant', content: result.message });
+          appendMessage(CLI_CHAT_ID, { ts: new Date().toISOString(), role: 'assistant', text: result.message })
+            .catch(() => {});
+          printControlResult(result.message, result.state.control, result.validation);
+          prompt();
+          return;
+        }
+
+        if (!controlAllowsModelCalls()) {
+          const blocked = describeControlBlock();
+          messages.push({ role: 'assistant', content: blocked });
+          appendMessage(CLI_CHAT_ID, { ts: new Date().toISOString(), role: 'assistant', text: blocked })
+            .catch(() => {});
+          console.log(`\n${blocked}\n`);
+          prompt();
+          return;
+        }
+
         try {
+          const agent = await createAtlasAgent(role);
           const response = await agent.generate(messages);
           const delivery = await deliverReply(response.text, async (prompt) => {
             const retryResponse = await agent.generate([...messages, { role: 'user', content: prompt }]);
@@ -159,6 +210,10 @@ program
   .option('-c, --context <context>', 'Additional context to pass to the skill')
   .action(async (skill: string, opts) => {
     const role = opts.role.toUpperCase() as ModelRole;
+    if (!controlAllowsModelCalls()) {
+      console.error(describeControlBlock());
+      process.exit(2);
+    }
     const agent = await createAtlasAgent(role);
 
     const contextExtra = opts.context ? `\nAdditional context: ${opts.context}` : '';
@@ -186,6 +241,14 @@ program
   });
 
 program
+  .command('control <command> [lane]')
+  .description('Update Atlas control state')
+  .action((command: string, lane?: string) => {
+    const result = runControlCommand(command, lane, 'cli');
+    printControlResult(result.message, result.control, result.validation);
+  });
+
+program
   .command('models')
   .description('List available models (based on configured API keys)')
   .action(() => {
@@ -202,6 +265,14 @@ program
 const operatorCmd = program
   .command('operator')
   .description('Atlas operator integration controls');
+
+operatorCmd
+  .command('control <command> [lane]')
+  .description('Update operator control state')
+  .action((command: string, lane?: string) => {
+    const result = runControlCommand(command, lane, 'operator');
+    printControlResult(result.message, result.control, result.validation);
+  });
 
 operatorCmd
   .command('status')
@@ -265,6 +336,10 @@ program
   .command('skills')
   .description('List available VOLAURA skills')
   .action(async () => {
+    if (!controlAllowsModelCalls()) {
+      console.error(describeControlBlock());
+      process.exit(2);
+    }
     const agent = await createAtlasAgent('FAST');
     try {
       const res = await agent.generate('List all available skills. Use the list-skills tool. Output just the names, one per line.');
@@ -279,6 +354,10 @@ program
   .command('swarm <task>')
   .description('Decompose task into parallel agent workers across providers')
   .action(async (task: string) => {
+    if (!controlAllowsModelCalls()) {
+      console.error(describeControlBlock());
+      process.exit(2);
+    }
     const { runSwarm } = await import('./swarm.js');
     capture('atlas_swarm_run', { type: 'ts' });
     console.log(`\n${IDENTITY.name} запускает swarm\n`);
@@ -298,6 +377,10 @@ program
   .description('Route task to VOLAURA Python swarm (13 perspectives, 4 DAG waves)')
   .option('-m, --mode <mode>', 'Swarm mode: coordinator, daily-ideation, code-review', 'coordinator')
   .action(async (task: string, opts) => {
+    if (!controlAllowsModelCalls()) {
+      console.error(describeControlBlock());
+      process.exit(2);
+    }
     capture('atlas_swarm_run', { type: 'python', mode: opts.mode });
     if (!isPythonSwarmAvailable()) {
       console.error('VOLAURA Python swarm not found at C:\\Projects\\VOLAURA');
@@ -356,6 +439,10 @@ program
   .command('ping')
   .description('Quick health check')
   .action(async () => {
+    if (!controlAllowsModelCalls()) {
+      console.error(describeControlBlock());
+      process.exit(2);
+    }
     try {
       const agent = await createAtlasAgent('FAST');
       const response = await agent.generate('respond with exactly: Атлас здесь.');
@@ -394,7 +481,7 @@ program
         const hbBody = hbMatch[0].replace(/### heartbeat\.md[^\n]*\n?/, '').trim();
         console.log('\n--- Last Session ---');
         // Extract key-value pairs from heartbeat
-        const kvLines = hbBody.split('\n').filter(l => l.startsWith('**') || l.startsWith('Updated:'));
+        const kvLines = hbBody.split('\n').filter((line: string) => line.startsWith('**') || line.startsWith('Updated:'));
         for (const line of kvLines.slice(0, 8)) {
           console.log(`  ${line.replace(/\*\*/g, '')}`);
         }
@@ -406,7 +493,7 @@ program
         if (relMatch && !relMatch[0].includes('[missing:')) {
           const relBody = relMatch[0].replace(/### relationships\.md[^\n]*\n?/, '').trim();
           // Just first 3 non-empty lines
-          const relLines = relBody.split('\n').filter(l => l.trim()).slice(0, 3);
+          const relLines = relBody.split('\n').filter((line: string) => line.trim()).slice(0, 3);
           if (relLines.length > 0) {
             console.log('\n--- Relationships ---');
             for (const l of relLines) console.log(`  ${l.trim().slice(0, 100)}`);
@@ -435,7 +522,7 @@ program
           console.log('\n--- Recent Journal ---');
           // Show first entry header lines
           const entryHeaders = journalText.split('\n')
-            .filter(l => l.startsWith('##') || l.match(/^\d{4}-\d{2}-\d{2}/))
+            .filter((line: string) => line.startsWith('##') || line.match(/^\d{4}-\d{2}-\d{2}/))
             .slice(0, 5);
           for (const h of entryHeaders) console.log(`  ${h.trim().slice(0, 100)}`);
           if (entryHeaders.length === 0) {

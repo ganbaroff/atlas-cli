@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-05-31T14:08:55.148Z",
+  "updated_at": "2026-05-31T19:22:37.711Z",
   "status": "first_slice_contract_live",
   "operator": {
     "primary": "atlas-anus",
@@ -30,15 +30,15 @@
   "phase": {
     "name": "contract_first",
     "implemented": true,
-    "next": "pick next lane"
+    "next": "brain + executor proof"
   },
   "last_run": {
     "task_id": "octogent-live-child-ack-smoke",
     "status": "success",
     "reason": "Octogent live child-ack smoke verified.",
     "executor": "octogent",
-    "started_at": "2026-05-31T14:08:53.659Z",
-    "completed_at": "2026-05-31T14:08:55.147Z",
+    "started_at": "2026-05-31T19:22:36.214Z",
+    "completed_at": "2026-05-31T19:22:37.708Z",
     "trace_path": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\operator\\runs\\octogent-live-child-ack-smoke.result.json",
     "proof_tokens": [
       "octogent-live-child-ack-smoke.cwd",
@@ -50,5 +50,20 @@
       "command_exit",
       "log_trace"
     ]
+  },
+  "control": {
+    "mode": "active",
+    "next_lane": "brain + executor proof",
+    "last_command": {
+      "command": "validate",
+      "source": "cli",
+      "at": "2026-05-31T19:19:35.795Z"
+    },
+    "last_validation": {
+      "at": "2026-05-31T19:19:35.795Z",
+      "passed": true,
+      "issues": [],
+      "summary": "control state valid"
+    }
   }
 }

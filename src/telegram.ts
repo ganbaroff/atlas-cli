@@ -6,14 +6,19 @@
 import 'dotenv/config';
 import { Telegraf } from 'telegraf';
 import { Agent } from '@mastra/core/agent';
-import { readFileSync, existsSync, writeFileSync, unlinkSync } from 'node:fs';
+import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { summarizeReplyGate } from './atlas/reply-gates.js';
-import { buildAtlasSystemPrompt } from './atlas/system-prompt.js';
 import { deliverReply } from './atlas/reply-delivery.js';
 import { extractTurnEvidence, type TurnEvidenceSource } from './atlas/turn-evidence.js';
-import { loadLessons } from './atlas/memory-manager.js';
+import {
+  applyControlCommand,
+  controlAllowsModelCalls,
+  describeControlBlock,
+  parseControlCommand,
+} from './atlas/control-plane.js';
+import { buildAtlasBrainPlan } from './atlas/brain-planner.js';
 import { appendMessage, loadConversation, compactIfNeeded, type StoredMessage } from './atlas/conversation-store.js';
 import { listAvailableModels, routeModelWithFallback } from './model-router.js';
 
@@ -33,35 +38,6 @@ const availableModels = listAvailableModels();
 if (availableModels.length === 0) {
   console.error('FATAL: no model provider keys configured in .env');
   process.exit(1);
-}
-
-// ── Brain — loaded once, cached in RAM ──────────────────────────────
-const BRAIN_PATH = join(
-  process.env['MEMORY_ROOT'] ?? (process.platform === 'win32' ? 'C:\\Projects\\VOLAURA' : join(process.env['HOME'] ?? '~', 'Projects', 'VOLAURA')),
-  'memory', 'atlas', 'TELEGRAM-BRAIN.md',
-);
-const BRAIN = existsSync(BRAIN_PATH) ? readFileSync(BRAIN_PATH, 'utf-8') : 'You are Atlas, AI assistant for VOLAURA. Respond in Russian unless asked otherwise.';
-let SYSTEM = buildAtlasSystemPrompt({
-  brainContext: BRAIN,
-  channelNote: 'You are talking to CEO Yusif via Telegram. Be concise.',
-  today: new Date().toISOString().slice(0, 10),
-});
-console.log(`[brain] loaded ${BRAIN.length} chars from ${existsSync(BRAIN_PATH) ? BRAIN_PATH : 'fallback'}`);
-
-// Lessons loaded before bot.launch() — no race condition
-async function injectLessons(): Promise<void> {
-  try {
-    const lessons = await loadLessons(true);
-    if (lessons) {
-      SYSTEM = buildAtlasSystemPrompt({
-        brainContext: BRAIN,
-        lessons,
-        channelNote: 'You are talking to CEO Yusif via Telegram. Be concise.',
-        today: new Date().toISOString().slice(0, 10),
-      });
-      console.log(`[lessons] injected ${lessons.length} chars into system prompt`);
-    }
-  } catch { /* vault unreachable — continue without lessons */ }
 }
 
 type ModelReply = {
@@ -146,15 +122,30 @@ function buildMessages(chatId: number): Msg[] {
 // ── LLM call ────────────────────────────────────────────────────────
 async function ask(chatId: number, text: string): Promise<string> {
   addMsg(chatId, 'user', text);
+
+  const controlCommand = parseControlCommand(text);
+  if (controlCommand) {
+    const result = applyControlCommand(controlCommand, 'telegram');
+    addMsg(chatId, 'assistant', result.message);
+    return result.message;
+  }
+
+  if (!controlAllowsModelCalls()) {
+    const blocked = describeControlBlock();
+    addMsg(chatId, 'assistant', blocked);
+    return blocked;
+  }
+
   const messages = buildMessages(chatId);
   console.log(`[in]  chat=${chatId} msg="${text.slice(0, 100)}"`);
 
-  const firstPass = await generateWithFallback(messages, SYSTEM);
+  const system = (await buildAtlasBrainPlan({ channel: 'telegram' })).systemPrompt;
+  const firstPass = await generateWithFallback(messages, system);
   console.log(`[out] chat=${chatId} provider=${firstPass.provider}/${firstPass.modelId} reply="${firstPass.reply.slice(0, 100)}"`);
   const delivery = await deliverReply(firstPass.reply, async (prompt) => {
     const retry = await generateWithFallback(
       [...messages, { role: 'user', content: prompt }],
-      SYSTEM,
+      system,
     );
     console.log(`[out-retry] chat=${chatId} provider=${retry.provider}/${retry.modelId} reply="${retry.reply.slice(0, 100)}"`);
     return {
@@ -245,7 +236,6 @@ function fatal(label: string, error: unknown): never {
 }
 
 async function boot(): Promise<void> {
-  await injectLessons();
   void bot.launch(() => {
     console.log(`[bot] Atlas Telegram alive @${bot.botInfo?.username ?? 'unknown'} — ${new Date().toISOString()} fallback=routeModelWithFallback providers=${availableModels.map((m) => m.provider).join(',')}`);
   }).catch((error) => fatal('[LAUNCH FAILED]', error));

@@ -4,8 +4,13 @@
  */
 
 import { Agent } from '@mastra/core/agent';
-import { loadIdentityFromDisk } from './identity.js';
-import { loadBrainContext } from './memory-manager.js';
+import {
+  applyControlCommand,
+  controlAllowsModelCalls,
+  describeControlBlock,
+  parseControlCommand,
+} from './control-plane.js';
+import { buildAtlasBrainPlan } from './brain-planner.js';
 import { routeModel, type ModelRole } from '../model-router.js';
 import { readFileTool } from '../tools/read-file.js';
 import { writeFileTool } from '../tools/write-file.js';
@@ -17,6 +22,7 @@ import { compileWikiTool } from '../tools/compile-wiki.js';
 import { writeFile, readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { loadIdentityFromDisk } from './identity.js';
 
 const MEMORY_ROOT = process.env.MEMORY_ROOT
   ?? (process.platform === 'win32'
@@ -29,40 +35,21 @@ const CONCEPTS_DIR = join(MEMORY_ROOT, 'memory', 'concepts');
 let _agent: Agent | null = null;
 
 /**
- * Lazily boot the Mastra Agent with wake context injected.
- * Reads identity from disk (never inline), merges wake context into system prompt.
+ * Lazily boot the Mastra Agent with state-driven prompt injected.
+ * Reads identity from disk (never inline), merges current operator state into system prompt.
  */
 async function getAgent(role: ModelRole = 'WORKER'): Promise<Agent> {
-  if (_agent) return _agent;
-
-  const [identity, wakeCtx] = await Promise.all([
+  const [identity, plan] = await Promise.all([
     loadIdentityFromDisk(),
-    loadBrainContext(),
+    buildAtlasBrainPlan({ channel: 'api', role }),
   ]);
 
   const route = routeModel({ role });
 
-  const systemPrompt = `You are ${identity.name} — the persistent AI identity at the core of the VOLAURA ecosystem.
-
-Role: ${identity.role}
-Voice: ${identity.voice_style}
-Named by: ${identity.named_by} on ${identity.named_at}
-
-Five principles:
-1. Storytelling voice, short paragraphs, no bullet walls
-2. Execute, don't propose
-3. Research before build, verify before claim
-4. Never solo on >3 files — consult agents
-5. Constitution is supreme law
-
-Respond concisely. Act, don't narrate.
-
-${wakeCtx}`;
-
-  _agent = new Agent({
+  const agent = new Agent({
     id: 'atlas-core',
     name: identity.name,
-    instructions: systemPrompt,
+    instructions: plan.systemPrompt,
     model: route.model,
     tools: {
       readFileTool,
@@ -76,13 +63,23 @@ ${wakeCtx}`;
     },
   });
 
-  return _agent;
+  _agent = agent;
+  return agent;
 }
 
 /**
  * Single-turn chat. Sends prompt to Mastra Agent, returns text response.
  */
 export async function chat(prompt: string): Promise<string> {
+  const controlCommand = parseControlCommand(prompt);
+  if (controlCommand) {
+    return applyControlCommand(controlCommand, 'api').message;
+  }
+
+  if (!controlAllowsModelCalls()) {
+    return describeControlBlock();
+  }
+
   const agent = await getAgent();
   const result = await agent.generate(prompt);
   return result.text;
@@ -132,6 +129,10 @@ export async function recall(query: string): Promise<string> {
  * Returns count of new and updated concept files.
  */
 export async function reflect(): Promise<{ new: number; updated: number }> {
+  if (!controlAllowsModelCalls()) {
+    throw new Error(describeControlBlock());
+  }
+
   const { existsSync } = await import('node:fs');
   const { mkdir } = await import('node:fs/promises');
 

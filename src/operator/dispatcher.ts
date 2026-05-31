@@ -1,6 +1,13 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
+import { withBrowserSessionTrace } from './browser-trace.js';
+import {
+  controlAllowsModelCalls,
+  describeControlBlock,
+  operatorStatePath as controlStatePath,
+  readOperatorState,
+} from '../atlas/control-plane.js';
 import {
   type OperatorEvidence,
   type OperatorResult,
@@ -26,26 +33,27 @@ export function writeOperatorTrace(result: OperatorResult): OperatorResult {
   mkdirSync(RUNS_DIR, { recursive: true });
   const tracePath = resolve(RUNS_DIR, `${result.task_id}.result.json`);
   const withPath = { ...result, trace_path: tracePath };
-  writeFileSync(tracePath, JSON.stringify(withPath, null, 2) + '\n', 'utf-8');
+  const withBrowserTrace = withBrowserSessionTrace(withPath);
+  writeFileSync(tracePath, JSON.stringify(withBrowserTrace, null, 2) + '\n', 'utf-8');
   const state = loadOperatorState() as Record<string, unknown>;
-  const proofTokens = [...new Set(withPath.evidence.map((item) => item.proof_token ?? item.id))];
+  const proofTokens = [...new Set(withBrowserTrace.evidence.map((item) => item.proof_token ?? item.id))];
   const nextState = {
     ...state,
     updated_at: new Date().toISOString(),
     last_run: {
-      task_id: withPath.task_id,
-      status: withPath.status,
-      reason: withPath.summary,
-      executor: withPath.executor,
-      started_at: withPath.started_at,
-      completed_at: withPath.completed_at,
-      trace_path: withPath.trace_path,
+      task_id: withBrowserTrace.task_id,
+      status: withBrowserTrace.status,
+      reason: withBrowserTrace.summary,
+      executor: withBrowserTrace.executor,
+      started_at: withBrowserTrace.started_at,
+      completed_at: withBrowserTrace.completed_at,
+      trace_path: withBrowserTrace.trace_path,
       proof_tokens: proofTokens,
-      evidence_types: [...new Set(withPath.evidence.map((item) => item.type))],
+      evidence_types: [...new Set(withBrowserTrace.evidence.map((item) => item.type))],
     },
   };
   writeFileSync(STATE_PATH, JSON.stringify(nextState, null, 2) + '\n', 'utf-8');
-  return withPath;
+  return withBrowserTrace;
 }
 
 function evidence(id: string, task: OperatorTask, type: OperatorEvidence['type'], source: string, summary: string): OperatorEvidence {
@@ -204,17 +212,19 @@ function dispatchOpenManusTask(task: OperatorTask, startedAt: string, foundEvide
     errors,
   };
 
-  const evidenceGate = validateResultEvidence(task, result);
+  const resultWithPath = { ...result, trace_path: resolve(RUNS_DIR, `${task.id}.result.json`) };
+  const resultWithBrowserTrace = withBrowserSessionTrace(resultWithPath);
+  const evidenceGate = validateResultEvidence(task, resultWithBrowserTrace);
   if (!evidenceGate.passed) {
     return writeOperatorTrace({
-      ...result,
+      ...resultWithBrowserTrace,
       status: 'blocked',
       summary: 'OpenManus smoke did not produce required evidence.',
       errors: [...errors, `missing evidence: ${evidenceGate.missing.join(', ')}`],
     });
   }
 
-  return writeOperatorTrace(result);
+  return writeOperatorTrace(resultWithBrowserTrace);
 }
 
 function dispatchOpenManusLocalTask(task: OperatorTask, startedAt: string, foundEvidence: OperatorEvidence[]): OperatorResult {
@@ -301,17 +311,19 @@ function dispatchOpenManusLocalTask(task: OperatorTask, startedAt: string, found
     errors,
   };
 
-  const evidenceGate = validateResultEvidence(task, result);
+  const resultWithPath = { ...result, trace_path: resolve(RUNS_DIR, `${task.id}.result.json`) };
+  const resultWithBrowserTrace = withBrowserSessionTrace(resultWithPath);
+  const evidenceGate = validateResultEvidence(task, resultWithBrowserTrace);
   if (!evidenceGate.passed) {
     return writeOperatorTrace({
-      ...result,
+      ...resultWithBrowserTrace,
       status: 'blocked',
       summary: 'OpenManus local smoke did not produce required evidence.',
       errors: [...errors, `missing evidence: ${evidenceGate.missing.join(', ')}`],
     });
   }
 
-  return writeOperatorTrace(result);
+  return writeOperatorTrace(resultWithBrowserTrace);
 }
 
 function dispatchOctogentTask(task: OperatorTask, startedAt: string, foundEvidence: OperatorEvidence[]): OperatorResult {
@@ -672,6 +684,25 @@ export function dispatchOperatorTask(task: OperatorTask): OperatorResult {
       'file_exists',
       cwd,
       'Task cwd exists',
+    ));
+  }
+
+  const controlState = readOperatorState();
+  if (!controlAllowsModelCalls(controlState)) {
+    foundEvidence.push(evidence(
+      `${task.id}.control`,
+      task,
+      'manual_note',
+      controlStatePath(),
+      describeControlBlock(controlState),
+    ));
+
+    return writeOperatorTrace(createBlockedResult(
+      task,
+      startedAt,
+      [describeControlBlock(controlState)],
+      foundEvidence,
+      describeControlBlock(controlState),
     ));
   }
 

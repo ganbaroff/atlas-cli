@@ -14,7 +14,7 @@
     "smoke_url": "https://example.com",
     "expected_text": "Example Domain"
   },
-  "expected_evidence": ["browser_observation", "log_trace"],
+  "expected_evidence": ["browser_observation", "browser_session_trace", "log_trace"],
   "safety": {
     "sandbox_required": true,
     "network_allowed": true,

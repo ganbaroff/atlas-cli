@@ -5,6 +5,7 @@ export const evidenceTypeSchema = z.enum([
   'file_read',
   'command_exit',
   'browser_observation',
+  'browser_session_trace',
   'log_trace',
   'manual_note',
 ]);

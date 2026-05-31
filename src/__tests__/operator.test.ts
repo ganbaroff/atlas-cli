@@ -13,7 +13,7 @@ describe('operator contracts', () => {
       allowed_paths: ['C:/Projects/OpenManus'],
       objective: 'Verify OpenManus can run as hands/body without fake success.',
       inputs: {},
-      expected_evidence: ['browser_observation', 'log_trace'],
+      expected_evidence: ['browser_observation', 'browser_session_trace', 'log_trace'],
       safety: {
         sandbox_required: true,
         network_allowed: true,
@@ -155,5 +155,34 @@ describe('operator contracts', () => {
     });
 
     expect(result.evidence[0]?.proof_token).toBe('proof:octogent-live-child-ack-smoke.command');
+  });
+
+  it('accepts browser session trace evidence', () => {
+    const result = parseOperatorResult({
+      task_id: 'openmanus-smoke-readonly',
+      status: 'success',
+      executor: 'openmanus',
+      started_at: '2026-05-30T08:55:00.000Z',
+      completed_at: '2026-05-30T08:56:00.000Z',
+      summary: 'Browser trace smoke',
+      evidence: [
+        {
+          id: 'openmanus-smoke-readonly.browser.trace',
+          task_id: 'openmanus-smoke-readonly',
+          type: 'browser_session_trace',
+          source: 'C:/Users/user/OneDrive/Documents/GitHub/ANUS/operator/runs/openmanus-smoke-readonly.result.json',
+          observed_at: '2026-05-30T08:56:00.000Z',
+          summary: 'Browser observation persisted in trace',
+          data: {
+            trace_path: 'C:/Users/user/OneDrive/Documents/GitHub/ANUS/operator/runs/openmanus-smoke-readonly.result.json',
+          },
+          proof_token: 'openmanus-smoke-readonly.browser.trace',
+        },
+      ],
+      errors: [],
+    });
+
+    expect(result.evidence[0]?.type).toBe('browser_session_trace');
+    expect(result.evidence[0]?.proof_token).toBe('openmanus-smoke-readonly.browser.trace');
   });
 });

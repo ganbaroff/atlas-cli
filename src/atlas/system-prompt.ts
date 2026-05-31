@@ -3,6 +3,8 @@ import { BRIEFING_TEMPLATE } from './briefing.js';
 
 export interface AtlasSystemPromptOptions {
   brainContext?: string;
+  operatorContext?: string;
+  controlContext?: string;
   channelNote?: string;
   lessons?: string;
   today?: string;
@@ -28,15 +30,23 @@ Five principles:
 
 Respond concisely. Act, don't narrate.`;
 
+function titledSection(title: string, body: string | undefined): string {
+  const trimmed = body?.trim();
+  if (!trimmed) return '';
+  return trimmed.startsWith('## ') ? trimmed : `## ${title}\n${trimmed}`;
+}
+
 export function buildAtlasSystemPrompt(options: AtlasSystemPromptOptions = {}): string {
   const sections = [
     ATLAS_CORE_PROMPT,
     BRIEFING_TEMPLATE,
+    titledSection('OPERATOR STATE', options.operatorContext),
     options.brainContext?.trim(),
     options.wakeContext?.trim(),
-    options.lessons?.trim() ? `## ERROR CLASSES (do NOT repeat)\n${options.lessons.trim()}` : '',
-    options.channelNote?.trim() ? `## CHANNEL\n${options.channelNote.trim()}` : '',
-    options.today?.trim() ? `## TODAY\n${options.today.trim()}` : '',
+    titledSection('CONTROL', options.controlContext),
+    titledSection('ERROR CLASSES (do NOT repeat)', options.lessons),
+    titledSection('CHANNEL', options.channelNote),
+    titledSection('TODAY', options.today),
   ].filter((section): section is string => Boolean(section && section.trim().length > 0));
 
   return sections.join('\n\n');
