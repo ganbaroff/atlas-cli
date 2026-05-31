@@ -152,7 +152,7 @@ async function ask(chatId: number, text: string): Promise<string> {
     );
     console.log(`[out-retry] chat=${chatId} provider=${retry.provider}/${retry.modelId} reply="${retry.reply.slice(0, 100)}"`);
     return retry.reply;
-  });
+  }, firstPass.evidence);
   const walk = verifyCompletionWalk(repaired.reply, firstPass.evidence);
   let reply = walk.reply;
   if (repaired.retried) {

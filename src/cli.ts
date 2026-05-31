@@ -125,7 +125,7 @@ program
           const repaired = await repairReply(response.text, async (prompt) => {
             const retryResponse = await agent.generate([...messages, { role: 'user', content: prompt }]);
             return retryResponse.text;
-          });
+          }, response);
           const walk = verifyCompletionWalk(repaired.reply, response);
           if (repaired.retried) {
             console.warn(`[reply-gate] ${summarizeReplyGate(repaired.firstPass)} -> ${summarizeReplyGate(repaired.retryPass ?? repaired.firstPass)}`);

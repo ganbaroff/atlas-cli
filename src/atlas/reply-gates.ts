@@ -3,6 +3,7 @@
  */
 
 import { validateCompletion } from '../gates/verify-before-done.js';
+import { collectProofTokens, type TurnEvidenceSource } from '../gates/verify-completion-walk.js';
 import { validateVoice, type Breach, type VoiceCheckResult } from './voice.js';
 
 export interface CompletionCheck {
@@ -22,6 +23,10 @@ export interface ReplyGateRepairResult {
   retried: boolean;
 }
 
+export interface ReplyGateEvidence {
+  evidence?: TurnEvidenceSource;
+}
+
 function formatVoiceBreaches(breaches: Breach[]): string {
   if (breaches.length === 0) return '- none';
   return breaches
@@ -29,7 +34,12 @@ function formatVoiceBreaches(breaches: Breach[]): string {
     .join('\n');
 }
 
-function buildRepairPrompt(check: ReplyGateCheck, originalReply: string): string {
+function formatProofTokens(tokens: string[]): string {
+  if (tokens.length === 0) return '- none';
+  return tokens.map((token) => `- ${token}`).join('\n');
+}
+
+function buildRepairPrompt(check: ReplyGateCheck, originalReply: string, proofTokens: string[]): string {
   const completionLine = check.completion.passed
     ? '- passed'
     : `- ${check.completion.violation ?? 'completion gate violation'}`;
@@ -53,6 +63,9 @@ function buildRepairPrompt(check: ReplyGateCheck, originalReply: string): string
     '',
     'Completion gate:',
     completionLine,
+    '',
+    'Current turn proof tokens:',
+    formatProofTokens(proofTokens),
     '',
     'Original reply:',
     originalReply.trim(),
@@ -82,6 +95,7 @@ export function summarizeReplyGate(check: ReplyGateCheck): string {
 export async function repairReply(
   reply: string,
   retry: (prompt: string) => Promise<string>,
+  evidence?: TurnEvidenceSource,
 ): Promise<ReplyGateRepairResult> {
   const firstPass = validateReply(reply);
   if (firstPass.voice.passed && firstPass.completion.passed) {
@@ -93,7 +107,7 @@ export async function repairReply(
     };
   }
 
-  const prompt = buildRepairPrompt(firstPass, reply);
+  const prompt = buildRepairPrompt(firstPass, reply, collectProofTokens(evidence));
   const retryReply = (await retry(prompt)).trim();
   const retryPass = validateReply(retryReply);
 

@@ -31,6 +31,29 @@ describe('Reply gates', () => {
     expect(result.reply).toBe('Слышу. Исправляю.');
   });
 
+  it('threads current turn proof tokens into retry prompt', async () => {
+    let prompt = '';
+    await repairReply(
+      'Готово. Всё починил.',
+      async (nextPrompt) => {
+        prompt = nextPrompt;
+        return 'Слышу. Проверяю.';
+      },
+      {
+        steps: [
+          {
+            toolCalls: [{ name: 'read-file' }],
+            toolResults: [{ name: 'read-file' }],
+          },
+        ],
+      },
+    );
+
+    expect(prompt).toContain('Current turn proof tokens:');
+    expect(prompt).toContain('step-tool:read-file');
+    expect(prompt).toContain('step-result:read-file');
+  });
+
   it('summarizes mixed gate failure', () => {
     const summary = summarizeReplyGate(validateReply('Готово. Вот что я сделал:\n- item 1'));
     expect(summary).toContain('voice=');
