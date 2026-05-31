@@ -42,16 +42,15 @@ describe('Reply gates', () => {
       {
         steps: [
           {
-            toolCalls: [{ name: 'read-file' }],
-            toolResults: [{ name: 'read-file' }],
+            toolCalls: [{ toolCallId: 'call-1', name: 'read-file' }],
+            toolResults: [{ toolCallId: 'call-1', name: 'read-file' }],
           },
         ],
       },
     );
 
     expect(prompt).toContain('Current turn proof tokens:');
-    expect(prompt).toContain('step-tool:read-file');
-    expect(prompt).toContain('step-result:read-file');
+    expect(prompt).toContain('proof:call-1');
   });
 
   it('summarizes mixed gate failure', () => {

@@ -16,22 +16,26 @@ describe('verify_completion_walk', () => {
     expect(result.reason).toBe('completion claim without proof-token');
   });
 
-  it('allows completion claim with proof tokens from tool evidence', () => {
+  it('allows completion claim only when reply cites current-turn proof token', () => {
     const evidence = {
       steps: [
         {
-          toolCalls: [{ name: 'read-file' }],
-          toolResults: [{ name: 'read-file' }],
+          toolCalls: [{ toolCallId: 'call-1', name: 'read-file' }],
+          toolResults: [{ toolCallId: 'call-1', name: 'read-file' }],
         },
       ],
     };
     const tokens = collectProofTokens(evidence);
-    expect(tokens).toContain('step-tool:read-file');
-    expect(tokens).toContain('step-result:read-file');
+    expect(tokens).toContain('proof:call-1');
 
-    const result = decideCompletionEmit('Готово. Всё починил.', evidence);
+    const blocked = decideCompletionEmit('Готово. Всё починил.', evidence);
+    expect(blocked.emitOriginalReply).toBe(false);
+    expect(blocked.reason).toBe('completion claim without cited proof-token');
+
+    const result = decideCompletionEmit('Готово. proof:call-1 всё починил.', evidence);
     expect(result.emitOriginalReply).toBe(true);
-    expect(result.emitReply).toBe('Готово. Всё починил.');
+    expect(result.emitReply).toBe('Готово. proof:call-1 всё починил.');
     expect(result.proofTokens.length).toBeGreaterThan(0);
+    expect(result.matchedProofTokens).toEqual(['proof:call-1']);
   });
 });

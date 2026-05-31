@@ -16,20 +16,31 @@ describe('Reply delivery', () => {
 
   it('Telegram-style path emits proven completion unchanged', async () => {
     const result = await deliverReply(
-      'Готово. read-file подтвердил исправление.',
-      async () => 'Слышу. Проверяю.',
+      'Готово. Всё починил.',
+      async () => ({
+        reply: 'Готово. proof:call-1 подтвердил исправление.',
+        evidence: {
+          steps: [
+            {
+              toolCalls: [{ toolCallId: 'call-1', name: 'read-file' }],
+              toolResults: [{ toolCallId: 'call-1', name: 'read-file' }],
+            },
+          ],
+        },
+      }),
       {
         steps: [
           {
-            toolCalls: [{ name: 'read-file' }],
-            toolResults: [{ name: 'read-file' }],
+            toolCalls: [{ toolCallId: 'old-call', name: 'read-file' }],
+            toolResults: [{ toolCallId: 'old-call', name: 'read-file' }],
           },
         ],
       },
     );
 
-    expect(result.reply).toBe('Готово. read-file подтвердил исправление.');
+    expect(result.reply).toBe('Готово. proof:call-1 подтвердил исправление.');
     expect(result.emitDecision.emitOriginalReply).toBe(true);
-    expect(result.repaired.retried).toBe(false);
+    expect(result.repaired.retried).toBe(true);
+    expect(result.emitDecision.matchedProofTokens).toEqual(['proof:call-1']);
   });
 });

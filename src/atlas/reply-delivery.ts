@@ -13,11 +13,11 @@ export interface ReplyDeliveryResult {
 
 export async function deliverReply(
   reply: string,
-  retry: (prompt: string) => Promise<string>,
+  retry: (prompt: string) => Promise<string | { reply: string; evidence?: TurnEvidenceSource }>,
   evidence?: TurnEvidenceSource,
 ): Promise<ReplyDeliveryResult> {
   const repaired = await repairReply(reply, retry, evidence);
-  const emitDecision = decideCompletionEmit(repaired.reply, evidence);
+  const emitDecision = decideCompletionEmit(repaired.reply, repaired.replyEvidence ?? evidence);
 
   return {
     reply: emitDecision.emitReply,

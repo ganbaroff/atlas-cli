@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseOperatorTask, validateResultEvidence } from '../operator/contracts.js';
+import { parseOperatorResult, parseOperatorTask, validateResultEvidence } from '../operator/contracts.js';
 
 describe('operator contracts', () => {
   it('accepts sandboxed OpenManus read-only task', () => {
@@ -129,5 +129,31 @@ describe('operator contracts', () => {
     });
 
     expect(gate).toEqual({ passed: false, missing: ['command_exit'] });
+  });
+
+  it('accepts proof_token on operator evidence', () => {
+    const result = parseOperatorResult({
+      task_id: 'octogent-live-child-ack-smoke',
+      status: 'success',
+      executor: 'octogent',
+      started_at: '2026-05-30T08:55:00.000Z',
+      completed_at: '2026-05-30T08:56:00.000Z',
+      summary: 'Proof token smoke',
+      evidence: [
+        {
+          id: 'octogent-live-child-ack-smoke.command',
+          task_id: 'octogent-live-child-ack-smoke',
+          type: 'command_exit',
+          source: 'node scripts/octogent-live-child-ack-smoke.mjs',
+          observed_at: '2026-05-30T08:56:00.000Z',
+          summary: 'Process exited cleanly',
+          data: {},
+          proof_token: 'proof:octogent-live-child-ack-smoke.command',
+        },
+      ],
+      errors: [],
+    });
+
+    expect(result.evidence[0]?.proof_token).toBe('proof:octogent-live-child-ack-smoke.command');
   });
 });

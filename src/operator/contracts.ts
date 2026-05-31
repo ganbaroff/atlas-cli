@@ -68,6 +68,7 @@ export const operatorEvidenceSchema = z.object({
   observed_at: z.string().datetime(),
   summary: z.string().min(3),
   data: z.record(z.string(), z.unknown()).default({}),
+  proof_token: z.string().min(1).optional(),
   verifier: z.string().optional(),
 });
 

@@ -18,9 +18,15 @@ export interface ReplyGateCheck {
 
 export interface ReplyGateRepairResult {
   reply: string;
+  replyEvidence?: TurnEvidenceSource;
   firstPass: ReplyGateCheck;
   retryPass: ReplyGateCheck | null;
   retried: boolean;
+}
+
+export interface ReplyAttempt {
+  reply: string;
+  evidence?: TurnEvidenceSource;
 }
 
 export interface ReplyGateEvidence {
@@ -57,6 +63,7 @@ function buildRepairPrompt(check: ReplyGateCheck, originalReply: string, proofTo
     '- no banned openers',
     '- no trailing question on irreversible action',
     '- no completion claim without proof',
+    '- if you keep completion claim, cite one exact proof token from Current turn proof tokens',
     '',
     'Voice breaches:',
     formatVoiceBreaches(check.voice.breaches),
@@ -72,6 +79,10 @@ function buildRepairPrompt(check: ReplyGateCheck, originalReply: string, proofTo
     '',
     'Return only final reply.',
   ].join('\n');
+}
+
+function normalizeReplyAttempt(value: string | ReplyAttempt): ReplyAttempt {
+  return typeof value === 'string' ? { reply: value } : value;
 }
 
 export function validateReply(reply: string): ReplyGateCheck {
@@ -94,13 +105,14 @@ export function summarizeReplyGate(check: ReplyGateCheck): string {
 
 export async function repairReply(
   reply: string,
-  retry: (prompt: string) => Promise<string>,
+  retry: (prompt: string) => Promise<string | ReplyAttempt>,
   evidence?: TurnEvidenceSource,
 ): Promise<ReplyGateRepairResult> {
   const firstPass = validateReply(reply);
   if (firstPass.voice.passed && firstPass.completion.passed) {
     return {
       reply: reply.trim(),
+      replyEvidence: evidence,
       firstPass,
       retryPass: null,
       retried: false,
@@ -108,13 +120,15 @@ export async function repairReply(
   }
 
   const prompt = buildRepairPrompt(firstPass, reply, collectProofTokens(evidence));
-  const retryReply = (await retry(prompt)).trim();
+  const retryAttempt = normalizeReplyAttempt(await retry(prompt));
+  const retryReply = retryAttempt.reply.trim();
   const retryPass = validateReply(retryReply);
 
   return {
     reply: retryPass.voice.passed && retryPass.completion.passed
       ? retryReply
       : retryReply || reply.trim(),
+    replyEvidence: retryAttempt.evidence ?? evidence,
     firstPass,
     retryPass,
     retried: true,

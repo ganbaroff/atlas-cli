@@ -12,6 +12,7 @@ import { IDENTITY } from './atlas/identity.js';
 import { loadWakeContext, appendJournal, writeHeartbeat } from './atlas/memory-manager.js';
 import { summarizeReplyGate } from './atlas/reply-gates.js';
 import { deliverReply } from './atlas/reply-delivery.js';
+import { extractTurnEvidence } from './atlas/turn-evidence.js';
 import { callPythonSwarm, isPythonSwarmAvailable, loadHiveProfiles } from './atlas/python-bridge.js';
 import { runAndPersist, readLastReport, startCron } from './atlas/cron.js';
 import { runHealthCheck, formatHealthReport } from './atlas/health-check.js';
@@ -124,13 +125,16 @@ program
           const response = await agent.generate(messages);
           const delivery = await deliverReply(response.text, async (prompt) => {
             const retryResponse = await agent.generate([...messages, { role: 'user', content: prompt }]);
-            return retryResponse.text;
-          }, response);
+            return {
+              reply: retryResponse.text,
+              evidence: extractTurnEvidence(retryResponse),
+            };
+          }, extractTurnEvidence(response));
           if (delivery.repaired.retried) {
             console.warn(`[reply-gate] ${summarizeReplyGate(delivery.repaired.firstPass)} -> ${summarizeReplyGate(delivery.repaired.retryPass ?? delivery.repaired.firstPass)}`);
           }
           if (!delivery.emitDecision.emitOriginalReply) {
-            console.warn(`[verify_completion_walk] ${delivery.emitDecision.reason ?? 'blocked'} proof=${delivery.emitDecision.proofTokens.length}`);
+            console.warn(`[verify_completion_walk] ${delivery.emitDecision.reason ?? 'blocked'} proof=${delivery.emitDecision.proofTokens.length} matched=${delivery.emitDecision.matchedProofTokens.length}`);
           }
           const reply = delivery.reply;
           console.log(`\n${reply}\n`);

@@ -14,6 +14,10 @@ describe('Jidoka gate', () => {
     expect(validateCompletion('done — ran Bash to verify')).toEqual({ passed: true, violation: null });
   });
 
+  it('passes when completion claim cites proof token', () => {
+    expect(validateCompletion('done — proof:call-1 verified')).toEqual({ passed: true, violation: null });
+  });
+
   it('fails for Russian "готово" without evidence', () => {
     expect(validateCompletion('готово')).toMatchObject({ passed: false });
   });

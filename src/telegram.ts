@@ -10,9 +10,9 @@ import { readFileSync, existsSync, writeFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { summarizeReplyGate } from './atlas/reply-gates.js';
-import { BRIEFING_TEMPLATE } from './atlas/briefing.js';
+import { buildAtlasSystemPrompt } from './atlas/system-prompt.js';
 import { deliverReply } from './atlas/reply-delivery.js';
-import type { TurnEvidenceSource } from './gates/verify-completion-walk.js';
+import { extractTurnEvidence, type TurnEvidenceSource } from './atlas/turn-evidence.js';
 import { loadLessons } from './atlas/memory-manager.js';
 import { appendMessage, loadConversation, compactIfNeeded, type StoredMessage } from './atlas/conversation-store.js';
 import { listAvailableModels, routeModelWithFallback } from './model-router.js';
@@ -41,7 +41,11 @@ const BRAIN_PATH = join(
   'memory', 'atlas', 'TELEGRAM-BRAIN.md',
 );
 const BRAIN = existsSync(BRAIN_PATH) ? readFileSync(BRAIN_PATH, 'utf-8') : 'You are Atlas, AI assistant for VOLAURA. Respond in Russian unless asked otherwise.';
-let SYSTEM = `${BRAIN}\n\n${BRIEFING_TEMPLATE}\n\nToday: ${new Date().toISOString().slice(0, 10)}. You are talking to CEO Yusif via Telegram. Be concise.`;
+let SYSTEM = buildAtlasSystemPrompt({
+  brainContext: BRAIN,
+  channelNote: 'You are talking to CEO Yusif via Telegram. Be concise.',
+  today: new Date().toISOString().slice(0, 10),
+});
 console.log(`[brain] loaded ${BRAIN.length} chars from ${existsSync(BRAIN_PATH) ? BRAIN_PATH : 'fallback'}`);
 
 // Lessons loaded before bot.launch() — no race condition
@@ -49,7 +53,12 @@ async function injectLessons(): Promise<void> {
   try {
     const lessons = await loadLessons(true);
     if (lessons) {
-      SYSTEM += `\n\n## LESSONS (never repeat these mistakes)\n${lessons}`;
+      SYSTEM = buildAtlasSystemPrompt({
+        brainContext: BRAIN,
+        lessons,
+        channelNote: 'You are talking to CEO Yusif via Telegram. Be concise.',
+        today: new Date().toISOString().slice(0, 10),
+      });
       console.log(`[lessons] injected ${lessons.length} chars into system prompt`);
     }
   } catch { /* vault unreachable — continue without lessons */ }
@@ -82,11 +91,7 @@ async function generateWithFallback(
         modelId: route.modelId,
         provider: route.provider,
         reply: response.text,
-        evidence: {
-          steps: response.steps as TurnEvidenceSource['steps'],
-          toolCalls: response.toolCalls as TurnEvidenceSource['toolCalls'],
-          toolResults: response.toolResults as TurnEvidenceSource['toolResults'],
-        } satisfies TurnEvidenceSource,
+        evidence: extractTurnEvidence(response),
       } satisfies ModelReply;
     },
   );
@@ -152,7 +157,10 @@ async function ask(chatId: number, text: string): Promise<string> {
       SYSTEM,
     );
     console.log(`[out-retry] chat=${chatId} provider=${retry.provider}/${retry.modelId} reply="${retry.reply.slice(0, 100)}"`);
-    return retry.reply;
+    return {
+      reply: retry.reply,
+      evidence: retry.evidence,
+    };
   }, firstPass.evidence);
   const reply = delivery.reply;
   if (delivery.repaired.retried) {

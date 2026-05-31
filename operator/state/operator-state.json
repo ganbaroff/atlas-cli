@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-05-30T08:55:14.634Z",
+  "updated_at": "2026-05-31T14:08:55.148Z",
   "status": "first_slice_contract_live",
   "operator": {
     "primary": "atlas-anus",
@@ -8,8 +8,17 @@
     "experimental": "vellum"
   },
   "route": {
-    "default": ["atlas-anus", "openmanus", "octogent"],
-    "telegram_model_fallback": ["ollama", "cerebras", "nvidia", "anthropic"],
+    "default": [
+      "atlas-anus",
+      "openmanus",
+      "octogent"
+    ],
+    "telegram_model_fallback": [
+      "ollama",
+      "cerebras",
+      "nvidia",
+      "anthropic"
+    ],
     "vellum_policy": "not_critical_path"
   },
   "rules": [
@@ -26,7 +35,20 @@
   "last_run": {
     "task_id": "octogent-live-child-ack-smoke",
     "status": "success",
-    "reason": "Real parent/child spawn, channel send, ack, and delivery trace verified.",
-    "trace_path": "operator/runs/octogent-live-child-ack-smoke.result.json"
+    "reason": "Octogent live child-ack smoke verified.",
+    "executor": "octogent",
+    "started_at": "2026-05-31T14:08:53.659Z",
+    "completed_at": "2026-05-31T14:08:55.147Z",
+    "trace_path": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\operator\\runs\\octogent-live-child-ack-smoke.result.json",
+    "proof_tokens": [
+      "octogent-live-child-ack-smoke.cwd",
+      "octogent-live-child-ack-smoke.command",
+      "octogent-live-child-ack-smoke.trace"
+    ],
+    "evidence_types": [
+      "file_exists",
+      "command_exit",
+      "log_trace"
+    ]
   }
 }

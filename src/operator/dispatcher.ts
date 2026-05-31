@@ -27,6 +27,24 @@ export function writeOperatorTrace(result: OperatorResult): OperatorResult {
   const tracePath = resolve(RUNS_DIR, `${result.task_id}.result.json`);
   const withPath = { ...result, trace_path: tracePath };
   writeFileSync(tracePath, JSON.stringify(withPath, null, 2) + '\n', 'utf-8');
+  const state = loadOperatorState() as Record<string, unknown>;
+  const proofTokens = [...new Set(withPath.evidence.map((item) => item.proof_token ?? item.id))];
+  const nextState = {
+    ...state,
+    updated_at: new Date().toISOString(),
+    last_run: {
+      task_id: withPath.task_id,
+      status: withPath.status,
+      reason: withPath.summary,
+      executor: withPath.executor,
+      started_at: withPath.started_at,
+      completed_at: withPath.completed_at,
+      trace_path: withPath.trace_path,
+      proof_tokens: proofTokens,
+      evidence_types: [...new Set(withPath.evidence.map((item) => item.type))],
+    },
+  };
+  writeFileSync(STATE_PATH, JSON.stringify(nextState, null, 2) + '\n', 'utf-8');
   return withPath;
 }
 
@@ -39,6 +57,7 @@ function evidence(id: string, task: OperatorTask, type: OperatorEvidence['type']
     observed_at: new Date().toISOString(),
     summary,
     data: {},
+    proof_token: id,
     verifier: 'atlas-operator-dispatcher',
   };
 }
