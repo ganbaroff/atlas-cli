@@ -241,10 +241,10 @@ program
   });
 
 program
-  .command('control <command> [lane]')
+  .command('control <command> [lane...]')
   .description('Update Atlas control state')
-  .action((command: string, lane?: string) => {
-    const result = runControlCommand(command, lane, 'cli');
+  .action((command: string, laneParts?: string[]) => {
+    const result = runControlCommand(command, laneParts?.join(' '), 'cli');
     printControlResult(result.message, result.control, result.validation);
   });
 
@@ -267,10 +267,10 @@ const operatorCmd = program
   .description('Atlas operator integration controls');
 
 operatorCmd
-  .command('control <command> [lane]')
+  .command('control <command> [lane...]')
   .description('Update operator control state')
-  .action((command: string, lane?: string) => {
-    const result = runControlCommand(command, lane, 'operator');
+  .action((command: string, laneParts?: string[]) => {
+    const result = runControlCommand(command, laneParts?.join(' '), 'operator');
     printControlResult(result.message, result.control, result.validation);
   });
 

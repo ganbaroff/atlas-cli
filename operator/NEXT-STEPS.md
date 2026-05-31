@@ -23,6 +23,7 @@ First slice is real and executable.
 - Octogent channel delivery smoke passed
 - Octogent live child-ack smoke passed
 - OpenManus browser trace proof passed
+- Result quality evaluator smoke passed
 
 ## Current Blocker
 
@@ -40,7 +41,7 @@ npm run dev -- operator dispatch operator/tasks/openmanus-smoke-readonly.json
 
 ## Next Physical Step
 
-Brain + executor proof.
+Evaluator loop.
 
 Proofs already exist:
 
@@ -48,4 +49,5 @@ Proofs already exist:
 - `browser_session_trace`
 - `command_exit`
 - `log_trace`
+- `manual_note`
 - `proof_tokens`

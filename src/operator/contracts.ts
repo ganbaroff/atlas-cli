@@ -73,6 +73,18 @@ export const operatorEvidenceSchema = z.object({
   verifier: z.string().optional(),
 });
 
+export const operatorEvaluationSchema = z.object({
+  passed: z.boolean(),
+  score: z.number().int().min(0).max(100),
+  summary: z.string().min(3),
+  issues: z.array(z.object({
+    code: z.string().min(1),
+    message: z.string().min(1),
+  })),
+  evaluated_at: z.string().datetime(),
+  evaluator: z.string().min(1),
+});
+
 export const operatorResultSchema = z.object({
   task_id: z.string().regex(/^[a-z0-9][a-z0-9._-]{2,80}$/),
   status: z.enum(['success', 'failure', 'blocked', 'skipped']),
@@ -83,10 +95,12 @@ export const operatorResultSchema = z.object({
   evidence: z.array(operatorEvidenceSchema),
   errors: z.array(z.string()).default([]),
   trace_path: z.string().optional(),
+  evaluation: operatorEvaluationSchema.optional(),
 });
 
 export type OperatorTask = z.infer<typeof operatorTaskSchema>;
 export type OperatorEvidence = z.infer<typeof operatorEvidenceSchema>;
+export type OperatorEvaluation = z.infer<typeof operatorEvaluationSchema>;
 export type OperatorResult = z.infer<typeof operatorResultSchema>;
 
 export function parseOperatorTask(input: unknown): OperatorTask {

@@ -13,8 +13,10 @@ import {
   type OperatorResult,
   type OperatorTask,
   parseOperatorTask,
+  parseOperatorResult,
   validateResultEvidence,
 } from './contracts.js';
+import { evaluateOperatorResult } from './evaluator.js';
 
 const REPO_ROOT = process.cwd();
 const STATE_PATH = resolve(REPO_ROOT, 'operator/state/operator-state.json');
@@ -27,6 +29,11 @@ export function loadOperatorState(): unknown {
 export function loadOperatorTask(taskPath: string): OperatorTask {
   const raw = JSON.parse(readFileSync(resolve(REPO_ROOT, taskPath), 'utf-8'));
   return parseOperatorTask(raw);
+}
+
+export function loadOperatorResult(resultPath: string): OperatorResult {
+  const raw = JSON.parse(readFileSync(resolve(REPO_ROOT, resultPath), 'utf-8'));
+  return parseOperatorResult(raw);
 }
 
 export function writeOperatorTrace(result: OperatorResult): OperatorResult {
@@ -50,6 +57,7 @@ export function writeOperatorTrace(result: OperatorResult): OperatorResult {
       trace_path: withBrowserTrace.trace_path,
       proof_tokens: proofTokens,
       evidence_types: [...new Set(withBrowserTrace.evidence.map((item) => item.type))],
+      evaluation: withBrowserTrace.evaluation,
     },
   };
   writeFileSync(STATE_PATH, JSON.stringify(nextState, null, 2) + '\n', 'utf-8');
@@ -324,6 +332,124 @@ function dispatchOpenManusLocalTask(task: OperatorTask, startedAt: string, found
   }
 
   return writeOperatorTrace(resultWithBrowserTrace);
+}
+
+function dispatchManualEvaluationTask(task: OperatorTask, startedAt: string, foundEvidence: OperatorEvidence[]): OperatorResult {
+  const state = loadOperatorState() as Record<string, unknown>;
+  const targetTaskId = typeof task.inputs.result_task_id === 'string' && task.inputs.result_task_id.trim().length > 0
+    ? task.inputs.result_task_id.trim()
+    : (typeof state.last_run === 'object' && state.last_run !== null
+      ? String((state.last_run as Record<string, unknown>).task_id ?? '').trim()
+      : '');
+
+  if (!targetTaskId) {
+    return writeOperatorTrace(createBlockedResult(
+      task,
+      startedAt,
+      ['result_task_id missing and operator state has no last_run.task_id'],
+      foundEvidence,
+      'Evaluator blocked: no target result.',
+    ));
+  }
+
+  const targetTaskPath = resolve(REPO_ROOT, 'operator/tasks', `${targetTaskId}.json`);
+  const targetResultPath = resolve(RUNS_DIR, `${targetTaskId}.result.json`);
+
+  if (!existsSync(targetTaskPath)) {
+    return writeOperatorTrace(createBlockedResult(
+      task,
+      startedAt,
+      [`target task missing: ${targetTaskPath}`],
+      foundEvidence,
+      'Evaluator blocked: source task missing.',
+    ));
+  }
+
+  if (!existsSync(targetResultPath)) {
+    return writeOperatorTrace(createBlockedResult(
+      task,
+      startedAt,
+      [`target result missing: ${targetResultPath}`],
+      foundEvidence,
+      'Evaluator blocked: source result missing.',
+    ));
+  }
+
+  const sourceTask = loadOperatorTask(`operator/tasks/${targetTaskId}.json`);
+  const sourceResult = loadOperatorResult(`operator/runs/${targetTaskId}.result.json`);
+  const evaluation = evaluateOperatorResult(sourceTask, sourceResult);
+  const verdictSource = targetResultPath;
+
+  foundEvidence.push(evidence(
+    `${task.id}.task`,
+    task,
+    'file_read',
+    targetTaskPath,
+    `Loaded task ${sourceTask.id} for evaluation`,
+  ));
+  foundEvidence.push(evidence(
+    `${task.id}.result`,
+    task,
+    'file_read',
+    targetResultPath,
+    `Loaded result ${sourceResult.task_id} for evaluation`,
+  ));
+  foundEvidence.push({
+    ...evidence(
+      `${task.id}.verdict`,
+      task,
+      'manual_note',
+      verdictSource,
+      evaluation.summary,
+    ),
+    data: {
+      target_task_id: sourceTask.id,
+      target_result_path: targetResultPath,
+      evaluation,
+    },
+  });
+  foundEvidence.push({
+    ...evidence(
+      `${task.id}.trace`,
+      task,
+      'log_trace',
+      verdictSource,
+      JSON.stringify({
+        target_task_id: sourceTask.id,
+        target_result: sourceResult.status,
+        evaluation,
+      }, null, 2).slice(0, 4000),
+    ),
+    data: {
+      target_task_id: sourceTask.id,
+      target_result_path: targetResultPath,
+      evaluation,
+    },
+  });
+
+  const result: OperatorResult = {
+    task_id: task.id,
+    status: evaluation.passed ? 'success' : 'blocked',
+    executor: 'manual',
+    started_at: startedAt,
+    completed_at: new Date().toISOString(),
+    summary: evaluation.summary,
+    evidence: foundEvidence,
+    errors: evaluation.passed ? [] : evaluation.issues.map((issue) => issue.message),
+    evaluation,
+  };
+
+  const evidenceGate = validateResultEvidence(task, result);
+  if (!evidenceGate.passed) {
+    return writeOperatorTrace({
+      ...result,
+      status: 'blocked',
+      summary: 'Evaluator task did not produce required evidence.',
+      errors: [...result.errors, `missing evidence: ${evidenceGate.missing.join(', ')}`],
+    });
+  }
+
+  return writeOperatorTrace(result);
 }
 
 function dispatchOctogentTask(task: OperatorTask, startedAt: string, foundEvidence: OperatorEvidence[]): OperatorResult {
@@ -735,6 +861,10 @@ export function dispatchOperatorTask(task: OperatorTask): OperatorResult {
     return dispatchVellumTask(task, startedAt, foundEvidence);
   }
 
+  if (task.route === 'manual') {
+    return dispatchManualEvaluationTask(task, startedAt, foundEvidence);
+  }
+
   if (task.route !== 'local') {
     return writeOperatorTrace(createBlockedResult(
       task,
@@ -784,6 +914,7 @@ export function ensureOperatorArtifacts(): string[] {
     resolve(REPO_ROOT, 'operator/tasks/octogent-parent-swarm-loop-smoke.json'),
     resolve(REPO_ROOT, 'operator/tasks/octogent-channel-delivery-smoke.json'),
     resolve(REPO_ROOT, 'operator/tasks/octogent-live-child-ack-smoke.json'),
+    resolve(REPO_ROOT, 'operator/tasks/result-quality-evaluator-smoke.json'),
   ].filter((path) => existsSync(path));
 }
 
