@@ -112,6 +112,11 @@ function isAvailable(provider: ProviderName): boolean {
   if (provider === 'ollama') {
     return !!process.env['OLLAMA_URL'] || !!process.env['OLLAMA_HOST'];
   }
+  // freellmapi requires an EXPLICIT endpoint (FREELLMAPI_BASE_URL) — no hardcoded host in
+  // source (cross-instance security review). No env → provider simply absent from the pool.
+  if (provider === 'freellmapi') {
+    return !!process.env['FREELLMAPI_API_KEY'] && !!process.env['FREELLMAPI_BASE_URL'];
+  }
   return !!getEnvKey(provider);
 }
 
@@ -121,18 +126,19 @@ function createModel(config: ModelConfig): any {
     case 'ollama':
       return ollama(config.modelId);
 
-    case 'freellmapi':
-      // Free Gemini gateway, OpenAI-compatible. baseURL is non-secret config; key via env (Class 35).
-      // Host is env-configurable (FREELLMAPI_BASE_URL) per cross-instance security review —
-      // the default is plaintext HTTP to a VM IP, fine for personal/dev use only; set the env
-      // to an HTTPS/domain endpoint before any serious use.
+    case 'freellmapi': {
+      // Endpoint comes ONLY from env — no plaintext host in source (cross-instance security
+      // review). isAvailable() already gates selection on this; the guard is defensive.
+      const baseURL = process.env['FREELLMAPI_BASE_URL'];
+      if (!baseURL) throw new Error('FREELLMAPI_BASE_URL not set — set it in .env (gateway endpoint)');
       return createOpenAICompatible({
         name: 'freellmapi',
-        baseURL: process.env['FREELLMAPI_BASE_URL'] ?? 'http://34.60.182.57:8799/v1',
+        baseURL,
         headers: {
           Authorization: `Bearer ${process.env['FREELLMAPI_API_KEY']}`,
         },
       }).languageModel(config.modelId);
+    }
 
     case 'cerebras':
       return createCerebras({
