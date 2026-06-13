@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import type { OperatorEvaluation, OperatorPromotion } from '../operator/contracts.js';
+import type { OperatorEvaluation, OperatorLifecycle, OperatorPromotion } from '../operator/contracts.js';
 
 export type ControlMode = 'active' | 'paused' | 'stopped';
 export type ControlCommandName = 'pause' | 'stop' | 'resume' | 'reroute' | 'validate';
@@ -60,6 +60,7 @@ export interface OperatorStateRecord {
     evidence_types?: string[];
     evaluation?: OperatorEvaluation;
     promotion?: OperatorPromotion;
+    lifecycle?: OperatorLifecycle;
     [key: string]: unknown;
   };
   control?: ControlState;
@@ -89,7 +90,15 @@ export function operatorStatePath(): string {
 }
 
 export function readOperatorState(): OperatorStateRecord {
-  return JSON.parse(readFileSync(STATE_PATH, 'utf-8')) as OperatorStateRecord;
+  // Crash guard: STATE_PATH is cwd-relative and read on every brain-plan build. If the bot
+  // is launched from a cwd without operator/state/operator-state.json (or the file is corrupt),
+  // a bare readFileSync/JSON.parse throws at startup. Downstream readers (getControlState,
+  // controlAllowsModelCalls) are all defensive, so an empty record yields a safe 'active' default.
+  try {
+    return JSON.parse(readFileSync(STATE_PATH, 'utf-8')) as OperatorStateRecord;
+  } catch {
+    return { control: { mode: 'active' } } as OperatorStateRecord;
+  }
 }
 
 export function writeOperatorState(state: OperatorStateRecord): OperatorStateRecord {
@@ -133,6 +142,7 @@ export function buildControlContext(state: OperatorStateRecord = readOperatorSta
   const lastRun = state.last_run;
   const evaluation = lastRun?.evaluation;
   const promotion = lastRun?.promotion;
+  const lifecycle = lastRun?.lifecycle;
   const lastCommand = control.last_command
     ? `${control.last_command.command} via ${control.last_command.source}`
     : 'none';
@@ -145,6 +155,9 @@ export function buildControlContext(state: OperatorStateRecord = readOperatorSta
   const lastPromotion = promotion
     ? `${promotion.status}: ${promotion.reason}`
     : 'none';
+  const lastLifecycle = lifecycle
+    ? `${lifecycle.final_status}: ${lifecycle.source_task_id}`
+    : 'none';
 
   return [
     '## CONTROL',
@@ -153,6 +166,7 @@ export function buildControlContext(state: OperatorStateRecord = readOperatorSta
     `last command: ${lastCommand}`,
     `last evaluation: ${lastEvaluation}`,
     `last promotion: ${lastPromotion}`,
+    `last lifecycle: ${lastLifecycle}`,
     `validation: ${validation}`,
   ].join('\n');
 }
@@ -245,6 +259,33 @@ function summarizeValidation(state: OperatorStateRecord): ControlValidationRepor
 
       if (promotion.final_verdict !== 'passed') {
         issues.push('last_run.promotion final_verdict is not passed');
+      }
+    }
+
+    const lifecycle = lastRun.lifecycle;
+    if (lifecycle) {
+      if (!Array.isArray(lifecycle.child_result_paths) || lifecycle.child_result_paths.length === 0) {
+        issues.push('last_run.lifecycle child_result_paths missing');
+      } else {
+        for (const childPath of lifecycle.child_result_paths) {
+          if (!existsSync(childPath)) {
+            issues.push(`lifecycle child result missing: ${childPath}`);
+          }
+        }
+      }
+
+      if (!Array.isArray(lifecycle.proof_tokens) || lifecycle.proof_tokens.length === 0) {
+        issues.push('last_run.lifecycle proof_tokens missing');
+      }
+
+      if (lifecycle.final_status === 'success') {
+        if (lastRun.status !== 'success') {
+          issues.push('last_run.lifecycle final_status success but last_run.status is not success');
+        }
+
+        if (promotion?.status !== 'promoted' || !promotion.promoted) {
+          issues.push('last_run.lifecycle success without promoted task result');
+        }
       }
     }
   }

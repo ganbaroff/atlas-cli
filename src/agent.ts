@@ -14,7 +14,11 @@ import { shellTool } from './tools/shell.js';
 import { listSkillsTool, loadSkillTool } from './tools/skill.js';
 
 export async function createAtlasAgent(role: ModelRole = 'WORKER', channel: AtlasBrainChannel = 'cli'): Promise<Agent> {
-  const route = routeModel({ role });
+  // Canon (CLAUDE.md / atlas_swarm_daemon.py:19): "Never use Claude as swarm agent."
+  // createAtlasAgent is the swarm/cli agent factory — exclude anthropic here so a dead
+  // free provider can never fall back to Claude. The telegram brain reply path builds its
+  // own agent via routeModelWithFallback and keeps anthropic as its permitted user-facing last resort.
+  const route = routeModel({ role, excludeProviders: ['anthropic'] });
   const plan = await buildAtlasBrainPlan({ channel, role });
 
   return new Agent({

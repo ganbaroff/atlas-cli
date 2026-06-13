@@ -21,6 +21,8 @@ import {
 import { buildAtlasBrainPlan } from './atlas/brain-planner.js';
 import { appendMessage, loadConversation, compactIfNeeded, type StoredMessage } from './atlas/conversation-store.js';
 import { listAvailableModels, routeModelWithFallback } from './model-router.js';
+import { analyzeWindow, emotionDirective } from './atlas/emotion.js';
+import { loadPulse, savePulse, processEvent, pulseToneHint } from './atlas/pulse.js';
 
 // ── Env verification ────────────────────────────────────────────────
 const REQUIRED = ['TELEGRAM_BOT_TOKEN'] as const;
@@ -139,7 +141,22 @@ async function ask(chatId: number, text: string): Promise<string> {
   const messages = buildMessages(chatId);
   console.log(`[in]  chat=${chatId} msg="${text.slice(0, 100)}"`);
 
-  const system = (await buildAtlasBrainPlan({ channel: 'telegram' })).systemPrompt;
+  // Emotion layer: read CEO state over the last 2-3 user messages (05-emotional-states.md:59),
+  // update Atlas's own Pulse, persist MOOD.md. Both bias TONE only — never facts, never refusals.
+  const userWindow = getConvo(chatId)
+    .msgs.filter((m) => m.role === 'user')
+    .slice(-3)
+    .reverse()
+    .map((m) => m.content);
+  const ceoRead = analyzeWindow(userWindow);
+  const pulse = processEvent(loadPulse(), 'ceo', 'user_feedback');
+  savePulse(pulse.state, `telegram message, CEO read: ${ceoRead.state}`);
+  console.log(
+    `[emotion] chat=${chatId} ceo=${ceoRead.state}/${ceoRead.intensity} pulse-int=${pulse.intensity.toFixed(2)}${pulse.wouldBlock ? ' [would-block: log-only]' : ''}`,
+  );
+
+  const basePrompt = (await buildAtlasBrainPlan({ channel: 'telegram' })).systemPrompt;
+  const system = `${basePrompt}\n\n${emotionDirective(ceoRead)}\n${pulseToneHint(pulse.state)}`;
   const firstPass = await generateWithFallback(messages, system);
   console.log(`[out] chat=${chatId} provider=${firstPass.provider}/${firstPass.modelId} reply="${firstPass.reply.slice(0, 100)}"`);
   const delivery = await deliverReply(firstPass.reply, async (prompt) => {
