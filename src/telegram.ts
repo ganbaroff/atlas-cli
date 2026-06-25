@@ -23,6 +23,7 @@ import { appendMessage, loadConversation, compactIfNeeded, type StoredMessage } 
 import { listAvailableModels, routeModelWithFallback } from './model-router.js';
 import { analyzeWindow, emotionDirective } from './atlas/emotion.js';
 import { loadPulse, savePulse, processEvent, pulseToneHint } from './atlas/pulse.js';
+import { runOperatorActionLane } from './operator/action-lane.js';
 
 // ── Env verification ────────────────────────────────────────────────
 const REQUIRED = ['TELEGRAM_BOT_TOKEN'] as const;
@@ -124,6 +125,12 @@ function buildMessages(chatId: number): Msg[] {
 // ── LLM call ────────────────────────────────────────────────────────
 async function ask(chatId: number, text: string): Promise<string> {
   addMsg(chatId, 'user', text);
+
+  const operatorAction = runOperatorActionLane(text, { source: 'telegram' });
+  if (operatorAction.handled) {
+    addMsg(chatId, 'assistant', operatorAction.reply);
+    return operatorAction.reply;
+  }
 
   const controlCommand = parseControlCommand(text);
   if (controlCommand) {

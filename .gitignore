@@ -57,3 +57,7 @@ packages/vscode-ide-companion/*.vsix
 .local/
 CLAUDE.md
 .npmrc
+
+# Operator runs and state
+operator/runs/
+operator/state/operator-state.json

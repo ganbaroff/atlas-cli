@@ -64,6 +64,7 @@ function buildRepairPrompt(check: ReplyGateCheck, originalReply: string, proofTo
     '- no trailing question on irreversible action',
     '- no completion claim without proof',
     '- if you keep completion claim, cite one exact proof token from Current turn proof tokens',
+    '- end substantive work/status replies with "Мини-урок:" and one practical explanation',
     '',
     'Voice breaches:',
     formatVoiceBreaches(check.voice.breaches),

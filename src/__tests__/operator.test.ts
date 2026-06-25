@@ -1,5 +1,13 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { parseOperatorResult, parseOperatorTask, validateResultEvidence } from '../operator/contracts.js';
+import {
+  parseOperatorResult,
+  parseOperatorRunLedgerEntry,
+  parseOperatorTask,
+  selectCanonicalRunLedgerEntry,
+  validateResultEvidence,
+} from '../operator/contracts.js';
 
 describe('operator contracts', () => {
   it('accepts sandboxed OpenManus read-only task', () => {
@@ -184,5 +192,152 @@ describe('operator contracts', () => {
 
     expect(result.evidence[0]?.type).toBe('browser_session_trace');
     expect(result.evidence[0]?.proof_token).toBe('openmanus-smoke-readonly.browser.trace');
+  });
+
+  it('records self-reported success blocked by verifier in run ledger', () => {
+    const entry = parseOperatorRunLedgerEntry({
+      run_id: 'local-smoke.20260613-000001',
+      task_id: 'local-smoke',
+      executor: 'atlas',
+      started_at: '2026-06-13T10:00:00.000Z',
+      completed_at: '2026-06-13T10:01:00.000Z',
+      status: 'success',
+      verdict: 'blocked',
+      expected_evidence_met: false,
+      proof_tokens: [],
+      result_path: 'operator/runs/local-smoke.result.json',
+    });
+
+    expect(entry.status).toBe('success');
+    expect(entry.verdict).toBe('blocked');
+  });
+
+  it('records verifier-passed run with durable proof token', () => {
+    const entry = parseOperatorRunLedgerEntry({
+      run_id: 'local-smoke.20260613-000002',
+      task_id: 'local-smoke',
+      executor: 'atlas',
+      started_at: '2026-06-13T10:02:00.000Z',
+      completed_at: '2026-06-13T10:03:00.000Z',
+      status: 'success',
+      verdict: 'passed',
+      expected_evidence_met: true,
+      proof_tokens: ['proof:local-smoke.command'],
+      result_path: 'operator/runs/local-smoke.retry-1.result.json',
+    });
+
+    expect(entry.proof_tokens).toEqual(['proof:local-smoke.command']);
+  });
+
+  it('rejects verifier-passed ledger entry when expected evidence is missing', () => {
+    expect(() => parseOperatorRunLedgerEntry({
+      run_id: 'local-smoke.20260613-000003',
+      task_id: 'local-smoke',
+      executor: 'atlas',
+      started_at: '2026-06-13T10:04:00.000Z',
+      completed_at: '2026-06-13T10:05:00.000Z',
+      status: 'success',
+      verdict: 'passed',
+      expected_evidence_met: false,
+      proof_tokens: ['proof:local-smoke.command'],
+      result_path: 'operator/runs/local-smoke.result.json',
+    })).toThrow(/expected evidence/i);
+  });
+
+  it('selects latest passed ledger entry as canonical without mutating ledger rows', () => {
+    const firstBlocked = parseOperatorRunLedgerEntry({
+      run_id: 'local-smoke.20260613-000001',
+      task_id: 'local-smoke',
+      executor: 'atlas',
+      started_at: '2026-06-13T10:00:00.000Z',
+      completed_at: '2026-06-13T10:01:00.000Z',
+      status: 'success',
+      verdict: 'blocked',
+      expected_evidence_met: false,
+      proof_tokens: [],
+      result_path: 'operator/runs/local-smoke.result.json',
+    });
+
+    const firstPassed = parseOperatorRunLedgerEntry({
+      run_id: 'local-smoke.20260613-000002',
+      task_id: 'local-smoke',
+      executor: 'atlas',
+      started_at: '2026-06-13T10:02:00.000Z',
+      completed_at: '2026-06-13T10:03:00.000Z',
+      status: 'success',
+      verdict: 'passed',
+      expected_evidence_met: true,
+      proof_tokens: ['proof:local-smoke.command'],
+      result_path: 'operator/runs/local-smoke.retry-1.result.json',
+    });
+
+    const newerBlocked = parseOperatorRunLedgerEntry({
+      run_id: 'local-smoke.20260613-000003',
+      task_id: 'local-smoke',
+      executor: 'atlas',
+      started_at: '2026-06-13T10:04:00.000Z',
+      completed_at: '2026-06-13T10:05:00.000Z',
+      status: 'success',
+      verdict: 'blocked',
+      expected_evidence_met: false,
+      proof_tokens: [],
+      result_path: 'operator/runs/local-smoke.retry-2.result.json',
+    });
+
+    expect(selectCanonicalRunLedgerEntry([newerBlocked, firstBlocked, firstPassed])?.run_id)
+      .toBe('local-smoke.20260613-000002');
+  });
+
+  it('falls back to latest blocked ledger entry when no run passed', () => {
+    const firstBlocked = parseOperatorRunLedgerEntry({
+      run_id: 'local-smoke.20260613-000001',
+      task_id: 'local-smoke',
+      executor: 'atlas',
+      started_at: '2026-06-13T10:00:00.000Z',
+      completed_at: '2026-06-13T10:01:00.000Z',
+      status: 'success',
+      verdict: 'blocked',
+      expected_evidence_met: false,
+      proof_tokens: [],
+      result_path: 'operator/runs/local-smoke.result.json',
+    });
+
+    const newerBlocked = parseOperatorRunLedgerEntry({
+      run_id: 'local-smoke.20260613-000004',
+      task_id: 'local-smoke',
+      executor: 'atlas',
+      started_at: '2026-06-13T10:06:00.000Z',
+      completed_at: '2026-06-13T10:07:00.000Z',
+      status: 'blocked',
+      verdict: 'blocked',
+      expected_evidence_met: false,
+      proof_tokens: [],
+      result_path: 'operator/runs/local-smoke.result.json',
+    });
+
+    expect(selectCanonicalRunLedgerEntry([newerBlocked, firstBlocked])?.run_id)
+      .toBe('local-smoke.20260613-000004');
+  });
+
+  it('keeps JSON run-ledger schema aligned with contract essentials', () => {
+    const schema = JSON.parse(
+      readFileSync(resolve(process.cwd(), 'operator/schemas/run-ledger.schema.json'), 'utf-8'),
+    );
+
+    expect(schema.required).toEqual([
+      'run_id',
+      'task_id',
+      'executor',
+      'started_at',
+      'completed_at',
+      'status',
+      'verdict',
+      'expected_evidence_met',
+      'proof_tokens',
+      'result_path',
+    ]);
+    expect(schema.properties.status.enum).toEqual(['success', 'failure', 'blocked', 'skipped']);
+    expect(schema.properties.verdict.enum).toEqual(['passed', 'blocked']);
+    expect(schema.properties.executor.enum).toEqual(['atlas', 'openmanus', 'octogent', 'vellum', 'manual']);
   });
 });

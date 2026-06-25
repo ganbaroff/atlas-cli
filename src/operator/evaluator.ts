@@ -69,6 +69,12 @@ export function isRetryableRoute(route: OperatorTask['route']): boolean {
   return RETRYABLE_ROUTES.has(route);
 }
 
+export function isRetryableTask(task: OperatorTask): boolean {
+  return isRetryableRoute(task.route)
+    && task.mode === 'read_only'
+    && task.safety.write_allowed === false;
+}
+
 export function buildOperatorEvaluationAttempt(
   attempt: 'source' | 'retry',
   resultPath: string,
@@ -196,7 +202,7 @@ export function evaluateOperatorResultWithRetry(
     input.sourceResult,
     sourceEvaluation,
   );
-  const retryableRoute = isRetryableRoute(input.task.route);
+  const retryableRoute = isRetryableTask(input.task);
 
   if (sourceEvaluation.passed || !retryableRoute) {
     return {

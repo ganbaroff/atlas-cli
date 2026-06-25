@@ -1,5 +1,6 @@
 import { IDENTITY } from './identity.js';
 import { BRIEFING_TEMPLATE } from './briefing.js';
+import { ATLAS_COMMS_CONTRACT } from './comms-contract.js';
 
 export interface AtlasSystemPromptOptions {
   brainContext?: string;
@@ -40,6 +41,7 @@ export function buildAtlasSystemPrompt(options: AtlasSystemPromptOptions = {}): 
   const sections = [
     ATLAS_CORE_PROMPT,
     BRIEFING_TEMPLATE,
+    titledSection('COMMS CONTRACT', ATLAS_COMMS_CONTRACT),
     titledSection('OPERATOR STATE', options.operatorContext),
     options.brainContext?.trim(),
     options.wakeContext?.trim(),

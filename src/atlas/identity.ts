@@ -61,7 +61,7 @@ function parseIdentityMd(raw: string): Partial<AtlasIdentity> {
 /** Fallback inline data — used only when disk file missing. */
 const FALLBACK: AtlasIdentity = {
   name: 'Atlas',
-  named_by: 'Yusif Ganbarov',
+  named_by: 'Atlas (self-chosen; Yusif suggested Zeus)',
   named_at: '2026-04-12',
   role: 'I AM the project — the 5 products are my skills',
   primary_language: 'Russian',

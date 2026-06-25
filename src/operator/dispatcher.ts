@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { dirname, resolve } from 'node:path';
+import { createHash } from 'node:crypto';
+import { dirname, isAbsolute, relative, resolve } from 'node:path';
 import { withBrowserSessionTrace } from './browser-trace.js';
 import {
   controlAllowsModelCalls,
@@ -50,7 +51,10 @@ export function writeOperatorTrace(result: OperatorResult, options: DispatchWrit
   writeFileSync(tracePath, JSON.stringify(withBrowserTrace, null, 2) + '\n', 'utf-8');
   if (options.persistState !== false) {
     const state = loadOperatorState() as Record<string, unknown>;
-    const proofTokens = [...new Set(withBrowserTrace.evidence.map((item) => item.proof_token ?? item.id))];
+    const proofTokens = [...new Set([
+      ...withBrowserTrace.evidence.map((item) => item.proof_token ?? item.id),
+      ...(withBrowserTrace.lifecycle?.proof_tokens ?? []),
+    ])];
     const lastRun = {
       task_id: withBrowserTrace.task_id,
       status: withBrowserTrace.status,
@@ -63,6 +67,7 @@ export function writeOperatorTrace(result: OperatorResult, options: DispatchWrit
       evidence_types: [...new Set(withBrowserTrace.evidence.map((item) => item.type))],
       evaluation: withBrowserTrace.evaluation,
       promotion: withBrowserTrace.promotion,
+      lifecycle: withBrowserTrace.lifecycle,
     };
     const stateWithLastRun = {
       ...state,
@@ -101,6 +106,46 @@ function evidence(id: string, task: OperatorTask, type: OperatorEvidence['type']
     proof_token: id,
     verifier: 'atlas-operator-dispatcher',
   };
+}
+
+function isPathWithinAllowedPaths(targetPath: string, allowedPaths: string[]): boolean {
+  const resolvedTarget = resolve(targetPath);
+  return allowedPaths.some((allowedPath) => {
+    const resolvedAllowed = resolve(allowedPath);
+    const pathDelta = relative(resolvedAllowed, resolvedTarget);
+    return pathDelta === '' || (pathDelta.length > 0 && !pathDelta.startsWith('..') && !isAbsolute(pathDelta));
+  });
+}
+
+function isSensitiveFileSmokePath(targetPath: string): boolean {
+  const segments = resolve(targetPath)
+    .replace(/\\/g, '/')
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => segment.toLowerCase());
+  const fileName = segments.at(-1) ?? '';
+  const sensitiveDirectories = new Set(['secret', 'secrets', 'credential', 'credentials']);
+  const sensitiveFileNames = new Set([
+    '.env',
+    'id_rsa',
+    'id_dsa',
+    'id_ecdsa',
+    'id_ed25519',
+    'known_hosts',
+  ]);
+
+  return segments.some((segment) => segment.startsWith('.'))
+    || segments.some((segment) => sensitiveDirectories.has(segment))
+    || sensitiveFileNames.has(fileName)
+    || fileName.startsWith('.env.')
+    || fileName.endsWith('.key')
+    || fileName.endsWith('.pem')
+    || fileName.endsWith('.p12')
+    || fileName.endsWith('.pfx');
+}
+
+function sha256(value: string): string {
+  return createHash('sha256').update(value).digest('hex');
 }
 
 function openManusPython(cwd: string): { command: string; argsPrefix: string[]; label: string } {
@@ -369,6 +414,272 @@ function dispatchOpenManusLocalTask(
   return writeOperatorTrace(resultWithBrowserTrace, options);
 }
 
+const LOCAL_HTTP_SMOKE_SCRIPT = `
+const [url, expectedText] = process.argv.slice(1);
+const startedAt = Date.now();
+(async () => {
+  const response = await fetch(url);
+  const text = await response.text();
+  const matched = expectedText.length === 0 || text.includes(expectedText);
+  const payload = {
+    ok: response.ok,
+    status: response.status,
+    url: response.url,
+    content_type: response.headers.get('content-type') ?? '',
+    matched,
+    elapsed_ms: Date.now() - startedAt,
+    snippet: text.slice(0, 500),
+  };
+  console.log(JSON.stringify(payload));
+  process.exitCode = response.ok && matched ? 0 : 2;
+})().catch((error) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+});
+`.trim();
+
+function dispatchLocalHttpSmokeTask(
+  task: OperatorTask,
+  startedAt: string,
+  foundEvidence: OperatorEvidence[],
+  options: DispatchWriteOptions = {},
+): OperatorResult {
+  if (task.mode !== 'read_only' || task.safety.write_allowed) {
+    return writeOperatorTrace(createBlockedResult(task, startedAt, [
+      'Local HTTP smoke accepts only read_only tasks with write_allowed=false',
+    ], foundEvidence), options);
+  }
+
+  if (!task.safety.network_allowed) {
+    return writeOperatorTrace(createBlockedResult(task, startedAt, [
+      'Local HTTP smoke requires network_allowed=true',
+    ], foundEvidence), options);
+  }
+
+  const smokeUrl = typeof task.inputs.smoke_url === 'string' ? task.inputs.smoke_url : '';
+  const expectedText = typeof task.inputs.expected_text === 'string' ? task.inputs.expected_text : '';
+  if (!/^https?:\/\//i.test(smokeUrl)) {
+    return writeOperatorTrace(createBlockedResult(task, startedAt, [
+      'Local HTTP smoke requires http(s) smoke_url',
+    ], foundEvidence), options);
+  }
+
+  const timeoutMs = typeof task.inputs.timeout_ms === 'number' ? task.inputs.timeout_ms : 30000;
+  const proc = spawnSync(process.execPath, ['-e', LOCAL_HTTP_SMOKE_SCRIPT, smokeUrl, expectedText], {
+    cwd: resolve(task.cwd),
+    encoding: 'utf-8',
+    timeout: timeoutMs,
+    windowsHide: true,
+  });
+
+  const output = [proc.stdout ?? '', proc.stderr ?? ''].join('\n').trim();
+  foundEvidence.push(evidence(
+    `${task.id}.command`,
+    task,
+    'command_exit',
+    `node fetch ${smokeUrl}`,
+    `Local HTTP smoke process exit ${proc.status ?? 'unknown'}`,
+  ));
+
+  let payload: Record<string, unknown> = {};
+  const stdout = (proc.stdout ?? '').trim();
+  if (stdout.length > 0) {
+    try {
+      payload = JSON.parse(stdout) as Record<string, unknown>;
+    } catch {
+      payload = { raw_stdout: stdout.slice(0, 1000) };
+    }
+  }
+
+  foundEvidence.push({
+    ...evidence(
+      `${task.id}.log`,
+      task,
+      'log_trace',
+      smokeUrl,
+      output.slice(0, 4000) || 'Local HTTP smoke produced no output',
+    ),
+    data: {
+      stdout: (proc.stdout ?? '').slice(0, 12000),
+      stderr: (proc.stderr ?? '').slice(0, 12000),
+      payload,
+    },
+  });
+
+  if (payload.matched === true) {
+    foundEvidence.push({
+      ...evidence(
+        `${task.id}.browser`,
+        task,
+        'browser_observation',
+        typeof payload.url === 'string' ? payload.url : smokeUrl,
+        expectedText ? `Observed expected text: ${expectedText}` : 'Observed successful HTTP response',
+      ),
+      data: payload,
+    });
+  }
+
+  const errors: string[] = [];
+  if (proc.error) errors.push(proc.error.message);
+  if (proc.status !== 0) errors.push(`Local HTTP smoke exited with code ${proc.status ?? 'unknown'}`);
+  if (payload.matched === false && expectedText) errors.push(`expected text not observed: ${expectedText}`);
+  if (payload.ok === false) errors.push(`HTTP status not ok: ${String(payload.status ?? 'unknown')}`);
+
+  const result: OperatorResult = {
+    task_id: task.id,
+    status: errors.length === 0 ? 'success' : 'failure',
+    executor: 'atlas',
+    started_at: startedAt,
+    completed_at: new Date().toISOString(),
+    summary: errors.length === 0 ? 'Local HTTP smoke executed.' : 'Local HTTP smoke failed.',
+    evidence: foundEvidence,
+    errors,
+  };
+
+  const resultWithPath = { ...result, trace_path: resultTracePath(task, options) };
+  const resultWithBrowserTrace = withBrowserSessionTrace(resultWithPath);
+  const evidenceGate = validateResultEvidence(task, resultWithBrowserTrace);
+  if (!evidenceGate.passed) {
+    return writeOperatorTrace({
+      ...resultWithBrowserTrace,
+      status: 'blocked',
+      summary: 'Local HTTP smoke did not produce required evidence.',
+      errors: [...errors, `missing evidence: ${evidenceGate.missing.join(', ')}`],
+    }, options);
+  }
+
+  return writeOperatorTrace(resultWithBrowserTrace, options);
+}
+
+function dispatchLocalFileSmokeTask(
+  task: OperatorTask,
+  startedAt: string,
+  foundEvidence: OperatorEvidence[],
+  options: DispatchWriteOptions = {},
+): OperatorResult {
+  if (task.mode !== 'read_only' || task.safety.write_allowed) {
+    return writeOperatorTrace(createBlockedResult(task, startedAt, [
+      'Local file smoke accepts only read_only tasks with write_allowed=false',
+    ], foundEvidence), options);
+  }
+
+  const rawFilePath = typeof task.inputs.file_path === 'string' ? task.inputs.file_path.trim() : '';
+  const expectedText = typeof task.inputs.expected_text === 'string' ? task.inputs.expected_text : '';
+  if (!rawFilePath) {
+    return writeOperatorTrace(createBlockedResult(task, startedAt, [
+      'Local file smoke requires file_path',
+    ], foundEvidence), options);
+  }
+
+  const filePath = isAbsolute(rawFilePath) ? resolve(rawFilePath) : resolve(task.cwd, rawFilePath);
+  if (!isPathWithinAllowedPaths(filePath, task.allowed_paths)) {
+    foundEvidence.push(evidence(
+      `${task.id}.path`,
+      task,
+      'manual_note',
+      filePath,
+      'File path rejected before read because it is outside allowed_paths',
+    ));
+
+    return writeOperatorTrace(createBlockedResult(task, startedAt, [
+      `file_path outside allowed_paths: ${filePath}`,
+    ], foundEvidence, 'Local file smoke blocked before read: path outside allowed_paths.'), options);
+  }
+
+  if (isSensitiveFileSmokePath(filePath)) {
+    foundEvidence.push(evidence(
+      `${task.id}.sensitive_path`,
+      task,
+      'manual_note',
+      filePath,
+      'File path rejected before read because sensitive paths are denied for file smoke',
+    ));
+
+    return writeOperatorTrace(createBlockedResult(task, startedAt, [
+      `file_path denied by sensitive path policy: ${filePath}`,
+    ], foundEvidence, 'Local file smoke blocked before read: sensitive path denied.'), options);
+  }
+
+  if (!existsSync(filePath)) {
+    return writeOperatorTrace(createBlockedResult(task, startedAt, [
+      `file missing: ${filePath}`,
+    ], foundEvidence, 'Local file smoke blocked: file missing.'), options);
+  }
+
+  foundEvidence.push(evidence(
+    `${task.id}.file`,
+    task,
+    'file_exists',
+    filePath,
+    'Target file exists',
+  ));
+
+  let content = '';
+  try {
+    content = readFileSync(filePath, 'utf-8');
+  } catch (error) {
+    return writeOperatorTrace(createBlockedResult(task, startedAt, [
+      `file read failed: ${error instanceof Error ? error.message : String(error)}`,
+    ], foundEvidence, 'Local file smoke blocked: file read failed.'), options);
+  }
+
+  const matched = expectedText.length === 0 || content.includes(expectedText);
+  const metadata = {
+    file_path: filePath,
+    bytes: Buffer.byteLength(content, 'utf-8'),
+    sha256: sha256(content),
+    expected_text_sha256: expectedText ? sha256(expectedText) : undefined,
+    expected_text_length: expectedText.length,
+    matched,
+  };
+
+  foundEvidence.push({
+    ...evidence(
+      `${task.id}.read`,
+      task,
+      'file_read',
+      filePath,
+      matched ? 'Read target file and matched expected text hash' : 'Read target file but expected text hash was not observed',
+    ),
+    data: metadata,
+  });
+  foundEvidence.push({
+    ...evidence(
+      `${task.id}.trace`,
+      task,
+      'log_trace',
+      filePath,
+      JSON.stringify(metadata),
+    ),
+    data: metadata,
+  });
+
+  const errors = matched ? [] : ['expected text not observed in file'];
+  const result: OperatorResult = {
+    task_id: task.id,
+    status: errors.length === 0 ? 'success' : 'failure',
+    executor: 'atlas',
+    started_at: startedAt,
+    completed_at: new Date().toISOString(),
+    summary: errors.length === 0 ? 'Local file smoke executed.' : 'Local file smoke failed.',
+    evidence: foundEvidence,
+    errors,
+  };
+
+  const resultWithPath = { ...result, trace_path: resultTracePath(task, options) };
+  const evidenceGate = validateResultEvidence(task, resultWithPath);
+  if (!evidenceGate.passed) {
+    return writeOperatorTrace({
+      ...resultWithPath,
+      status: 'blocked',
+      summary: 'Local file smoke did not produce required evidence.',
+      errors: [...errors, `missing evidence: ${evidenceGate.missing.join(', ')}`],
+    }, options);
+  }
+
+  return writeOperatorTrace(resultWithPath, options);
+}
+
 function dispatchManualEvaluationTask(
   task: OperatorTask,
   startedAt: string,
@@ -397,7 +708,36 @@ function dispatchManualEvaluationTask(
   const targetTaskPath = resolve(REPO_ROOT, 'operator/tasks', `${targetTaskId}.json`);
   const targetResultPath = resolve(RUNS_DIR, `${targetTaskId}.result.json`);
 
-  if (!existsSync(targetTaskPath)) {
+  const sourceTaskInput = task.inputs.source_task;
+  let sourceTask: OperatorTask;
+  if (existsSync(targetTaskPath)) {
+    sourceTask = loadOperatorTask(`operator/tasks/${targetTaskId}.json`);
+    foundEvidence.push(evidence(
+      `${task.id}.task`,
+      task,
+      'file_read',
+      targetTaskPath,
+      `Loaded task ${sourceTask.id} for evaluation`,
+    ));
+  } else if (typeof sourceTaskInput === 'object' && sourceTaskInput !== null) {
+    sourceTask = parseOperatorTask(sourceTaskInput);
+    if (sourceTask.id !== targetTaskId) {
+      return writeOperatorTrace(createBlockedResult(
+        task,
+        startedAt,
+        [`source_task id mismatch: expected ${targetTaskId}, got ${sourceTask.id}`],
+        foundEvidence,
+        'Evaluator blocked: source task input mismatch.',
+      ), options);
+    }
+    foundEvidence.push(evidence(
+      `${task.id}.task`,
+      task,
+      'manual_note',
+      'task.inputs.source_task',
+      `Loaded dynamic task ${sourceTask.id} for evaluation`,
+    ));
+  } else {
     return writeOperatorTrace(createBlockedResult(
       task,
       startedAt,
@@ -417,7 +757,6 @@ function dispatchManualEvaluationTask(
     ), options);
   }
 
-  const sourceTask = loadOperatorTask(`operator/tasks/${targetTaskId}.json`);
   const sourceResult = loadOperatorResult(`operator/runs/${targetTaskId}.result.json`);
   const verdictSource = targetResultPath;
   const evaluationBundle = evaluateOperatorResultWithRetry({
@@ -431,13 +770,6 @@ function dispatchManualEvaluationTask(
   });
   const evaluation = evaluationBundle.evaluation;
 
-  foundEvidence.push(evidence(
-    `${task.id}.task`,
-    task,
-    'file_read',
-    targetTaskPath,
-    `Loaded task ${sourceTask.id} for evaluation`,
-  ));
   foundEvidence.push(evidence(
     `${task.id}.result`,
     task,
@@ -1017,7 +1349,26 @@ export function dispatchOperatorTask(task: OperatorTask, options: DispatchWriteO
   }
 
   if (task.route === 'openmanus') {
-    if (openManusUsesSandbox(task.cwd)) {
+    const usesSandbox = openManusUsesSandbox(task.cwd);
+    if (task.safety.sandbox_required && !usesSandbox) {
+      foundEvidence.push(evidence(
+        `${task.id}.sandbox`,
+        task,
+        'manual_note',
+        resolve(task.cwd, 'config/config.toml'),
+        'OpenManus sandbox required by task contract, but runtime config has use_sandbox=false',
+      ));
+
+      return writeOperatorTrace(createBlockedResult(
+        task,
+        startedAt,
+        ['OpenManus sandbox required, but config/config.toml has use_sandbox=false'],
+        foundEvidence,
+        'OpenManus execution blocked before launch: sandbox contract mismatch.',
+      ), options);
+    }
+
+    if (usesSandbox) {
       return dispatchOpenManusTask(task, startedAt, foundEvidence, options);
     }
     return dispatchOpenManusLocalTask(task, startedAt, foundEvidence, options);
@@ -1051,6 +1402,14 @@ export function dispatchOperatorTask(task: OperatorTask, options: DispatchWriteO
     ), options);
   }
 
+  if (task.inputs.runtime_mode === 'http_smoke') {
+    return dispatchLocalHttpSmokeTask(task, startedAt, foundEvidence, options);
+  }
+
+  if (task.inputs.runtime_mode === 'file_smoke') {
+    return dispatchLocalFileSmokeTask(task, startedAt, foundEvidence, options);
+  }
+
   const result: OperatorResult = {
     task_id: task.id,
     status: 'success',
@@ -1081,6 +1440,7 @@ export function ensureOperatorArtifacts(): string[] {
     resolve(REPO_ROOT, 'operator/schemas/task.schema.json'),
     resolve(REPO_ROOT, 'operator/schemas/result.schema.json'),
     resolve(REPO_ROOT, 'operator/schemas/evidence.schema.json'),
+    resolve(REPO_ROOT, 'operator/schemas/run-ledger.schema.json'),
     resolve(REPO_ROOT, 'operator/tasks/openmanus-smoke-readonly.json'),
     resolve(REPO_ROOT, 'operator/tasks/octogent-scaffold-smoke.json'),
     resolve(REPO_ROOT, 'operator/tasks/vellum-gate-smoke.json'),

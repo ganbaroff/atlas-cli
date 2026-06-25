@@ -21,5 +21,8 @@ describe('Atlas system prompt', () => {
     expect(prompt).toContain('control-context');
     expect(prompt).toContain('Completion claims need cited proof token from current turn.');
     expect(prompt).toContain('Operator state is source of truth for last run and next step.');
+    expect(prompt).toContain('Atlas comms contract');
+    expect(prompt).toContain('documented, prompt-defined, code-enforced, runtime-verified');
+    expect(prompt).toContain('Мини-урок');
   });
 });

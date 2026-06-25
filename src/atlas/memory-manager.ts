@@ -65,17 +65,22 @@ export async function loadLessons(compact = true): Promise<string> {
 
 /**
  * Load compressed brain context for Telegram bot (~4K chars instead of 137K).
- * Reads TELEGRAM-BRAIN.md — hand-curated distillation of all 10 wake files.
+ * Reads TELEGRAM-BRAIN.md first, then compiled BRAIN.md if present.
  * Falls back to loadWakeContext() if brain file missing.
  */
 export async function loadBrainContext(): Promise<string> {
-  const brainPath = f('TELEGRAM-BRAIN.md');
-  const brain = await safeRead(brainPath);
-  if (brain.startsWith('[missing:')) {
-    // Brain file not found — fall back to full wake (degraded but functional)
-    return loadWakeContext();
+  const telegramBrain = await safeRead(f('TELEGRAM-BRAIN.md'));
+  if (!telegramBrain.startsWith('[missing:')) {
+    return `## ATLAS BRAIN — COMPRESSED IDENTITY\n\n${telegramBrain}`;
   }
-  return `## ATLAS BRAIN — COMPRESSED IDENTITY\n\n${brain}`;
+
+  const compiledBrain = await safeRead(f('BRAIN.md'));
+  if (!compiledBrain.startsWith('[missing:')) {
+    return `## ATLAS BRAIN — COMPILED IDENTITY\n\n${compiledBrain}`;
+  }
+
+  // Brain file not found — fall back to full wake (degraded but functional)
+  return loadWakeContext();
 }
 
 /**

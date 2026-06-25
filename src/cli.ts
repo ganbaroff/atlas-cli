@@ -332,6 +332,48 @@ operatorCmd
     }
   });
 
+operatorCmd
+  .command('lifecycle <task>')
+  .description('Run operator dispatch -> evaluate -> promote lifecycle')
+  .action(async (taskRef: string) => {
+    const { loadOperatorTaskRef, runOperatorLifecycle } = await import('./operator/lifecycle.js');
+    try {
+      const task = loadOperatorTaskRef(taskRef);
+      const result = runOperatorLifecycle(task);
+      console.log(JSON.stringify(result, null, 2));
+      process.exit(result.status === 'success' && result.promotion?.promoted === true ? 0 : 2);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(JSON.stringify({ status: 'failure', error: msg }, null, 2));
+      process.exit(1);
+    }
+  });
+
+operatorCmd
+  .command('intake <intent...>')
+  .description('Compile explicit user intent into operator task, run lifecycle, append ledger')
+  .action(async (intentParts: string[]) => {
+    const { runOperatorActionLane } = await import('./operator/action-lane.js');
+    const outcome = runOperatorActionLane(intentParts.join(' '), { source: 'cli' });
+    if (!outcome.handled) {
+      console.error(JSON.stringify({
+        handled: false,
+        reason: 'No explicit operator action matched. Use: /operator smoke <url> [expected text], /operator local-smoke <url> [expected text], or /operator file-smoke <path> [expected text]',
+      }, null, 2));
+      process.exit(2);
+    }
+
+    console.log(JSON.stringify({
+      handled: true,
+      reply: outcome.reply,
+      task_id: outcome.task?.id,
+      result_task_id: outcome.result?.task_id,
+      ledger: outcome.ledgerEntry ?? null,
+      error: outcome.error ?? null,
+    }, null, 2));
+    process.exit(outcome.ledgerEntry?.verdict === 'passed' ? 0 : 2);
+  });
+
 program
   .command('skills')
   .description('List available VOLAURA skills')

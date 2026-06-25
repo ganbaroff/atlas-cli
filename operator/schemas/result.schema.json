@@ -270,6 +270,63 @@
           "enum": ["passed", "blocked"]
         }
       }
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_task_id",
+        "child_result_paths",
+        "proof_tokens",
+        "final_status"
+      ],
+      "properties": {
+        "source_task_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{2,80}$"
+        },
+        "dispatch_result_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evaluation_task_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{2,80}$"
+        },
+        "evaluation_result_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "promotion_task_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{2,80}$"
+        },
+        "promotion_result_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "child_result_paths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "proof_tokens": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "final_status": {
+          "enum": ["success", "failure", "blocked", "skipped"]
+        },
+        "blocked_reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
     }
   }
 }

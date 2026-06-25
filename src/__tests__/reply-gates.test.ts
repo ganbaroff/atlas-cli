@@ -51,6 +51,7 @@ describe('Reply gates', () => {
 
     expect(prompt).toContain('Current turn proof tokens:');
     expect(prompt).toContain('proof:call-1');
+    expect(prompt).toContain('Мини-урок');
   });
 
   it('summarizes mixed gate failure', () => {
