@@ -531,6 +531,26 @@ function fatal(label: string, error: unknown): never {
 }
 
 const bootTime = new Date().toISOString();
+
+// Health endpoint for Railway (port 3000)
+import { createServer } from 'node:http';
+const PORT = parseInt(process.env['PORT'] ?? '3000', 10);
+createServer((req, res) => {
+  if (req.url === '/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      status: 'ok',
+      bot: bot.botInfo?.username ?? 'booting',
+      uptime: `${Math.round((Date.now() - new Date(bootTime).getTime()) / 60000)}min`,
+      providers: availableModels.length,
+      bootTime,
+    }));
+  } else {
+    res.writeHead(404);
+    res.end();
+  }
+}).listen(PORT, () => console.log(`[health] listening on :${PORT}`));
+
 async function boot(): Promise<void> {
   void bot.launch(() => {
     console.log(`[bot] Atlas Telegram alive @${bot.botInfo?.username ?? 'unknown'} — ${bootTime} fallback=routeModelWithFallback providers=${availableModels.map((m) => m.provider).join(',')}`);
