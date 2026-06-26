@@ -102,15 +102,8 @@ function getConvo(chatId: number) {
   return convos.get(chatId)!;
 }
 
-// Time-based write-back — fires every 5 minutes regardless of message count.
-// Message-count approach failed: sendMessage API doesn't trigger addMsg, and
-// low traffic means write-back never fires.
-const WRITEBACK_MS = 5 * 60 * 1000;
-setInterval(() => {
-  writeSessionSummary()
-    .then(() => console.log('[memory] periodic write-back OK'))
-    .catch(err => console.error('[memory] periodic write-back failed:', err));
-}, WRITEBACK_MS);
+let msgCount = 0;
+const WRITEBACK_INTERVAL = 10; // write heartbeat every N messages
 
 function addMsg(chatId: number, role: 'user' | 'assistant', content: string) {
   const c = getConvo(chatId);
@@ -121,6 +114,12 @@ function addMsg(chatId: number, role: 'user' | 'assistant', content: string) {
     role,
     text: content,
   }).catch(err => console.error('[memory] write failed:', err));
+
+  // Periodic write-back — don't rely on graceful shutdown (Class 7 on SIGTERM)
+  msgCount++;
+  if (msgCount % WRITEBACK_INTERVAL === 0) {
+    writeSessionSummary().catch(err => console.error('[memory] periodic write-back failed:', err));
+  }
 
   if (c.msgs.length > 20) {
     const old = c.msgs.splice(0, c.msgs.length - 10);
@@ -183,9 +182,7 @@ async function ask(chatId: number, text: string): Promise<string> {
   );
 
   const basePrompt = (await buildAtlasBrainPlan({ channel: 'telegram' })).systemPrompt;
-  // Inject actual model identity so the LLM doesn't hallucinate being a different model
-  const modelIdentity = `[RUNTIME: You are running on ${availableModels[0]?.provider ?? 'unknown'}/${availableModels[0]?.modelId ?? 'unknown'}. Do NOT claim to be Claude, GPT, or any other model. You are Atlas, powered by whatever model the router selected.]`;
-  const system = `${basePrompt}\n\n${modelIdentity}\n${emotionDirective(ceoRead)}\n${pulseToneHint(pulse.state)}`;
+  const system = `${basePrompt}\n\n${emotionDirective(ceoRead)}\n${pulseToneHint(pulse.state)}`;
   const firstPass = await generateWithFallback(messages, system);
   console.log(`[out] chat=${chatId} provider=${firstPass.provider}/${firstPass.modelId} reply="${firstPass.reply.slice(0, 100)}"`);
   const delivery = await deliverReply(firstPass.reply, async (prompt) => {
@@ -308,46 +305,6 @@ bot.command('models', async (ctx) => {
   await ctx.reply(reply);
 });
 
-bot.command('run', async (ctx) => {
-  const cmd = ctx.message.text.replace(/^\/run\s*/, '').trim();
-  if (!cmd) {
-    await ctx.reply('Usage: /run <shell command>\nПримеры: /run git status, /run ls C:/Projects');
-    return;
-  }
-  const chatId = ctx.chat.id;
-
-  // Safety: block destructive/secret-touching commands
-  const BLOCKED = /rm\s+-rf|del\s+\/[sfq]|format\s|shutdown|reboot|mkfs|dd\s+if|>\s*\/dev|password|secret|token|api.key/i;
-  if (BLOCKED.test(cmd)) {
-    await ctx.reply('Заблокировано: команда содержит потенциально опасный паттерн.');
-    return;
-  }
-
-  addMsg(chatId, 'user', `/run ${cmd}`);
-  await ctx.reply(`[run] $ ${cmd.slice(0, 60)}...`);
-
-  try {
-    const { execSync } = await import('node:child_process');
-    const output = execSync(cmd, {
-      timeout: 30_000,
-      encoding: 'utf-8',
-      cwd: process.cwd(),
-      env: { ...process.env, NODE_NO_WARNINGS: '1' },
-      maxBuffer: 1024 * 1024,
-    }).trim();
-    const result = output.slice(0, 3800) || '(empty output)';
-    addMsg(chatId, 'assistant', result);
-    await sendLong(ctx, result);
-    console.log(`[run] chat=${chatId} cmd="${cmd.slice(0, 60)}" output=${output.length} chars`);
-  } catch (e: any) {
-    const stderr = e.stderr?.toString()?.slice(0, 500) || e.message?.slice(0, 500) || 'unknown error';
-    const reply = `Exit ${e.status ?? '?'}: ${stderr}`;
-    addMsg(chatId, 'assistant', reply);
-    await ctx.reply(reply.slice(0, 4096));
-    console.error(`[run] chat=${chatId} cmd="${cmd.slice(0, 60)}" FAILED: ${stderr.slice(0, 100)}`);
-  }
-});
-
 bot.command('swarm', async (ctx) => {
   const task = ctx.message.text.replace(/^\/swarm\s*/, '').trim();
   if (!task) {
@@ -427,21 +384,12 @@ import { appendJournal, writeHeartbeat } from './atlas/memory-manager.js';
 async function writeSessionSummary(): Promise<void> {
   try {
     const sessionChats = Array.from(convos.entries());
+    if (sessionChats.length === 0) return;
+
     const totalMsgs = sessionChats.reduce((sum, [, c]) => sum + c.msgs.length, 0);
     const topics = sessionChats
       .flatMap(([, c]) => c.msgs.filter(m => m.role === 'user').map(m => m.content.slice(0, 60)))
       .slice(-5);
-
-    // Always write heartbeat (proves bot is alive), journal only if there are messages
-    await writeHeartbeat({
-      source: 'telegram',
-      chats: sessionChats.length,
-      messages: totalMsgs,
-      providers: availableModels.map(m => `${m.provider}/${m.modelId}`).join(', '),
-      uptime: `${Math.round((Date.now() - new Date(bootTime).getTime()) / 60000)}min`,
-    });
-
-    if (sessionChats.length === 0) return;
 
     const entry = [
       `## Telegram session — ${new Date().toISOString()}`,
@@ -454,6 +402,13 @@ async function writeSessionSummary(): Promise<void> {
     ].join('\n');
 
     await appendJournal(entry);
+    await writeHeartbeat({
+      source: 'telegram',
+      chats: sessionChats.length,
+      messages: totalMsgs,
+      providers: availableModels.map(m => `${m.provider}/${m.modelId}`).join(', '),
+      shutdownReason: 'signal',
+    });
     console.log(`[memory] session summary written: ${totalMsgs} msgs across ${sessionChats.length} chats`);
   } catch (e) {
     console.error('[memory] write-back failed:', e);

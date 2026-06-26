@@ -127,6 +127,8 @@ function isAvailable(provider: ProviderName): boolean {
   if (provider === 'ollama') {
     return !!process.env['OLLAMA_URL'] || !!process.env['OLLAMA_HOST'];
   }
+  // freellmapi requires an EXPLICIT endpoint (FREELLMAPI_BASE_URL) — no hardcoded host in
+  // source (cross-instance security review). No env → provider simply absent from the pool.
   if (provider === 'freellmapi') {
     return !!process.env['FREELLMAPI_API_KEY'] && !!process.env['FREELLMAPI_BASE_URL'];
   }
