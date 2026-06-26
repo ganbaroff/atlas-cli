@@ -6,17 +6,13 @@
  * results collected via IPC → lead synthesizes final answer.
  */
 
-import { fork, type ChildProcess } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
 import { createAtlasAgent } from './agent.js';
 import type { ProviderName } from './model-router.js';
 import { validateCompletion } from './gates/verify-before-done.js';
 import { PERSPECTIVES } from './atlas/perspectives.js';
 import { logSwarmRun } from './atlas/swarm-logger.js';
 import { dedupFindings } from './atlas/dedup.js';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
+import { controlAllowsModelCalls, describeControlBlock } from './atlas/control-plane.js';
 
 export interface Subtask {
   id: number;
@@ -45,7 +41,7 @@ function decomposeWithPerspectives(task: string): Subtask[] {
 
 /** Lead agent decomposes into custom subtasks (fallback for non-standard tasks). */
 async function decomposeCustom(task: string): Promise<Subtask[]> {
-  const agent = await createAtlasAgent('JUDGE');
+  const agent = await createAtlasAgent('JUDGE', 'operator');
   const res = await agent.generate(
     `Decompose this task into 2-5 independent parallel subtasks.
 Return ONLY a JSON array. Each element: {"id": number, "description": "...", "provider": "cerebras"|"nvidia"|"openai"|"openrouter"|"anthropic"|"ollama"}
@@ -57,42 +53,26 @@ Task: ${task}`,
   return JSON.parse(match[0]) as Subtask[];
 }
 
-/** Fork a worker process for one subtask. Communicates via IPC. */
-function spawnWorker(subtask: Subtask, env: NodeJS.ProcessEnv): Promise<WorkerResult> {
-  return new Promise((resolve) => {
-    const child: ChildProcess = fork(join(__dirname, 'swarm-worker.js'), [], {
-      env: { ...env, ATLAS_SUBTASK: JSON.stringify(subtask) },
-      stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
-    });
-
-    const timer = setTimeout(() => {
-      child.kill('SIGTERM');
-      resolve({ id: subtask.id, output: '', provider: subtask.provider ?? '?', durationMs: 60_000, error: 'timeout' });
-    }, 60_000);
-
-    child.on('message', (msg: WorkerResult) => {
-      clearTimeout(timer);
-      resolve(msg);
-      child.kill();
-    });
-
-    child.on('error', (err) => {
-      clearTimeout(timer);
-      resolve({ id: subtask.id, output: '', provider: subtask.provider ?? '?', durationMs: 0, error: err.message });
-    });
-
-    child.on('exit', (code) => {
-      clearTimeout(timer);
-      if (code !== 0 && code !== null) {
-        resolve({ id: subtask.id, output: '', provider: subtask.provider ?? '?', durationMs: 0, error: `exit code ${code}` });
-      }
-    });
-  });
+/** Run a single perspective in-process (no fork — API calls are I/O-bound, not CPU). */
+async function runWorker(subtask: Subtask): Promise<WorkerResult> {
+  const t0 = Date.now();
+  try {
+    const agent = await createAtlasAgent('WORKER', 'operator');
+    const res = await agent.generate(subtask.description);
+    const jidoka = validateCompletion(res.text);
+    const output = jidoka.passed ? res.text : `${res.text}\n\n[WORKER JIDOKA: ${jidoka.violation}]`;
+    return { id: subtask.id, output, provider: subtask.provider ?? 'auto', durationMs: Date.now() - t0 };
+  } catch (err) {
+    return {
+      id: subtask.id, output: '', provider: subtask.provider ?? 'auto',
+      durationMs: Date.now() - t0, error: err instanceof Error ? err.message.slice(0, 200) : String(err),
+    };
+  }
 }
 
 /** Lead synthesizes worker outputs into coherent answer. */
 async function synthesize(task: string, results: WorkerResult[]): Promise<string> {
-  const agent = await createAtlasAgent('JUDGE');
+  const agent = await createAtlasAgent('JUDGE', 'operator');
   const body = results
     .map((r) => `### Subtask ${r.id} [${r.provider}, ${r.durationMs}ms]${r.error ? ` ERROR: ${r.error}` : ''}\n${r.output}`)
     .join('\n\n');
@@ -104,6 +84,10 @@ async function synthesize(task: string, results: WorkerResult[]): Promise<string
 
 /** Main entry: perspectives analyze in parallel → synthesize. */
 export async function runSwarm(task: string, useCustomDecompose = false): Promise<string> {
+  if (!controlAllowsModelCalls()) {
+    throw new Error(describeControlBlock());
+  }
+
   console.log('[swarm] Assigning perspectives...');
   const subtasks = useCustomDecompose
     ? await decomposeCustom(task)
@@ -113,7 +97,7 @@ export async function runSwarm(task: string, useCustomDecompose = false): Promis
 
   const t0 = Date.now();
   const results = await Promise.all(
-    subtasks.map((st) => spawnWorker(st, process.env as NodeJS.ProcessEnv)),
+    subtasks.map((st) => runWorker(st)),
   );
   const elapsed = Date.now() - t0;
 

@@ -13,13 +13,15 @@ const TOOL_EVIDENCE = [
   'npx', 'npm', 'git', 'curl', 'cat', 'ls',
 ];
 
+const PROOF_TOKEN_RE = /\bproof:[a-z0-9._:-]+\b/i;
+
 export function hasDoneClaim(text: string): boolean {
   const lower = text.toLowerCase();
   return DONE_MARKERS.some((m) => lower.includes(m));
 }
 
 export function hasToolEvidence(text: string): boolean {
-  return TOOL_EVIDENCE.some((t) => text.includes(t));
+  return TOOL_EVIDENCE.some((t) => text.includes(t)) || PROOF_TOKEN_RE.test(text);
 }
 
 export function validateCompletion(response: string): {

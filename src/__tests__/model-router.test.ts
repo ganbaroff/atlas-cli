@@ -1,18 +1,25 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { routeModel, listAvailableModels } from '../model-router.js';
 
+function clearProviderEnvs(): void {
+  vi.stubEnv('CEREBRAS_API_KEY', '');
+  vi.stubEnv('GROQ_API_KEY', '');
+  vi.stubEnv('NVIDIA_API_KEY', '');
+  vi.stubEnv('OPENAI_API_KEY', '');
+  vi.stubEnv('OPENROUTER_API_KEY', '');
+  vi.stubEnv('ANTHROPIC_API_KEY', '');
+  vi.stubEnv('OLLAMA_URL', '');
+  vi.stubEnv('OLLAMA_HOST', '');
+  vi.stubEnv('ATLAS_PREFERRED_PROVIDER', '');
+}
+
 describe('Model Router', () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
+    clearProviderEnvs();
   });
 
   it('returns empty when no keys configured', () => {
-    vi.stubEnv('CEREBRAS_API_KEY', '');
-    vi.stubEnv('OPENROUTER_API_KEY', '');
-    vi.stubEnv('NVIDIA_API_KEY', '');
-    vi.stubEnv('ANTHROPIC_API_KEY', '');
-    vi.stubEnv('OLLAMA_URL', '');
-    vi.stubEnv('OLLAMA_HOST', '');
     const models = listAvailableModels();
     expect(models).toEqual([]);
   });
@@ -21,6 +28,18 @@ describe('Model Router', () => {
     vi.stubEnv('CEREBRAS_API_KEY', 'test-key');
     const models = listAvailableModels();
     expect(models.some((m) => m.provider === 'cerebras')).toBe(true);
+  });
+
+  it('routes WORKER to Cerebras when it is the only configured provider', () => {
+    vi.stubEnv('CEREBRAS_API_KEY', 'test-key');
+    const result = routeModel({ role: 'WORKER' });
+    expect(result.provider).toBe('cerebras');
+  });
+
+  it('routes JUDGE to Cerebras when it is the only configured provider', () => {
+    vi.stubEnv('CEREBRAS_API_KEY', 'test-key');
+    const result = routeModel({ role: 'JUDGE' });
+    expect(result.provider).toBe('cerebras');
   });
 
   it('routes WORKER to cheapest available provider', () => {
@@ -32,12 +51,6 @@ describe('Model Router', () => {
   });
 
   it('throws when no provider available for role', () => {
-    vi.stubEnv('CEREBRAS_API_KEY', '');
-    vi.stubEnv('OPENROUTER_API_KEY', '');
-    vi.stubEnv('NVIDIA_API_KEY', '');
-    vi.stubEnv('ANTHROPIC_API_KEY', '');
-    vi.stubEnv('OLLAMA_URL', '');
-    vi.stubEnv('OLLAMA_HOST', '');
     expect(() => routeModel({ role: 'WORKER' })).toThrow('No model available');
   });
 });

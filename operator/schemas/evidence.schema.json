@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://volaura.local/operator/evidence.schema.json",
+  "title": "Atlas Operator Evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "task_id",
+    "type",
+    "source",
+    "observed_at",
+    "summary"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{2,100}$"
+    },
+    "task_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{2,80}$"
+    },
+    "type": {
+      "enum": [
+        "file_exists",
+        "file_read",
+        "command_exit",
+        "browser_observation",
+        "browser_session_trace",
+        "log_trace",
+        "manual_note"
+      ]
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1
+    },
+    "observed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 3
+    },
+    "data": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "proof_token": {
+      "type": "string",
+      "minLength": 1
+    },
+    "verifier": {
+      "type": "string"
+    }
+  }
+}

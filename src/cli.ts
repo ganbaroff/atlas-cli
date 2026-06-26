@@ -10,14 +10,29 @@ import { createAtlasAgent, listAvailableModels } from './agent.js';
 import { appendMessage, loadConversation } from './atlas/conversation-store.js';
 import { IDENTITY } from './atlas/identity.js';
 import { loadWakeContext, appendJournal, writeHeartbeat } from './atlas/memory-manager.js';
+import { summarizeReplyGate } from './atlas/reply-gates.js';
+import { deliverReply } from './atlas/reply-delivery.js';
+import { extractTurnEvidence } from './atlas/turn-evidence.js';
+import {
+  applyControlCommand,
+  controlAllowsModelCalls,
+  describeControlBlock,
+  parseControlCommand,
+  type ControlSource,
+} from './atlas/control-plane.js';
 import { callPythonSwarm, isPythonSwarmAvailable, loadHiveProfiles } from './atlas/python-bridge.js';
 import { runAndPersist, readLastReport, startCron } from './atlas/cron.js';
 import { runHealthCheck, formatHealthReport } from './atlas/health-check.js';
 import type { ModelRole } from './model-router.js';
 import * as readline from 'node:readline';
+import { capture, shutdown } from './analytics.js';
 
-// Load .env without dependency
-const envPath = resolve(process.cwd(), '.env');
+// CWD-FIX: resolve .env from module dir, not process.cwd()
+import { fileURLToPath } from 'node:url';
+import { dirname } from 'node:path';
+const ANUS_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+process.chdir(ANUS_ROOT);
+const envPath = resolve(ANUS_ROOT, '.env');
 if (existsSync(envPath)) {
   const lines = readFileSync(envPath, 'utf-8').split('\n');
   for (const line of lines) {
@@ -29,6 +44,37 @@ if (existsSync(envPath)) {
     const val = trimmed.slice(eq + 1).trim();
     if (!process.env[key]) process.env[key] = val;
   }
+}
+
+function printControlResult(message: string, control: unknown, validation?: unknown): void {
+  console.log(JSON.stringify({
+    message,
+    control,
+    validation: validation ?? null,
+  }, null, 2));
+}
+
+function runControlCommand(
+  command: string,
+  lane: string | undefined,
+  source: ControlSource,
+): { message: string; control: unknown; validation?: unknown } {
+  const normalized = parseControlCommand(
+    `${command}${lane ? ` ${lane}` : ''}`,
+  );
+  if (!normalized) {
+    return {
+      message: 'Unknown control command.',
+      control: null,
+    };
+  }
+
+  const result = applyControlCommand(normalized, source);
+  return {
+    message: result.message,
+    control: result.state.control ?? null,
+    validation: result.validation,
+  };
 }
 
 program
@@ -56,20 +102,12 @@ program
     }
     if (restored.length > 0) console.log(`[memory] restored ${restored.length} messages from last session`);
 
-    // Wake protocol: inject persistent memory into system prompt
-    let wakeContext = '';
-    try {
-      wakeContext = await loadWakeContext();
-    } catch {
-      // vault unreachable — continue without memory
-    }
-
-    const agent = await createAtlasAgent(role, wakeContext);
     const rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout,
     });
 
+    capture('atlas_chat_started', { role });
     console.log(`\n${IDENTITY.name} здесь. Role: ${role}\n`);
 
     const closeSession = async () => {
@@ -95,6 +133,8 @@ program
       } catch {
         // vault write failed — silent, don't break exit
       }
+      capture('atlas_chat_ended', { role, turns: turns.length, duration_s: duration });
+      await shutdown();
       console.log('Я здесь.');
       rl.close();
     };
@@ -114,9 +154,44 @@ program
         appendMessage(CLI_CHAT_ID, { ts: new Date().toISOString(), role: 'user', text: trimmed })
           .catch(() => {});
 
+        const controlCommand = parseControlCommand(trimmed);
+        if (controlCommand) {
+          const result = applyControlCommand(controlCommand, 'cli');
+          messages.push({ role: 'assistant', content: result.message });
+          appendMessage(CLI_CHAT_ID, { ts: new Date().toISOString(), role: 'assistant', text: result.message })
+            .catch(() => {});
+          printControlResult(result.message, result.state.control, result.validation);
+          prompt();
+          return;
+        }
+
+        if (!controlAllowsModelCalls()) {
+          const blocked = describeControlBlock();
+          messages.push({ role: 'assistant', content: blocked });
+          appendMessage(CLI_CHAT_ID, { ts: new Date().toISOString(), role: 'assistant', text: blocked })
+            .catch(() => {});
+          console.log(`\n${blocked}\n`);
+          prompt();
+          return;
+        }
+
         try {
+          const agent = await createAtlasAgent(role);
           const response = await agent.generate(messages);
-          const reply = response.text;
+          const delivery = await deliverReply(response.text, async (prompt) => {
+            const retryResponse = await agent.generate([...messages, { role: 'user', content: prompt }]);
+            return {
+              reply: retryResponse.text,
+              evidence: extractTurnEvidence(retryResponse),
+            };
+          }, extractTurnEvidence(response));
+          if (delivery.repaired.retried) {
+            console.warn(`[reply-gate] ${summarizeReplyGate(delivery.repaired.firstPass)} -> ${summarizeReplyGate(delivery.repaired.retryPass ?? delivery.repaired.firstPass)}`);
+          }
+          if (!delivery.emitDecision.emitOriginalReply) {
+            console.warn(`[verify_completion_walk] ${delivery.emitDecision.reason ?? 'blocked'} proof=${delivery.emitDecision.proofTokens.length} matched=${delivery.emitDecision.matchedProofTokens.length}`);
+          }
+          const reply = delivery.reply;
           console.log(`\n${reply}\n`);
           messages.push({ role: 'assistant', content: reply });
           appendMessage(CLI_CHAT_ID, { ts: new Date().toISOString(), role: 'assistant', text: reply })
@@ -139,11 +214,16 @@ program
   .option('-c, --context <context>', 'Additional context to pass to the skill')
   .action(async (skill: string, opts) => {
     const role = opts.role.toUpperCase() as ModelRole;
+    if (!controlAllowsModelCalls()) {
+      console.error(describeControlBlock());
+      process.exit(2);
+    }
     const agent = await createAtlasAgent(role);
 
     const contextExtra = opts.context ? `\nAdditional context: ${opts.context}` : '';
     const prompt = `Load the skill "${skill}" using the load-skill tool and execute it against the current working directory (${process.cwd()}). Follow the skill spec precisely. Use your other tools (read-file, glob, grep, shell) as needed to gather the input data the skill requires.${contextExtra}`;
 
+    capture('atlas_skill_run', { skill, role });
     console.log(`\n${IDENTITY.name} запускает скилл: ${skill}\n`);
 
     try {
@@ -154,6 +234,7 @@ program
       console.error(`Error: ${msg}`);
       process.exit(1);
     }
+    await shutdown();
   });
 
 program
@@ -161,6 +242,14 @@ program
   .description('Show Atlas identity')
   .action(() => {
     console.log(JSON.stringify(IDENTITY, null, 2));
+  });
+
+program
+  .command('control <command> [lane...]')
+  .description('Update Atlas control state')
+  .action((command: string, laneParts?: string[]) => {
+    const result = runControlCommand(command, laneParts?.join(' '), 'cli');
+    printControlResult(result.message, result.control, result.validation);
   });
 
 program
@@ -177,10 +266,126 @@ program
     }
   });
 
+const operatorCmd = program
+  .command('operator')
+  .description('Atlas operator integration controls');
+
+operatorCmd
+  .command('control <command> [lane...]')
+  .description('Update operator control state')
+  .action((command: string, laneParts?: string[]) => {
+    const result = runControlCommand(command, laneParts?.join(' '), 'operator');
+    printControlResult(result.message, result.control, result.validation);
+  });
+
+operatorCmd
+  .command('status')
+  .description('Show operator state and required artifacts')
+  .action(async () => {
+    const {
+      ensureOperatorArtifacts,
+      loadOperatorState,
+      operatorStatePath,
+    } = await import('./operator/dispatcher.js');
+
+    const state = loadOperatorState();
+    const artifacts = ensureOperatorArtifacts();
+    console.log(JSON.stringify({
+      state_path: operatorStatePath(),
+      artifacts_found: artifacts.length,
+      artifacts,
+      state,
+    }, null, 2));
+  });
+
+operatorCmd
+  .command('validate <task>')
+  .description('Validate an operator task contract')
+  .action(async (taskPath: string) => {
+    const { loadOperatorTask } = await import('./operator/dispatcher.js');
+    try {
+      const task = loadOperatorTask(taskPath);
+      console.log(JSON.stringify({
+        valid: true,
+        id: task.id,
+        route: task.route,
+        mode: task.mode,
+        expected_evidence: task.expected_evidence,
+      }, null, 2));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(JSON.stringify({ valid: false, error: msg }, null, 2));
+      process.exit(1);
+    }
+  });
+
+operatorCmd
+  .command('dispatch <task>')
+  .description('Dispatch an operator task and write trace')
+  .action(async (taskPath: string) => {
+    const { dispatchOperatorTask, loadOperatorTask } = await import('./operator/dispatcher.js');
+    try {
+      const task = loadOperatorTask(taskPath);
+      const result = dispatchOperatorTask(task);
+      console.log(JSON.stringify(result, null, 2));
+      process.exit(result.status === 'success' ? 0 : 2);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(JSON.stringify({ status: 'failure', error: msg }, null, 2));
+      process.exit(1);
+    }
+  });
+
+operatorCmd
+  .command('lifecycle <task>')
+  .description('Run operator dispatch -> evaluate -> promote lifecycle')
+  .action(async (taskRef: string) => {
+    const { loadOperatorTaskRef, runOperatorLifecycle } = await import('./operator/lifecycle.js');
+    try {
+      const task = loadOperatorTaskRef(taskRef);
+      const result = runOperatorLifecycle(task);
+      console.log(JSON.stringify(result, null, 2));
+      process.exit(result.status === 'success' && result.promotion?.promoted === true ? 0 : 2);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(JSON.stringify({ status: 'failure', error: msg }, null, 2));
+      process.exit(1);
+    }
+  });
+
+operatorCmd
+  .command('intake <intent...>')
+  .description('Compile explicit user intent into operator task, run lifecycle, append ledger')
+  .action(async (intentParts: string[]) => {
+    const { runOperatorActionLane } = await import('./operator/action-lane.js');
+    const outcome = runOperatorActionLane(intentParts.join(' '), { source: 'cli' });
+    if (!outcome.handled) {
+      console.error(JSON.stringify({
+        handled: false,
+        reason: 'No explicit operator action matched. Use: /operator smoke <url> [expected text], /operator local-smoke <url> [expected text], or /operator file-smoke <path> [expected text]',
+      }, null, 2));
+      process.exit(2);
+    }
+
+    console.log(JSON.stringify({
+      handled: true,
+      reply: outcome.reply,
+      task_id: outcome.task?.id,
+      result_task_id: outcome.result?.task_id,
+      ledger: outcome.ledgerEntry ?? null,
+      error: outcome.error ?? null,
+    }, null, 2));
+    process.exit(outcome.ledgerEntry?.verdict === 'passed' ? 0 : 2);
+  });
+
 program
   .command('skills')
   .description('List available VOLAURA skills')
   .action(async () => {
+    if (!controlAllowsModelCalls()) {
+      console.error(describeControlBlock());
+      process.exit(2);
+    }
     const agent = await createAtlasAgent('FAST');
     try {
       const res = await agent.generate('List all available skills. Use the list-skills tool. Output just the names, one per line.');
@@ -195,7 +400,12 @@ program
   .command('swarm <task>')
   .description('Decompose task into parallel agent workers across providers')
   .action(async (task: string) => {
+    if (!controlAllowsModelCalls()) {
+      console.error(describeControlBlock());
+      process.exit(2);
+    }
     const { runSwarm } = await import('./swarm.js');
+    capture('atlas_swarm_run', { type: 'ts' });
     console.log(`\n${IDENTITY.name} запускает swarm\n`);
     try {
       const result = await runSwarm(task);
@@ -205,6 +415,7 @@ program
       console.error(`Swarm failed: ${msg}`);
       process.exit(1);
     }
+    await shutdown();
   });
 
 program
@@ -212,12 +423,18 @@ program
   .description('Route task to VOLAURA Python swarm (13 perspectives, 4 DAG waves)')
   .option('-m, --mode <mode>', 'Swarm mode: coordinator, daily-ideation, code-review', 'coordinator')
   .action(async (task: string, opts) => {
+    if (!controlAllowsModelCalls()) {
+      console.error(describeControlBlock());
+      process.exit(2);
+    }
+    capture('atlas_swarm_run', { type: 'python', mode: opts.mode });
     if (!isPythonSwarmAvailable()) {
       console.error('VOLAURA Python swarm not found at C:\\Projects\\VOLAURA');
       console.log('Falling back to TypeScript swarm...');
       const { runSwarm } = await import('./swarm.js');
       const result = await runSwarm(task);
       console.log('\n' + result);
+      await shutdown();
       return;
     }
 
@@ -236,6 +453,7 @@ program
       const fallback = await runSwarm(task);
       console.log('\n' + fallback);
     }
+    await shutdown();
   });
 
 program
@@ -267,6 +485,10 @@ program
   .command('ping')
   .description('Quick health check')
   .action(async () => {
+    if (!controlAllowsModelCalls()) {
+      console.error(describeControlBlock());
+      process.exit(2);
+    }
     try {
       const agent = await createAtlasAgent('FAST');
       const response = await agent.generate('respond with exactly: Атлас здесь.');
@@ -305,7 +527,7 @@ program
         const hbBody = hbMatch[0].replace(/### heartbeat\.md[^\n]*\n?/, '').trim();
         console.log('\n--- Last Session ---');
         // Extract key-value pairs from heartbeat
-        const kvLines = hbBody.split('\n').filter(l => l.startsWith('**') || l.startsWith('Updated:'));
+        const kvLines = hbBody.split('\n').filter((line: string) => line.startsWith('**') || line.startsWith('Updated:'));
         for (const line of kvLines.slice(0, 8)) {
           console.log(`  ${line.replace(/\*\*/g, '')}`);
         }
@@ -317,7 +539,7 @@ program
         if (relMatch && !relMatch[0].includes('[missing:')) {
           const relBody = relMatch[0].replace(/### relationships\.md[^\n]*\n?/, '').trim();
           // Just first 3 non-empty lines
-          const relLines = relBody.split('\n').filter(l => l.trim()).slice(0, 3);
+          const relLines = relBody.split('\n').filter((line: string) => line.trim()).slice(0, 3);
           if (relLines.length > 0) {
             console.log('\n--- Relationships ---');
             for (const l of relLines) console.log(`  ${l.trim().slice(0, 100)}`);
@@ -346,7 +568,7 @@ program
           console.log('\n--- Recent Journal ---');
           // Show first entry header lines
           const entryHeaders = journalText.split('\n')
-            .filter(l => l.startsWith('##') || l.match(/^\d{4}-\d{2}-\d{2}/))
+            .filter((line: string) => line.startsWith('##') || line.match(/^\d{4}-\d{2}-\d{2}/))
             .slice(0, 5);
           for (const h of entryHeaders) console.log(`  ${h.trim().slice(0, 100)}`);
           if (entryHeaders.length === 0) {

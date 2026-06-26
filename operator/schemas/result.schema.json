@@ -1,0 +1,332 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://volaura.local/operator/result.schema.json",
+  "title": "Atlas Operator Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "task_id",
+    "status",
+    "executor",
+    "started_at",
+    "completed_at",
+    "summary",
+    "evidence"
+  ],
+  "properties": {
+    "task_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{2,80}$"
+    },
+    "status": {
+      "enum": ["success", "failure", "blocked", "skipped"]
+    },
+    "executor": {
+      "enum": ["atlas", "openmanus", "octogent", "vellum", "manual"]
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 3
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "$ref": "evidence.schema.json"
+      }
+    },
+    "errors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "trace_path": {
+      "type": "string"
+    },
+    "evaluation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "passed",
+        "score",
+        "summary",
+        "issues",
+        "evaluated_at",
+        "evaluator"
+      ],
+      "properties": {
+        "passed": {
+          "type": "boolean"
+        },
+        "score": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 3
+        },
+        "issues": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "code",
+              "message"
+            ],
+            "properties": {
+              "code": {
+                "type": "string",
+                "minLength": 1
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "final_verdict": {
+          "enum": ["passed", "blocked"]
+        },
+        "retryable_route": {
+          "type": "boolean"
+        },
+        "retry_used": {
+          "type": "boolean"
+        },
+        "source_result_path": {
+          "type": "string"
+        },
+        "retry_result_path": {
+          "type": "string"
+        },
+        "winning_result_path": {
+          "type": "string"
+        },
+        "retry_reason": {
+          "type": "string",
+          "minLength": 3
+        },
+        "result_chain_paths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "evidence_chain_paths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "attempts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "attempt",
+              "result_path",
+              "result_status",
+              "verdict",
+              "score",
+              "summary",
+              "issues"
+            ],
+            "properties": {
+              "attempt": {
+                "enum": ["source", "retry"]
+              },
+              "result_path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "result_status": {
+                "enum": ["success", "failure", "blocked", "skipped"]
+              },
+              "verdict": {
+                "enum": ["passed", "blocked"]
+              },
+              "score": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100
+              },
+              "summary": {
+                "type": "string",
+                "minLength": 3
+              },
+              "issues": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["code", "message"],
+                  "properties": {
+                    "code": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "message": {
+                      "type": "string",
+                      "minLength": 1
+                    }
+                  }
+                }
+              },
+              "proof_tokens": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "evidence_paths": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          }
+        },
+        "evaluated_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "evaluator": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "promotion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "promoted",
+        "status",
+        "reason",
+        "safe_reply",
+        "proof_tokens",
+        "current_turn_proof_tokens"
+      ],
+      "properties": {
+        "promoted": {
+          "type": "boolean"
+        },
+        "status": {
+          "enum": ["promoted", "blocked"]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "safe_reply": {
+          "type": "string",
+          "minLength": 1
+        },
+        "proof_tokens": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "current_turn_proof_tokens": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "winning_result_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_result_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "retry_result_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "final_verdict": {
+          "enum": ["passed", "blocked"]
+        }
+      }
+    },
+    "lifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_task_id",
+        "child_result_paths",
+        "proof_tokens",
+        "final_status"
+      ],
+      "properties": {
+        "source_task_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{2,80}$"
+        },
+        "dispatch_result_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evaluation_task_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{2,80}$"
+        },
+        "evaluation_result_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "promotion_task_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]{2,80}$"
+        },
+        "promotion_result_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "child_result_paths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "proof_tokens": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "final_status": {
+          "enum": ["success", "failure", "blocked", "skipped"]
+        },
+        "blocked_reason": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

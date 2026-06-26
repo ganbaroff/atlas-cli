@@ -24,7 +24,7 @@ if (subtask.provider) {
 }
 
 try {
-  const agent = await createAtlasAgent('WORKER');
+  const agent = await createAtlasAgent('WORKER', 'operator');
   const res = await agent.generate(subtask.description);
 
   const jidoka = (await import('./gates/verify-before-done.js')).validateCompletion(res.text);

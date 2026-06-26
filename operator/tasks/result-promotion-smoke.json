@@ -1,0 +1,26 @@
+{
+  "id": "result-promotion-smoke",
+  "title": "Result promotion smoke",
+  "created_at": "2026-06-01T00:00:00.000Z",
+  "route": "manual",
+  "mode": "read_only",
+  "cwd": "C:/Users/user/OneDrive/Documents/GitHub/ANUS",
+  "allowed_paths": [
+    "C:/Users/user/OneDrive/Documents/GitHub/ANUS"
+  ],
+  "objective": "Verify evaluator verdict can be promoted to user-facing completion only with durable proof.",
+  "inputs": {
+    "promotion_result_task_id": "result-quality-evaluator-smoke"
+  },
+  "expected_evidence": [
+    "file_exists",
+    "file_read",
+    "manual_note",
+    "log_trace"
+  ],
+  "safety": {
+    "sandbox_required": false,
+    "network_allowed": false,
+    "write_allowed": false
+  }
+}

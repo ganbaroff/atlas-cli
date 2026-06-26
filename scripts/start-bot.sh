@@ -5,6 +5,8 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 LOG="$ROOT/logs/telegram.log"
 MAX=10
 
+mkdir -p "$ROOT/logs"
+
 # Kill existing
 pkill -f "tsx.*telegram" 2>/dev/null || true
 

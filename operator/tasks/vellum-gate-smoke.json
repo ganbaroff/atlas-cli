@@ -1,0 +1,21 @@
+{
+  "id": "vellum-gate-smoke",
+  "title": "Vellum gate smoke",
+  "created_at": "2026-05-30T00:00:00.000Z",
+  "route": "vellum",
+  "mode": "read_only",
+  "cwd": "C:/Projects/vellum-assistant",
+  "allowed_paths": [
+    "C:/Projects/vellum-assistant"
+  ],
+  "objective": "Verify Vellum repo shape, assistant package, and docs for memory/security boundaries.",
+  "inputs": {
+    "expected_terms": ["trust", "sandbox", "memory", "assistant"]
+  },
+  "expected_evidence": ["file_read", "log_trace"],
+  "safety": {
+    "sandbox_required": false,
+    "network_allowed": false,
+    "write_allowed": false
+  }
+}

@@ -16,6 +16,7 @@ export type ModelRole = 'FAST' | 'WORKER' | 'JUDGE' | 'CRITICAL';
 
 export type ProviderName =
   | 'ollama'
+  | 'freellmapi'
   | 'cerebras'
   | 'groq'
   | 'nvidia'
@@ -39,6 +40,16 @@ export interface RouteResult {
 }
 
 const MODEL_REGISTRY: ModelConfig[] = [
+  {
+    // Free Gemini gateway (8 models behind one OpenAI-compatible endpoint).
+    // Listed BEFORE ollama: registry order breaks costTier ties, and OLLAMA_URL
+    // defaults to localhost even when no Ollama is running — putting the gateway
+    // first saves a guaranteed-failed attempt per message on machines without Ollama.
+    provider: 'freellmapi',
+    modelId: 'gemini-2.5-flash',
+    costTier: 0,
+    roles: ['FAST', 'WORKER', 'JUDGE'],
+  },
   {
     provider: 'ollama',
     modelId: 'qwen3:8b',
@@ -86,6 +97,7 @@ const MODEL_REGISTRY: ModelConfig[] = [
 function getEnvKey(provider: ProviderName): string | undefined {
   const map: Record<ProviderName, string> = {
     ollama: 'OLLAMA_URL',
+    freellmapi: 'FREELLMAPI_API_KEY',
     cerebras: 'CEREBRAS_API_KEY',
     groq: 'GROQ_API_KEY',
     nvidia: 'NVIDIA_API_KEY',
@@ -100,6 +112,11 @@ function isAvailable(provider: ProviderName): boolean {
   if (provider === 'ollama') {
     return !!process.env['OLLAMA_URL'] || !!process.env['OLLAMA_HOST'];
   }
+  // freellmapi requires an EXPLICIT endpoint (FREELLMAPI_BASE_URL) — no hardcoded host in
+  // source (cross-instance security review). No env → provider simply absent from the pool.
+  if (provider === 'freellmapi') {
+    return !!process.env['FREELLMAPI_API_KEY'] && !!process.env['FREELLMAPI_BASE_URL'];
+  }
   return !!getEnvKey(provider);
 }
 
@@ -108,6 +125,20 @@ function createModel(config: ModelConfig): any {
   switch (config.provider) {
     case 'ollama':
       return ollama(config.modelId);
+
+    case 'freellmapi': {
+      // Endpoint comes ONLY from env — no plaintext host in source (cross-instance security
+      // review). isAvailable() already gates selection on this; the guard is defensive.
+      const baseURL = process.env['FREELLMAPI_BASE_URL'];
+      if (!baseURL) throw new Error('FREELLMAPI_BASE_URL not set — set it in .env (gateway endpoint)');
+      return createOpenAICompatible({
+        name: 'freellmapi',
+        baseURL,
+        headers: {
+          Authorization: `Bearer ${process.env['FREELLMAPI_API_KEY']}`,
+        },
+      }).languageModel(config.modelId);
+    }
 
     case 'cerebras':
       return createCerebras({
@@ -153,16 +184,19 @@ export interface RouterOptions {
   role?: ModelRole;
   maxCostTier?: number;
   preferredProvider?: ProviderName;
+  /** Providers the swarm must never use (canon: "never Claude as swarm agent"). */
+  excludeProviders?: ProviderName[];
 }
 
 export function routeModel(opts: RouterOptions = {}): RouteResult {
   const envPref = process.env['ATLAS_PREFERRED_PROVIDER'] as ProviderName | undefined;
-  const { role = 'WORKER', maxCostTier = 3, preferredProvider = envPref } = opts;
+  const { role = 'WORKER', maxCostTier = 3, preferredProvider = envPref, excludeProviders } = opts;
 
   const candidates = MODEL_REGISTRY.filter(
     (m) =>
       m.roles.includes(role) &&
       m.costTier <= maxCostTier &&
+      !(excludeProviders?.includes(m.provider)) &&
       isAvailable(m.provider),
   ).sort((a, b) => {
     if (preferredProvider) {
@@ -202,12 +236,13 @@ export async function routeModelWithFallback(
   callFn: (route: RouteResult) => Promise<unknown>,
 ): Promise<{ result: unknown; route: RouteResult }> {
   const envPref = process.env['ATLAS_PREFERRED_PROVIDER'] as ProviderName | undefined;
-  const { role = 'WORKER', maxCostTier = 3, preferredProvider = envPref } = opts;
+  const { role = 'WORKER', maxCostTier = 3, preferredProvider = envPref, excludeProviders } = opts;
 
   const candidates = MODEL_REGISTRY.filter(
     (m) =>
       m.roles.includes(role) &&
       m.costTier <= maxCostTier &&
+      !(excludeProviders?.includes(m.provider)) &&
       isAvailable(m.provider),
   ).sort((a, b) => {
     if (preferredProvider) {

@@ -1,5 +1,8 @@
-import { describe, it, expect, vi } from 'vitest';
-import { loadWakeContext } from '../atlas/memory-manager.js';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { describe, it, expect } from 'vitest';
+import { loadBrainContext, loadWakeContext } from '../atlas/memory-manager.js';
 import { IDENTITY } from '../atlas/identity.js';
 
 describe('wake command prerequisites', () => {
@@ -35,5 +38,27 @@ describe('wake command prerequisites', () => {
     const ctx = await loadWakeContext();
     expect(ctx).toContain('atlas-debts-to-ceo.md');
     expect(ctx).toContain('project_v0laura_vision.md');
+  });
+
+  it('loadBrainContext falls back to compiled BRAIN.md', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'atlas-memory-'));
+    const previousRoot = process.env.MEMORY_ROOT;
+    try {
+      const atlas = join(root, 'memory', 'atlas');
+      await mkdir(atlas, { recursive: true });
+      await writeFile(join(atlas, 'BRAIN.md'), 'compiled-brain-context', 'utf-8');
+      process.env.MEMORY_ROOT = root;
+
+      const ctx = await loadBrainContext();
+      expect(ctx).toContain('ATLAS BRAIN — COMPILED IDENTITY');
+      expect(ctx).toContain('compiled-brain-context');
+    } finally {
+      if (previousRoot === undefined) {
+        delete process.env.MEMORY_ROOT;
+      } else {
+        process.env.MEMORY_ROOT = previousRoot;
+      }
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

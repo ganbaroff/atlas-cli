@@ -1,45 +1,91 @@
 /**
  * Atlas Telegram bot — rewritten for reliability.
- * Zero abstraction layers. Anthropic SDK direct. One file.
+ * Direct Telegram polling with multi-provider model fallback. One file.
  */
 
-import 'dotenv/config';
+// CWD-FIX (stitch-breaker): resolve .env + operator/state from module dir,
+// not process.cwd(). Without this, launching from any dir other than ANUS root
+// → "No models available" + operator crash. See breadcrumb 2026-06-26 15:30.
+import { config } from 'dotenv';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+
+const ANUS_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+config({ path: resolve(ANUS_ROOT, '.env') });
+process.chdir(ANUS_ROOT);
 import { Telegraf } from 'telegraf';
-import Anthropic from '@anthropic-ai/sdk';
-import { readFileSync, existsSync, writeFileSync, unlinkSync } from 'node:fs';
+import { Agent } from '@mastra/core/agent';
+import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { validateCompletion } from './gates/verify-before-done.js';
-import { loadLessons } from './atlas/memory-manager.js';
+import { summarizeReplyGate } from './atlas/reply-gates.js';
+import { deliverReply } from './atlas/reply-delivery.js';
+import { extractTurnEvidence, type TurnEvidenceSource } from './atlas/turn-evidence.js';
+import {
+  applyControlCommand,
+  controlAllowsModelCalls,
+  describeControlBlock,
+  parseControlCommand,
+} from './atlas/control-plane.js';
+import { buildAtlasBrainPlan } from './atlas/brain-planner.js';
 import { appendMessage, loadConversation, compactIfNeeded, type StoredMessage } from './atlas/conversation-store.js';
+import { listAvailableModels, routeModelWithFallback } from './model-router.js';
+import { analyzeWindow, emotionDirective } from './atlas/emotion.js';
+import { loadPulse, savePulse, processEvent, pulseToneHint } from './atlas/pulse.js';
+import { runOperatorActionLane } from './operator/action-lane.js';
+import { runSwarm } from './swarm.js';
 
 // ── Env verification ────────────────────────────────────────────────
-const REQUIRED = ['TELEGRAM_BOT_TOKEN', 'ANTHROPIC_API_KEY'] as const;
+const REQUIRED = ['TELEGRAM_BOT_TOKEN'] as const;
 for (const key of REQUIRED) {
   if (!process.env[key]) { console.error(`FATAL: ${key} missing from .env`); process.exit(1); }
 }
 
-const anthropic = new Anthropic({ apiKey: process.env['ANTHROPIC_API_KEY']! });
+if (!process.env['OLLAMA_URL'] && !process.env['OLLAMA_HOST']) {
+  process.env['OLLAMA_URL'] = 'http://127.0.0.1:11434';
+  console.log('[model] defaulting to local Ollama at http://127.0.0.1:11434');
+}
+
 const bot = new Telegraf(process.env['TELEGRAM_BOT_TOKEN']!);
+const availableModels = listAvailableModels();
+if (availableModels.length === 0) {
+  console.error('FATAL: no model provider keys configured in .env');
+  process.exit(1);
+}
 
-// ── Brain — loaded once, cached in RAM ──────────────────────────────
-const BRAIN_PATH = join(
-  process.env['MEMORY_ROOT'] ?? (process.platform === 'win32' ? 'C:\\Projects\\VOLAURA' : join(process.env['HOME'] ?? '~', 'Projects', 'VOLAURA')),
-  'memory', 'atlas', 'TELEGRAM-BRAIN.md',
-);
-const BRAIN = existsSync(BRAIN_PATH) ? readFileSync(BRAIN_PATH, 'utf-8') : 'You are Atlas, AI assistant for VOLAURA. Respond in Russian unless asked otherwise.';
-let SYSTEM = `${BRAIN}\n\nToday: ${new Date().toISOString().slice(0, 10)}. You are talking to CEO Yusif via Telegram. Be concise.`;
-console.log(`[brain] loaded ${BRAIN.length} chars from ${existsSync(BRAIN_PATH) ? BRAIN_PATH : 'fallback'}`);
+type ModelReply = {
+  modelId: string;
+  provider: string;
+  reply: string;
+  evidence: TurnEvidenceSource;
+};
 
-// Lessons loaded before bot.launch() — no race condition
-async function injectLessons(): Promise<void> {
-  try {
-    const lessons = await loadLessons(true);
-    if (lessons) {
-      SYSTEM += `\n\n## LESSONS (never repeat these mistakes)\n${lessons}`;
-      console.log(`[lessons] injected ${lessons.length} chars into system prompt`);
-    }
-  } catch { /* vault unreachable — continue without lessons */ }
+async function generateWithFallback(
+  messages: Msg[],
+  system: string,
+): Promise<ModelReply> {
+  const { result } = await routeModelWithFallback(
+    { role: 'WORKER' },
+    async (route) => {
+      const agent = new Agent({
+        id: 'atlas-telegram',
+        name: 'Atlas',
+        instructions: system,
+        model: route.model,
+      });
+      const response = route.provider === 'ollama'
+        ? await agent.generateLegacy(messages as any)
+        : await agent.generate(messages as any);
+      return {
+        modelId: route.modelId,
+        provider: route.provider,
+        reply: response.text,
+        evidence: extractTurnEvidence(response),
+      } satisfies ModelReply;
+    },
+  );
+
+  return result as ModelReply;
 }
 
 // ── Conversation history — in-memory + persistent JSONL ────────────
@@ -56,6 +102,9 @@ function getConvo(chatId: number) {
   return convos.get(chatId)!;
 }
 
+let msgCount = 0;
+const WRITEBACK_INTERVAL = 10; // write heartbeat every N messages
+
 function addMsg(chatId: number, role: 'user' | 'assistant', content: string) {
   const c = getConvo(chatId);
   c.msgs.push({ role, content });
@@ -65,6 +114,12 @@ function addMsg(chatId: number, role: 'user' | 'assistant', content: string) {
     role,
     text: content,
   }).catch(err => console.error('[memory] write failed:', err));
+
+  // Periodic write-back — don't rely on graceful shutdown (Class 7 on SIGTERM)
+  msgCount++;
+  if (msgCount % WRITEBACK_INTERVAL === 0) {
+    writeSessionSummary().catch(err => console.error('[memory] periodic write-back failed:', err));
+  }
 
   if (c.msgs.length > 20) {
     const old = c.msgs.splice(0, c.msgs.length - 10);
@@ -89,35 +144,70 @@ function buildMessages(chatId: number): Msg[] {
 // ── LLM call ────────────────────────────────────────────────────────
 async function ask(chatId: number, text: string): Promise<string> {
   addMsg(chatId, 'user', text);
+
+  const operatorAction = runOperatorActionLane(text, { source: 'telegram' });
+  if (operatorAction.handled) {
+    addMsg(chatId, 'assistant', operatorAction.reply);
+    return operatorAction.reply;
+  }
+
+  const controlCommand = parseControlCommand(text);
+  if (controlCommand) {
+    const result = applyControlCommand(controlCommand, 'telegram');
+    addMsg(chatId, 'assistant', result.message);
+    return result.message;
+  }
+
+  if (!controlAllowsModelCalls()) {
+    const blocked = describeControlBlock();
+    addMsg(chatId, 'assistant', blocked);
+    return blocked;
+  }
+
   const messages = buildMessages(chatId);
   console.log(`[in]  chat=${chatId} msg="${text.slice(0, 100)}"`);
 
-  const res = await anthropic.messages.create({
-    model: 'claude-sonnet-4-20250514',
-    max_tokens: 1024,
-    system: SYSTEM,
-    messages,
-  });
+  // Emotion layer: read CEO state over the last 2-3 user messages (05-emotional-states.md:59),
+  // update Atlas's own Pulse, persist MOOD.md. Both bias TONE only — never facts, never refusals.
+  const userWindow = getConvo(chatId)
+    .msgs.filter((m) => m.role === 'user')
+    .slice(-3)
+    .reverse()
+    .map((m) => m.content);
+  const ceoRead = analyzeWindow(userWindow);
+  const pulse = processEvent(loadPulse(), 'ceo', 'user_feedback');
+  savePulse(pulse.state, `telegram message, CEO read: ${ceoRead.state}`);
+  console.log(
+    `[emotion] chat=${chatId} ceo=${ceoRead.state}/${ceoRead.intensity} pulse-int=${pulse.intensity.toFixed(2)}${pulse.wouldBlock ? ' [would-block: log-only]' : ''}`,
+  );
 
-  const reply = res.content.map(b => b.type === 'text' ? b.text : '').join('');
-  addMsg(chatId, 'assistant', reply);
-  console.log(`[out] chat=${chatId} reply="${reply.slice(0, 100)}" tokens=${res.usage.input_tokens}+${res.usage.output_tokens}`);
-
-  const jidoka = validateCompletion(reply);
-  if (!jidoka.passed) {
-    console.warn(`[jidoka] chat=${chatId} violation: ${jidoka.violation}`);
-    const retry = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1024,
-      system: `${SYSTEM}\n\nYour previous answer was blocked by Jidoka gate: "${jidoka.violation}". Rephrase without claiming completion unless you used a tool to verify. Be honest about what you know vs don't know.`,
-      messages: [{ role: 'user', content: text }],
-    });
-    const fixed = retry.content.map(b => b.type === 'text' ? b.text : '').join('');
-    addMsg(chatId, 'assistant', fixed);
-    return fixed || reply;
+  const basePrompt = (await buildAtlasBrainPlan({ channel: 'telegram' })).systemPrompt;
+  const system = `${basePrompt}\n\n${emotionDirective(ceoRead)}\n${pulseToneHint(pulse.state)}`;
+  const firstPass = await generateWithFallback(messages, system);
+  console.log(`[out] chat=${chatId} provider=${firstPass.provider}/${firstPass.modelId} reply="${firstPass.reply.slice(0, 100)}"`);
+  const delivery = await deliverReply(firstPass.reply, async (prompt) => {
+    const retry = await generateWithFallback(
+      [...messages, { role: 'user', content: prompt }],
+      system,
+    );
+    console.log(`[out-retry] chat=${chatId} provider=${retry.provider}/${retry.modelId} reply="${retry.reply.slice(0, 100)}"`);
+    return {
+      reply: retry.reply,
+      evidence: retry.evidence,
+    };
+  }, firstPass.evidence);
+  const reply = delivery.reply;
+  if (delivery.repaired.retried) {
+    console.warn(`[reply-gate] chat=${chatId} ${summarizeReplyGate(delivery.repaired.firstPass)} -> ${summarizeReplyGate(delivery.repaired.retryPass ?? delivery.repaired.firstPass)}`);
   }
+  if (!delivery.emitDecision.emitOriginalReply) {
+    console.warn(`[verify_completion_walk] chat=${chatId} ${delivery.emitDecision.reason ?? 'blocked'} proof=${delivery.emitDecision.proofTokens.length}`);
+  }
+  console.log(`[out-final] chat=${chatId} reply="${reply.slice(0, 100)}"`);
 
-  return reply || 'Молчу. Повтори?';
+  const finalReply = reply.trim() || 'Молчу. Повтори?';
+  addMsg(chatId, 'assistant', finalReply);
+  return finalReply;
 }
 
 // ── Voice transcription — graceful fallback ─────────────────────────
@@ -145,7 +235,98 @@ async function transcribe(fileUrl: string): Promise<string> {
   }
 }
 
+// ── Telegram message splitting (4096 char limit) ───────────────────
+const TG_LIMIT = 4096;
+async function sendLong(ctx: any, text: string): Promise<void> {
+  if (text.length <= TG_LIMIT) { await ctx.reply(text); return; }
+  for (let i = 0; i < text.length; i += TG_LIMIT) {
+    await ctx.reply(text.slice(i, i + TG_LIMIT));
+  }
+}
+
+// ── Swarm trigger detection ────────────────────────────────────────
+const SWARM_TRIGGERS = /^(?:\/swarm|рой|swarm)\b/i;
+function isSwarmRequest(text: string): { isSwarm: boolean; task: string } {
+  const match = text.match(SWARM_TRIGGERS);
+  if (!match) return { isSwarm: false, task: '' };
+  return { isSwarm: true, task: text.slice(match[0].length).trim() || text };
+}
+
 // ── Bot handlers ────────────────────────────────────────────────────
+bot.command('status', async (ctx) => {
+  const chatId = ctx.chat.id;
+  await ctx.reply('[atlas] Проверяю статус экосистемы...');
+  try {
+    const { execSync } = await import('node:child_process');
+    const statusScript = 'C:/Projects/ATLAS/scripts/status.mjs';
+    const out = execSync(`node "${statusScript}" --json`, {
+      cwd: 'C:/Projects/ATLAS',
+      timeout: 15_000,
+      encoding: 'utf-8',
+      env: { ...process.env, NODE_NO_WARNINGS: '1' },
+    });
+    const data = JSON.parse(out);
+    const wakes = (data.wake_signals ?? []).map((s: any) => `  ⚠ ${s.subject}: ${s.detail?.slice(0, 80)}`);
+    const queued = (data.queue_signals ?? []).map((s: any) => `  · ${s.subject}: ${s.detail?.slice(0, 60)}`);
+    const stale = (data.stale_agents ?? []).map((a: any) => `  · ${a.agent_id} (${a.age_hours}h)`);
+    const dirty = (data.dirty_repos ?? []).map((r: any) => `${r.path.split('/').pop()}=${r.count}`);
+    const lines = [
+      `Atlas Status — ${new Date(data.time).toLocaleString('ru-RU', { timeZone: 'Asia/Baku' })}`,
+      '',
+      `Prod: ${data.prod_health?.status ?? '?'} (v${data.prod_health?.version ?? '?'}, sha ${data.prod_health?.sha?.slice(0, 7) ?? '?'})`,
+      '',
+      wakes.length ? `Wake (${wakes.length}):` : 'Wake: 0',
+      ...wakes,
+      '',
+      queued.length ? `Queue (${queued.length}):` : 'Queue: 0',
+      ...queued.slice(0, 3),
+      queued.length > 3 ? `  ...и ещё ${queued.length - 3}` : '',
+      '',
+      stale.length ? `Stale agents (${stale.length}):` : 'Stale: 0',
+      ...stale,
+      '',
+      `Dirty: ${dirty.join(', ') || 'clean'}`,
+    ].filter(Boolean);
+    const reply = lines.join('\n');
+    addMsg(chatId, 'user', '/status');
+    addMsg(chatId, 'assistant', reply);
+    await ctx.reply(reply);
+  } catch (e) {
+    const err = `Status check failed: ${e instanceof Error ? e.message.slice(0, 200) : String(e)}`;
+    await ctx.reply(err);
+    console.error('[status error]', e);
+  }
+});
+
+bot.command('models', async (ctx) => {
+  const models = listAvailableModels();
+  const lines = models.map(m => `${m.provider}/${m.modelId} (tier ${m.costTier}, ${m.roles.join('/')})`);
+  const reply = `Available models (${models.length}):\n${lines.join('\n')}`;
+  await ctx.reply(reply);
+});
+
+bot.command('swarm', async (ctx) => {
+  const task = ctx.message.text.replace(/^\/swarm\s*/, '').trim();
+  if (!task) {
+    await ctx.reply('Usage: /swarm <task>\nРой проанализирует задачу с нескольких перспектив.');
+    return;
+  }
+  const chatId = ctx.chat.id;
+  addMsg(chatId, 'user', `/swarm ${task}`);
+  await ctx.reply('[swarm] Запускаю рой — несколько перспектив параллельно...');
+  try {
+    const result = await runSwarm(task);
+    addMsg(chatId, 'assistant', result);
+    await sendLong(ctx, result);
+    console.log(`[swarm] chat=${chatId} task="${task.slice(0, 80)}" result=${result.length} chars`);
+  } catch (e) {
+    const err = `Рой упал: ${e instanceof Error ? e.message : String(e)}`;
+    addMsg(chatId, 'assistant', err);
+    await ctx.reply(err);
+    console.error('[swarm error]', e);
+  }
+});
+
 bot.start(async (ctx) => {
   const chatId = ctx.chat.id;
   convos.delete(chatId);
@@ -160,8 +341,23 @@ bot.start(async (ctx) => {
 
 bot.on('text', async (ctx) => {
   try {
-    const reply = await ask(ctx.chat.id, ctx.message.text);
-    await ctx.reply(reply);
+    const text = ctx.message.text;
+    const chatId = ctx.chat.id;
+
+    // Natural language swarm trigger: "рой, ..." or "swarm ..."
+    const swarmCheck = isSwarmRequest(text);
+    if (swarmCheck.isSwarm && swarmCheck.task) {
+      addMsg(chatId, 'user', text);
+      await ctx.reply('[swarm] Запускаю рой...');
+      const result = await runSwarm(swarmCheck.task);
+      addMsg(chatId, 'assistant', result);
+      await sendLong(ctx, result);
+      console.log(`[swarm] chat=${chatId} trigger="${text.slice(0, 40)}" result=${result.length} chars`);
+      return;
+    }
+
+    const reply = await ask(chatId, text);
+    await sendLong(ctx, reply);
   } catch (e) {
     console.error('[text error]', e);
     await ctx.reply('Внутренняя ошибка. Попробуй снова.');
@@ -182,15 +378,64 @@ bot.on('voice', async (ctx) => {
   }
 });
 
-// ── Launch with crash recovery ──────────────────────────────────────
-async function boot(): Promise<void> {
-  await injectLessons();
-  bot.launch();
-  console.log(`[bot] Atlas Telegram alive — ${new Date().toISOString()}`);
-}
-boot();
+// ── Session write-back on shutdown (v1 bar: memory across sessions) ──
+import { appendJournal, writeHeartbeat } from './atlas/memory-manager.js';
 
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
-process.on('uncaughtException', (e) => { console.error('[CRASH]', e); });
-process.on('unhandledRejection', (e) => { console.error('[UNHANDLED]', e); });
+async function writeSessionSummary(): Promise<void> {
+  try {
+    const sessionChats = Array.from(convos.entries());
+    if (sessionChats.length === 0) return;
+
+    const totalMsgs = sessionChats.reduce((sum, [, c]) => sum + c.msgs.length, 0);
+    const topics = sessionChats
+      .flatMap(([, c]) => c.msgs.filter(m => m.role === 'user').map(m => m.content.slice(0, 60)))
+      .slice(-5);
+
+    const entry = [
+      `## Telegram session — ${new Date().toISOString()}`,
+      '',
+      `Chats: ${sessionChats.length}, Messages: ${totalMsgs}`,
+      `Models used: ${availableModels.map(m => m.provider).join(', ')}`,
+      '',
+      `### Last topics`,
+      ...topics.map(t => `- ${t}`),
+    ].join('\n');
+
+    await appendJournal(entry);
+    await writeHeartbeat({
+      source: 'telegram',
+      chats: sessionChats.length,
+      messages: totalMsgs,
+      providers: availableModels.map(m => `${m.provider}/${m.modelId}`).join(', '),
+      shutdownReason: 'signal',
+    });
+    console.log(`[memory] session summary written: ${totalMsgs} msgs across ${sessionChats.length} chats`);
+  } catch (e) {
+    console.error('[memory] write-back failed:', e);
+  }
+}
+
+// ── Launch with crash recovery ──────────────────────────────────────
+function fatal(label: string, error: unknown): never {
+  console.error(label, error);
+  process.exit(1);
+}
+
+const bootTime = new Date().toISOString();
+async function boot(): Promise<void> {
+  void bot.launch(() => {
+    console.log(`[bot] Atlas Telegram alive @${bot.botInfo?.username ?? 'unknown'} — ${bootTime} fallback=routeModelWithFallback providers=${availableModels.map((m) => m.provider).join(',')}`);
+  }).catch((error) => fatal('[LAUNCH FAILED]', error));
+}
+boot().catch((error) => fatal('[BOOT FAILED]', error));
+
+async function gracefulStop(signal: string): Promise<void> {
+  console.log(`[bot] ${signal} received, writing session summary...`);
+  await writeSessionSummary();
+  bot.stop(signal);
+}
+
+process.once('SIGINT', () => { gracefulStop('SIGINT').catch(() => process.exit(0)); });
+process.once('SIGTERM', () => { gracefulStop('SIGTERM').catch(() => process.exit(0)); });
+process.on('uncaughtException', (e) => fatal('[CRASH]', e));
+process.on('unhandledRejection', (e) => fatal('[UNHANDLED]', e));

@@ -4,6 +4,8 @@ Persistent AI agent for the terminal. Multi-model, multi-perspective, memory-bac
 
 Part of the [VOLAURA](https://volaura.app) ecosystem.
 
+Canonical layout note: Atlas memory and Python swarm currently live in `C:\Projects\VOLAURA`, while this repo is the CLI shell. See [ATLAS-CANON.md](./ATLAS-CANON.md).
+
 ## Install
 
 ```bash
@@ -49,6 +51,7 @@ Set at least one. Cost order: free first, paid last.
 | Variable | Provider | Cost |
 |----------|----------|------|
 | `CEREBRAS_API_KEY` | Cerebras | Free |
+| `GROQ_API_KEY` | Groq | Free / limited |
 | `NVIDIA_API_KEY` | NVIDIA NIM | Free |
 | `OLLAMA_URL` | Ollama (local) | Free |
 | `OPENROUTER_API_KEY` | OpenRouter | Paid |
@@ -74,7 +77,7 @@ Override path: `ATLAS_PERSPECTIVES_PATH=/path/to/perspectives.json`
 
 ## Architecture
 
-- **Multi-model fallback**: Cerebras -> Ollama -> NVIDIA -> OpenRouter -> Anthropic
+- **Multi-model routing**: Ollama -> Cerebras -> Groq -> NVIDIA -> OpenRouter -> Anthropic
 - **Memory**: Obsidian-compatible vault, persistent across sessions
 - **Swarm**: fork-based parallel agents with Jidoka quality gate
 - **Cron**: 30-min self-check, health reports to memory vault

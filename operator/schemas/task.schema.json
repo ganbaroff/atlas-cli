@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://volaura.local/operator/task.schema.json",
+  "title": "Atlas Operator Task",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "title",
+    "created_at",
+    "route",
+    "mode",
+    "cwd",
+    "allowed_paths",
+    "objective",
+    "expected_evidence",
+    "safety"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{2,80}$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 3
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "route": {
+      "enum": ["local", "openmanus", "octogent", "vellum", "manual"]
+    },
+    "mode": {
+      "enum": ["read_only", "write"]
+    },
+    "cwd": {
+      "type": "string",
+      "minLength": 1
+    },
+    "allowed_paths": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "objective": {
+      "type": "string",
+      "minLength": 10
+    },
+    "inputs": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "expected_evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "enum": [
+          "file_exists",
+          "file_read",
+          "command_exit",
+          "browser_observation",
+          "browser_session_trace",
+          "log_trace",
+          "manual_note"
+        ]
+      }
+    },
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sandbox_required", "network_allowed", "write_allowed"],
+      "properties": {
+        "sandbox_required": {
+          "type": "boolean"
+        },
+        "network_allowed": {
+          "type": "boolean"
+        },
+        "write_allowed": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

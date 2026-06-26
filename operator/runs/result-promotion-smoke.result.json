@@ -1,0 +1,153 @@
+{
+  "task_id": "result-promotion-smoke",
+  "status": "success",
+  "executor": "manual",
+  "started_at": "2026-05-31T21:22:57.175Z",
+  "completed_at": "2026-05-31T21:22:57.183Z",
+  "summary": "promotion passed: evaluator verdict and durable proof present",
+  "evidence": [
+    {
+      "id": "result-promotion-smoke.cwd",
+      "task_id": "result-promotion-smoke",
+      "type": "file_exists",
+      "source": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS",
+      "observed_at": "2026-05-31T21:22:57.177Z",
+      "summary": "Task cwd exists",
+      "data": {},
+      "proof_token": "result-promotion-smoke.cwd",
+      "verifier": "atlas-operator-dispatcher"
+    },
+    {
+      "id": "result-promotion-smoke.result",
+      "task_id": "result-promotion-smoke",
+      "type": "file_read",
+      "source": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\operator\\runs\\result-quality-evaluator-smoke.result.json",
+      "observed_at": "2026-05-31T21:22:57.183Z",
+      "summary": "Loaded result result-quality-evaluator-smoke for promotion",
+      "data": {},
+      "proof_token": "result-promotion-smoke.result",
+      "verifier": "atlas-operator-dispatcher"
+    },
+    {
+      "id": "result-promotion-smoke.verdict",
+      "task_id": "result-promotion-smoke",
+      "type": "manual_note",
+      "source": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\operator\\runs\\result-quality-evaluator-smoke.result.json",
+      "observed_at": "2026-05-31T21:22:57.183Z",
+      "summary": "promotion passed: evaluator verdict and durable proof present",
+      "data": {
+        "target_task_id": "result-quality-evaluator-smoke",
+        "target_result_path": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\operator\\runs\\result-quality-evaluator-smoke.result.json",
+        "promotion": {
+          "promoted": true,
+          "status": "promoted",
+          "reason": "promotion passed: evaluator verdict and durable proof present",
+          "safe_reply": "Не подтверждено. Проверю.",
+          "proof_tokens": [
+            "result-quality-evaluator-smoke.cwd",
+            "result-quality-evaluator-smoke.task",
+            "result-quality-evaluator-smoke.result",
+            "result-quality-evaluator-smoke.verdict",
+            "result-quality-evaluator-smoke.trace"
+          ],
+          "current_turn_proof_tokens": [],
+          "final_verdict": "passed",
+          "winning_result_path": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\operator\\runs\\octogent-live-child-ack-smoke.result.json",
+          "source_result_path": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\operator\\runs\\octogent-live-child-ack-smoke.result.json"
+        }
+      },
+      "proof_token": "result-promotion-smoke.verdict",
+      "verifier": "atlas-operator-dispatcher"
+    },
+    {
+      "id": "result-promotion-smoke.trace",
+      "task_id": "result-promotion-smoke",
+      "type": "log_trace",
+      "source": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\operator\\runs\\result-quality-evaluator-smoke.result.json",
+      "observed_at": "2026-05-31T21:22:57.183Z",
+      "summary": "{\n  \"target_task_id\": \"result-quality-evaluator-smoke\",\n  \"target_result\": \"success\",\n  \"promotion\": {\n    \"promoted\": true,\n    \"status\": \"promoted\",\n    \"reason\": \"promotion passed: evaluator verdict and durable proof present\",\n    \"safe_reply\": \"Не подтверждено. Проверю.\",\n    \"proof_tokens\": [\n      \"result-quality-evaluator-smoke.cwd\",\n      \"result-quality-evaluator-smoke.task\",\n      \"result-quality-evaluator-smoke.result\",\n      \"result-quality-evaluator-smoke.verdict\",\n      \"result-quality-evaluator-smoke.trace\"\n    ],\n    \"current_turn_proof_tokens\": [],\n    \"final_verdict\": \"passed\",\n    \"winning_result_path\": \"C:\\\\Users\\\\user\\\\OneDrive\\\\Documents\\\\GitHub\\\\ANUS\\\\operator\\\\runs\\\\octogent-live-child-ack-smoke.result.json\",\n    \"source_result_path\": \"C:\\\\Users\\\\user\\\\OneDrive\\\\Documents\\\\GitHub\\\\ANUS\\\\operator\\\\runs\\\\octogent-live-child-ack-smoke.result.json\"\n  }\n}",
+      "data": {
+        "target_task_id": "result-quality-evaluator-smoke",
+        "target_result_path": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\operator\\runs\\result-quality-evaluator-smoke.result.json",
+        "promotion": {
+          "promoted": true,
+          "status": "promoted",
+          "reason": "promotion passed: evaluator verdict and durable proof present",
+          "safe_reply": "Не подтверждено. Проверю.",
+          "proof_tokens": [
+            "result-quality-evaluator-smoke.cwd",
+            "result-quality-evaluator-smoke.task",
+            "result-quality-evaluator-smoke.result",
+            "result-quality-evaluator-smoke.verdict",
+            "result-quality-evaluator-smoke.trace"
+          ],
+          "current_turn_proof_tokens": [],
+          "final_verdict": "passed",
+          "winning_result_path": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\operator\\runs\\octogent-live-child-ack-smoke.result.json",
+          "source_result_path": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\operator\\runs\\octogent-live-child-ack-smoke.result.json"
+        }
+      },
+      "proof_token": "result-promotion-smoke.trace",
+      "verifier": "atlas-operator-dispatcher"
+    }
+  ],
+  "errors": [],
+  "evaluation": {
+    "passed": true,
+    "score": 100,
+    "summary": "Result quality passed for octogent-live-child-ack-smoke.",
+    "issues": [],
+    "evaluated_at": "2026-05-31T21:22:38.455Z",
+    "evaluator": "atlas-operator-evaluator",
+    "final_verdict": "passed",
+    "retryable_route": true,
+    "retry_used": false,
+    "source_result_path": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\operator\\runs\\octogent-live-child-ack-smoke.result.json",
+    "winning_result_path": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\operator\\runs\\octogent-live-child-ack-smoke.result.json",
+    "result_chain_paths": [
+      "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\operator\\runs\\octogent-live-child-ack-smoke.result.json"
+    ],
+    "evidence_chain_paths": [
+      "C:\\Projects\\octogent",
+      "node C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\scripts\\octogent-live-child-ack-smoke.mjs"
+    ],
+    "attempts": [
+      {
+        "attempt": "source",
+        "result_path": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\operator\\runs\\octogent-live-child-ack-smoke.result.json",
+        "result_status": "success",
+        "verdict": "passed",
+        "score": 100,
+        "summary": "Result quality passed for octogent-live-child-ack-smoke.",
+        "issues": [],
+        "proof_tokens": [
+          "octogent-live-child-ack-smoke.cwd",
+          "octogent-live-child-ack-smoke.command",
+          "octogent-live-child-ack-smoke.trace"
+        ],
+        "evidence_paths": [
+          "C:\\Projects\\octogent",
+          "node C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\scripts\\octogent-live-child-ack-smoke.mjs"
+        ]
+      }
+    ]
+  },
+  "promotion": {
+    "promoted": true,
+    "status": "promoted",
+    "reason": "promotion passed: evaluator verdict and durable proof present",
+    "safe_reply": "Не подтверждено. Проверю.",
+    "proof_tokens": [
+      "result-quality-evaluator-smoke.cwd",
+      "result-quality-evaluator-smoke.task",
+      "result-quality-evaluator-smoke.result",
+      "result-quality-evaluator-smoke.verdict",
+      "result-quality-evaluator-smoke.trace"
+    ],
+    "current_turn_proof_tokens": [],
+    "final_verdict": "passed",
+    "winning_result_path": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\operator\\runs\\octogent-live-child-ack-smoke.result.json",
+    "source_result_path": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\operator\\runs\\octogent-live-child-ack-smoke.result.json"
+  },
+  "trace_path": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\operator\\runs\\result-promotion-smoke.result.json"
+}

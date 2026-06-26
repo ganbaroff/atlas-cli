@@ -1,0 +1,32 @@
+{
+  "id": "octogent-live-child-ack-smoke",
+  "title": "Octogent live child-ack smoke",
+  "created_at": "2026-05-30T08:55:00.000Z",
+  "route": "octogent",
+  "mode": "read_only",
+  "cwd": "C:/Projects/octogent",
+  "allowed_paths": [
+    "C:/Projects/octogent"
+  ],
+  "objective": "Verify real child spawn, channel send, ack, and delivery trace in Octogent runtime.",
+  "inputs": {
+    "runtime_mode": "live_child_ack",
+    "start_port": 8795,
+    "timeout_ms": 240000,
+    "parent_terminal_id": "octogent-live-parent",
+    "child_terminal_id": "octogent-live-child",
+    "parent_prompt": "Live parent ready.",
+    "child_prompt": "Live child ready.",
+    "parent_message": "Need ACK from child.",
+    "child_message": "ACK: live worker online."
+  },
+  "expected_evidence": [
+    "command_exit",
+    "log_trace"
+  ],
+  "safety": {
+    "sandbox_required": false,
+    "network_allowed": false,
+    "write_allowed": false
+  }
+}

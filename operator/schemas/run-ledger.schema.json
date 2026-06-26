@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://volaura.local/operator/run-ledger.schema.json",
+  "title": "Atlas Operator Run Ledger Entry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "run_id",
+    "task_id",
+    "executor",
+    "started_at",
+    "completed_at",
+    "status",
+    "verdict",
+    "expected_evidence_met",
+    "proof_tokens",
+    "result_path"
+  ],
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{2,120}$"
+    },
+    "task_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{2,80}$"
+    },
+    "executor": {
+      "enum": ["atlas", "openmanus", "octogent", "vellum", "manual"]
+    },
+    "started_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "enum": ["success", "failure", "blocked", "skipped"]
+    },
+    "verdict": {
+      "enum": ["passed", "blocked"]
+    },
+    "expected_evidence_met": {
+      "type": "boolean"
+    },
+    "proof_tokens": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "result_path": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "enum": ["failure", "blocked", "skipped"]
+          }
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "properties": {
+          "verdict": {
+            "const": "blocked"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "verdict": {
+            "const": "passed"
+          }
+        },
+        "required": ["verdict"]
+      },
+      "then": {
+        "properties": {
+          "expected_evidence_met": {
+            "const": true
+          },
+          "proof_tokens": {
+            "minItems": 1
+          }
+        }
+      }
+    }
+  ]
+}
