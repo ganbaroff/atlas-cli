@@ -57,21 +57,30 @@ export async function deploy(project: string, prNumber?: number): Promise<Deploy
       pr = prs[0]; // Latest
     }
 
-    // Merge
-    exec(`gh pr merge ${pr.number} --repo ${config.repo} --squash --admin`, config.cwd);
+    // Pre-merge safety: verify CI is green (no --admin bypass)
+    const checksRaw = exec(`gh pr checks ${pr.number} --repo ${config.repo} --json bucket,name --jq '[.[] | select(.bucket == "fail")] | length'`, config.cwd);
+    const failCount = parseInt(checksRaw, 10);
+    if (failCount > 0) {
+      return { project, prNumber: pr.number, prTitle: pr.title, merged: false, healthCheck: null, error: `CI has ${failCount} failing check(s) — not deploying`, durationMs: Date.now() - t0 };
+    }
 
-    // Wait for deploy (Railway auto-deploys on push to main)
-    console.log(`[deploy] PR #${pr.number} merged, waiting 60s for Railway...`);
-    await new Promise(r => setTimeout(r, 60_000));
+    // Merge without --admin — respects branch protection
+    exec(`gh pr merge ${pr.number} --repo ${config.repo} --squash`, config.cwd);
 
-    // Health check
+    // Poll health until new SHA appears (max 10 attempts, 10s apart = 100s)
+    console.log(`[deploy] PR #${pr.number} merged, polling health...`);
     let healthCheck: { status: string; sha: string } | null = null;
-    try {
-      const raw = exec(`curl -s ${config.healthUrl}`, config.cwd);
-      const data = JSON.parse(raw);
-      healthCheck = { status: data.status, sha: (data.git_sha || '').slice(0, 7) };
-    } catch {
-      healthCheck = null;
+    for (let i = 0; i < 10; i++) {
+      await new Promise(r => setTimeout(r, 10_000));
+      try {
+        const raw = exec(`curl -s ${config.healthUrl}`, config.cwd);
+        const data = JSON.parse(raw);
+        healthCheck = { status: data.status, sha: (data.git_sha || '').slice(0, 7) };
+        if (healthCheck.status === 'ok') {
+          console.log(`[deploy] health OK on attempt ${i + 1}: sha=${healthCheck.sha}`);
+          break;
+        }
+      } catch { /* retry */ }
     }
 
     return {

@@ -52,17 +52,22 @@ export function runTask(description: string): Promise<TaskResult> {
     const chunks: Buffer[] = [];
     const errChunks: Buffer[] = [];
 
-    const proc = spawn('claude', [
-      '-p', description,
-      '--max-turns', '5',
-      '--output-format', 'text',
+    // Use ANUS CLI (atlas run) which routes through free providers (freellmapi/nvidia),
+    // NOT claude CLI which burns Anthropic credits. CEO directive: credits before cash.
+    const anusCli = resolve(process.cwd(), 'dist', 'cli.js');
+    const proc = spawn('node', [
+      anusCli, 'chat',
+      '--role', 'WORKER',
     ], {
       cwd: 'C:/Projects/VOLAURA',
       timeout: MAX_TIMEOUT,
-      env: { ...process.env, CLAUDE_CODE_SIMPLE: '1' },
-      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env },
+      stdio: ['pipe', 'pipe', 'pipe'],
       shell: true,
     });
+    // Send the task as stdin and close
+    proc.stdin?.write(description + '\n/quit\n');
+    proc.stdin?.end();
 
     activeTask = { id, process: proc };
 
