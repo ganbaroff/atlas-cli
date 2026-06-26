@@ -142,8 +142,37 @@ function buildMessages(chatId: number): Msg[] {
 }
 
 // ── LLM call ────────────────────────────────────────────────────────
+// Action intent detection — CEO says "проверь прод" → Atlas runs the command
+const ACTION_PATTERNS = [
+  { pattern: /проверь\s+прод|check\s+prod|prod\s+health/i, cmd: 'curl -s https://volauraapi-production.up.railway.app/health | python3 -c "import sys,json; d=json.load(sys.stdin); print(f\\"prod: {d[\'status\']} sha:{d[\'git_sha\'][:7]}\\")' },
+  { pattern: /git\s+status|статус\s+гит|что\s+в\s+гите/i, cmd: 'cd C:/Projects/VOLAURA && git log --oneline -3 && echo "---" && git status --short | head -10' },
+  { pattern: /бот\s+жив|bot\s+alive|pm2\s+status/i, cmd: 'pm2 status' },
+  { pattern: /atlas\s+status|статус\s+атлас|дашборд/i, cmd: 'cd C:/Projects/ATLAS && node scripts/status.mjs 2>&1 | head -20' },
+];
+
+function detectActionIntent(text: string): string | null {
+  for (const { pattern, cmd } of ACTION_PATTERNS) {
+    if (pattern.test(text)) return cmd;
+  }
+  return null;
+}
+
 async function ask(chatId: number, text: string): Promise<string> {
   addMsg(chatId, 'user', text);
+
+  // Auto-action: CEO asks about prod/git/bot → Atlas runs the check and includes result
+  const autoCmd = detectActionIntent(text);
+  if (autoCmd) {
+    try {
+      const { execSync } = await import('node:child_process');
+      const output = execSync(autoCmd, { timeout: 15_000, encoding: 'utf-8', maxBuffer: 512 * 1024 }).trim();
+      console.log(`[auto-action] chat=${chatId} cmd="${autoCmd.slice(0, 50)}" output=${output.length} chars`);
+      // Feed the output into the LLM so it can respond naturally with real data
+      addMsg(chatId, 'user', `[system: auto-check result]\n${output.slice(0, 2000)}`);
+    } catch (e: any) {
+      addMsg(chatId, 'user', `[system: auto-check failed] ${e.message?.slice(0, 200)}`);
+    }
+  }
 
   const operatorAction = runOperatorActionLane(text, { source: 'telegram' });
   if (operatorAction.handled) {
