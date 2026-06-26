@@ -182,7 +182,9 @@ async function ask(chatId: number, text: string): Promise<string> {
   );
 
   const basePrompt = (await buildAtlasBrainPlan({ channel: 'telegram' })).systemPrompt;
-  const system = `${basePrompt}\n\n${emotionDirective(ceoRead)}\n${pulseToneHint(pulse.state)}`;
+  // Inject actual model identity so the LLM doesn't hallucinate being a different model
+  const modelIdentity = `[RUNTIME: You are running on ${availableModels[0]?.provider ?? 'unknown'}/${availableModels[0]?.modelId ?? 'unknown'}. Do NOT claim to be Claude, GPT, or any other model. You are Atlas, powered by whatever model the router selected.]`;
+  const system = `${basePrompt}\n\n${modelIdentity}\n${emotionDirective(ceoRead)}\n${pulseToneHint(pulse.state)}`;
   const firstPass = await generateWithFallback(messages, system);
   console.log(`[out] chat=${chatId} provider=${firstPass.provider}/${firstPass.modelId} reply="${firstPass.reply.slice(0, 100)}"`);
   const delivery = await deliverReply(firstPass.reply, async (prompt) => {
