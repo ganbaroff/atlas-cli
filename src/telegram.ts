@@ -107,11 +107,9 @@ function getConvo(chatId: number) {
 // low traffic means write-back never fires.
 const WRITEBACK_MS = 5 * 60 * 1000;
 setInterval(() => {
-  if (convos.size > 0) {
-    writeSessionSummary()
-      .then(() => console.log('[memory] periodic write-back OK'))
-      .catch(err => console.error('[memory] periodic write-back failed:', err));
-  }
+  writeSessionSummary()
+    .then(() => console.log('[memory] periodic write-back OK'))
+    .catch(err => console.error('[memory] periodic write-back failed:', err));
 }, WRITEBACK_MS);
 
 function addMsg(chatId: number, role: 'user' | 'assistant', content: string) {
