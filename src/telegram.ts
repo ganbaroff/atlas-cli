@@ -359,6 +359,16 @@ bot.command('swarm', async (ctx) => {
 bot.start(async (ctx) => {
   const chatId = ctx.chat.id;
   convos.delete(chatId);
+  // Clear JSONL on disk too — old messages with hallucinated tool calls poison the context
+  try {
+    const { unlinkSync } = await import('node:fs');
+    const convPath = join(
+      process.env['MEMORY_ROOT'] ?? (process.platform === 'win32' ? 'C:\\Projects\\VOLAURA' : ''),
+      'memory', 'atlas', 'telegram-conversations', `${chatId}.jsonl`,
+    );
+    unlinkSync(convPath);
+    console.log(`[memory] cleared conversation history for chat ${chatId}`);
+  } catch { /* file may not exist — ok */ }
   try {
     const reply = await ask(chatId, '/start — new session started');
     await ctx.reply(reply);
