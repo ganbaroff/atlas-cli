@@ -29,6 +29,7 @@ import {
 } from './atlas/control-plane.js';
 import { buildAtlasBrainPlan } from './atlas/brain-planner.js';
 import { runTask, isTaskRunning } from './atlas/task-spawner.js';
+import { deploy, listOpenPRs } from './atlas/deploy.js';
 import { appendMessage, loadConversation, compactIfNeeded, type StoredMessage } from './atlas/conversation-store.js';
 import { listAvailableModels, routeModelWithFallback } from './model-router.js';
 import { analyzeWindow, emotionDirective } from './atlas/emotion.js';
@@ -333,6 +334,40 @@ bot.command('models', async (ctx) => {
   const lines = models.map(m => `${m.provider}/${m.modelId} (tier ${m.costTier}, ${m.roles.join('/')})`);
   const reply = `Available models (${models.length}):\n${lines.join('\n')}`;
   await ctx.reply(reply);
+});
+
+bot.command('deploy', async (ctx) => {
+  const args = ctx.message.text.replace(/^\/deploy\s*/, '').trim().split(/\s+/);
+  const project = args[0] || 'volaura';
+  const prNum = args[1] ? parseInt(args[1], 10) : undefined;
+  const chatId = ctx.chat.id;
+
+  if (!project) {
+    await ctx.reply('Usage: /deploy <project> [pr_number]\nПример: /deploy volaura 155');
+    return;
+  }
+
+  // Show open PRs first
+  const prs = listOpenPRs(project);
+  if (prs.length === 0 && !prNum) {
+    await ctx.reply(`No open PRs for ${project}.`);
+    return;
+  }
+
+  const target = prNum ? `PR #${prNum}` : `PR #${prs[0]?.number} "${prs[0]?.title?.slice(0, 50)}"`;
+  addMsg(chatId, 'user', `/deploy ${project} ${prNum || ''}`);
+  await ctx.reply(`[deploy] Мержу ${target} → main → Railway → health check.\nЭто займёт ~90 секунд.`);
+
+  try {
+    const result = await deploy(project, prNum);
+    const reply = result.error
+      ? `[deploy FAIL] ${result.error}`
+      : `[deploy OK] PR #${result.prNumber} merged.\nProd: ${result.healthCheck?.status} sha:${result.healthCheck?.sha}\n${Math.round(result.durationMs / 1000)}s`;
+    addMsg(chatId, 'assistant', reply);
+    await sendLong(ctx, reply);
+  } catch (e: any) {
+    await ctx.reply(`Deploy error: ${e.message?.slice(0, 300)}`);
+  }
 });
 
 bot.command('task', async (ctx) => {
