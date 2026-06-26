@@ -102,6 +102,9 @@ function getConvo(chatId: number) {
   return convos.get(chatId)!;
 }
 
+let msgCount = 0;
+const WRITEBACK_INTERVAL = 10; // write heartbeat every N messages
+
 function addMsg(chatId: number, role: 'user' | 'assistant', content: string) {
   const c = getConvo(chatId);
   c.msgs.push({ role, content });
@@ -111,6 +114,12 @@ function addMsg(chatId: number, role: 'user' | 'assistant', content: string) {
     role,
     text: content,
   }).catch(err => console.error('[memory] write failed:', err));
+
+  // Periodic write-back — don't rely on graceful shutdown (Class 7 on SIGTERM)
+  msgCount++;
+  if (msgCount % WRITEBACK_INTERVAL === 0) {
+    writeSessionSummary().catch(err => console.error('[memory] periodic write-back failed:', err));
+  }
 
   if (c.msgs.length > 20) {
     const old = c.msgs.splice(0, c.msgs.length - 10);
