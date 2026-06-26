@@ -28,6 +28,7 @@ import {
   parseControlCommand,
 } from './atlas/control-plane.js';
 import { buildAtlasBrainPlan } from './atlas/brain-planner.js';
+import { runTask, isTaskRunning } from './atlas/task-spawner.js';
 import { appendMessage, loadConversation, compactIfNeeded, type StoredMessage } from './atlas/conversation-store.js';
 import { listAvailableModels, routeModelWithFallback } from './model-router.js';
 import { analyzeWindow, emotionDirective } from './atlas/emotion.js';
@@ -332,6 +333,35 @@ bot.command('models', async (ctx) => {
   const lines = models.map(m => `${m.provider}/${m.modelId} (tier ${m.costTier}, ${m.roles.join('/')})`);
   const reply = `Available models (${models.length}):\n${lines.join('\n')}`;
   await ctx.reply(reply);
+});
+
+bot.command('task', async (ctx) => {
+  const desc = ctx.message.text.replace(/^\/task\s*/, '').trim();
+  if (!desc) {
+    await ctx.reply('Usage: /task <описание задачи>\nAtlas запустит Claude Code и вернёт результат.');
+    return;
+  }
+  if (isTaskRunning()) {
+    await ctx.reply('Уже работает другая задача. Дождись завершения.');
+    return;
+  }
+  const chatId = ctx.chat.id;
+  addMsg(chatId, 'user', `/task ${desc}`);
+  await ctx.reply(`[task] Запускаю Claude Code: "${desc.slice(0, 60)}..."\nМакс 10 минут. Жди результат.`);
+  try {
+    const result = await runTask(desc);
+    const reply = [
+      `[task ${result.id}] ${result.exitCode === 0 ? 'OK' : `exit ${result.exitCode}`} (${Math.round(result.durationMs / 1000)}s)`,
+      '',
+      result.output,
+    ].join('\n');
+    addMsg(chatId, 'assistant', reply);
+    await sendLong(ctx, reply);
+  } catch (e: any) {
+    const err = `Task failed: ${e.message?.slice(0, 300)}`;
+    addMsg(chatId, 'assistant', err);
+    await ctx.reply(err);
+  }
 });
 
 bot.command('swarm', async (ctx) => {
