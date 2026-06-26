@@ -25,8 +25,16 @@ export interface DeployResult {
   durationMs: number;
 }
 
-function exec(cmd: string, cwd: string): string {
-  return execSync(cmd, { cwd, encoding: 'utf-8', timeout: 30_000 }).trim();
+function exec(cmd: string, cwd: string, timeout = 30_000): string {
+  return execSync(cmd, { cwd, encoding: 'utf-8', timeout }).trim();
+}
+
+function execSafe(cmd: string, cwd: string, timeout = 15_000): string | null {
+  try {
+    return exec(cmd, cwd, timeout);
+  } catch {
+    return null;
+  }
 }
 
 export function listOpenPRs(project: string): Array<{ number: number; title: string }> {
@@ -73,7 +81,8 @@ export async function deploy(project: string, prNumber?: number): Promise<Deploy
     for (let i = 0; i < 10; i++) {
       await new Promise(r => setTimeout(r, 10_000));
       try {
-        const raw = exec(`curl -s ${config.healthUrl}`, config.cwd);
+        const raw = execSafe(`curl -s --connect-timeout 5 --max-time 10 ${config.healthUrl}`, config.cwd);
+        if (!raw) continue;
         const data = JSON.parse(raw);
         healthCheck = { status: data.status, sha: (data.git_sha || '').slice(0, 7) };
         if (healthCheck.status === 'ok') {

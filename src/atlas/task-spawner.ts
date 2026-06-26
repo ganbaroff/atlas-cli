@@ -8,7 +8,10 @@
 
 import { spawn } from 'node:child_process';
 import { writeFileSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ANUS_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 const TASK_DIR = 'C:/Projects/ATLAS/data/task-results';
 const MAX_TIMEOUT = 10 * 60 * 1000; // 10 minutes
@@ -54,7 +57,7 @@ export function runTask(description: string): Promise<TaskResult> {
 
     // Use ANUS CLI (atlas run) which routes through free providers (freellmapi/nvidia),
     // NOT claude CLI which burns Anthropic credits. CEO directive: credits before cash.
-    const anusCli = resolve(process.cwd(), 'dist', 'cli.js');
+    const anusCli = resolve(ANUS_ROOT, 'dist', 'cli.js');
     const proc = spawn('node', [
       anusCli, 'chat',
       '--role', 'WORKER',
