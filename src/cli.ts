@@ -27,8 +27,12 @@ import type { ModelRole } from './model-router.js';
 import * as readline from 'node:readline';
 import { capture, shutdown } from './analytics.js';
 
-// Load .env without dependency
-const envPath = resolve(process.cwd(), '.env');
+// CWD-FIX: resolve .env from module dir, not process.cwd()
+import { fileURLToPath } from 'node:url';
+import { dirname } from 'node:path';
+const ANUS_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+process.chdir(ANUS_ROOT);
+const envPath = resolve(ANUS_ROOT, '.env');
 if (existsSync(envPath)) {
   const lines = readFileSync(envPath, 'utf-8').split('\n');
   for (const line of lines) {

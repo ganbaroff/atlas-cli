@@ -3,7 +3,16 @@
  * Direct Telegram polling with multi-provider model fallback. One file.
  */
 
-import 'dotenv/config';
+// CWD-FIX (stitch-breaker): resolve .env + operator/state from module dir,
+// not process.cwd(). Without this, launching from any dir other than ANUS root
+// → "No models available" + operator crash. See breadcrumb 2026-06-26 15:30.
+import { config } from 'dotenv';
+import { fileURLToPath } from 'node:url';
+import { dirname, resolve } from 'node:path';
+
+const ANUS_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+config({ path: resolve(ANUS_ROOT, '.env') });
+process.chdir(ANUS_ROOT);
 import { Telegraf } from 'telegraf';
 import { Agent } from '@mastra/core/agent';
 import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
