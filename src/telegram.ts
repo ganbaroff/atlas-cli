@@ -103,7 +103,7 @@ function getConvo(chatId: number) {
 }
 
 let msgCount = 0;
-const WRITEBACK_INTERVAL = 10; // write heartbeat every N messages
+const WRITEBACK_INTERVAL = 4; // write heartbeat every N messages (2 round-trips)
 
 function addMsg(chatId: number, role: 'user' | 'assistant', content: string) {
   const c = getConvo(chatId);
