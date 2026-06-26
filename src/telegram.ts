@@ -387,12 +387,21 @@ import { appendJournal, writeHeartbeat } from './atlas/memory-manager.js';
 async function writeSessionSummary(): Promise<void> {
   try {
     const sessionChats = Array.from(convos.entries());
-    if (sessionChats.length === 0) return;
-
     const totalMsgs = sessionChats.reduce((sum, [, c]) => sum + c.msgs.length, 0);
     const topics = sessionChats
       .flatMap(([, c]) => c.msgs.filter(m => m.role === 'user').map(m => m.content.slice(0, 60)))
       .slice(-5);
+
+    // Always write heartbeat (proves bot is alive), journal only if there are messages
+    await writeHeartbeat({
+      source: 'telegram',
+      chats: sessionChats.length,
+      messages: totalMsgs,
+      providers: availableModels.map(m => `${m.provider}/${m.modelId}`).join(', '),
+      uptime: `${Math.round((Date.now() - new Date(bootTime).getTime()) / 60000)}min`,
+    });
+
+    if (sessionChats.length === 0) return;
 
     const entry = [
       `## Telegram session — ${new Date().toISOString()}`,
@@ -405,13 +414,6 @@ async function writeSessionSummary(): Promise<void> {
     ].join('\n');
 
     await appendJournal(entry);
-    await writeHeartbeat({
-      source: 'telegram',
-      chats: sessionChats.length,
-      messages: totalMsgs,
-      providers: availableModels.map(m => `${m.provider}/${m.modelId}`).join(', '),
-      shutdownReason: 'signal',
-    });
     console.log(`[memory] session summary written: ${totalMsgs} msgs across ${sessionChats.length} chats`);
   } catch (e) {
     console.error('[memory] write-back failed:', e);
