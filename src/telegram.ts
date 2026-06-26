@@ -102,8 +102,17 @@ function getConvo(chatId: number) {
   return convos.get(chatId)!;
 }
 
-let msgCount = 0;
-const WRITEBACK_INTERVAL = 4; // write heartbeat every N messages (2 round-trips)
+// Time-based write-back — fires every 5 minutes regardless of message count.
+// Message-count approach failed: sendMessage API doesn't trigger addMsg, and
+// low traffic means write-back never fires.
+const WRITEBACK_MS = 5 * 60 * 1000;
+setInterval(() => {
+  if (convos.size > 0) {
+    writeSessionSummary()
+      .then(() => console.log('[memory] periodic write-back OK'))
+      .catch(err => console.error('[memory] periodic write-back failed:', err));
+  }
+}, WRITEBACK_MS);
 
 function addMsg(chatId: number, role: 'user' | 'assistant', content: string) {
   const c = getConvo(chatId);
@@ -114,12 +123,6 @@ function addMsg(chatId: number, role: 'user' | 'assistant', content: string) {
     role,
     text: content,
   }).catch(err => console.error('[memory] write failed:', err));
-
-  // Periodic write-back — don't rely on graceful shutdown (Class 7 on SIGTERM)
-  msgCount++;
-  if (msgCount % WRITEBACK_INTERVAL === 0) {
-    writeSessionSummary().catch(err => console.error('[memory] periodic write-back failed:', err));
-  }
 
   if (c.msgs.length > 20) {
     const old = c.msgs.splice(0, c.msgs.length - 10);

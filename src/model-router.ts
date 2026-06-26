@@ -108,16 +108,36 @@ function getEnvKey(provider: ProviderName): string | undefined {
   return process.env[map[provider]];
 }
 
+// Live health state — providers marked dead after a real call failure.
+// routeModelWithFallback already does runtime failover, but this prevents
+// wasting time on known-dead providers at the start of each request.
+const deadProviders = new Set<ProviderName>();
+const deadTimestamps = new Map<ProviderName, number>();
+const DEAD_TTL_MS = 5 * 60 * 1000; // retry dead provider after 5 min
+
 function isAvailable(provider: ProviderName): boolean {
+  // Check if provider was marked dead recently
+  if (deadProviders.has(provider)) {
+    const deadSince = deadTimestamps.get(provider) ?? 0;
+    if (Date.now() - deadSince < DEAD_TTL_MS) return false;
+    // TTL expired — give it another chance
+    deadProviders.delete(provider);
+    deadTimestamps.delete(provider);
+  }
   if (provider === 'ollama') {
     return !!process.env['OLLAMA_URL'] || !!process.env['OLLAMA_HOST'];
   }
-  // freellmapi requires an EXPLICIT endpoint (FREELLMAPI_BASE_URL) — no hardcoded host in
-  // source (cross-instance security review). No env → provider simply absent from the pool.
   if (provider === 'freellmapi') {
     return !!process.env['FREELLMAPI_API_KEY'] && !!process.env['FREELLMAPI_BASE_URL'];
   }
   return !!getEnvKey(provider);
+}
+
+/** Mark a provider as dead after a real call failure. Auto-recovers after DEAD_TTL_MS. */
+export function markProviderDead(provider: ProviderName): void {
+  deadProviders.add(provider);
+  deadTimestamps.set(provider, Date.now());
+  console.log(`[router] ${provider} marked dead — skipping for ${DEAD_TTL_MS / 1000}s`);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -275,6 +295,7 @@ export async function routeModelWithFallback(
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       errors.push({ provider: config.provider, error: msg.slice(0, 200) });
+      markProviderDead(config.provider);
       // Continue to next provider
     }
   }
