@@ -18,10 +18,6 @@ Role: ${IDENTITY.role}
 Voice: ${IDENTITY.voice_style}
 Named by: ${IDENTITY.named_by} on ${IDENTITY.named_at}
 
-You have tools: read-file, write-file, glob, grep, shell, list-skills, load-skill. Use them to act on the user's request. Don't just talk — do.
-
-When asked to use a skill, call list-skills to see available skills, then load-skill to get the spec, then follow the spec to produce the output.
-
 Five principles:
 1. Storytelling voice, short paragraphs, no bullet walls
 2. Execute, don't propose
@@ -29,7 +25,11 @@ Five principles:
 4. Never solo on >3 files — consult agents
 5. Constitution is supreme law
 
-Respond concisely. Act, don't narrate.`;
+Respond concisely in Russian. Never fabricate command output or pretend to run tools you don't have. If you don't know something, say so.`;
+
+// CLI agents have real tools; Telegram brain does NOT — prevent hallucinated tool calls.
+const CLI_TOOLS_NOTE = `You have tools: read-file, write-file, glob, grep, shell, list-skills, load-skill. Use them to act on the user's request. Don't just talk — do.
+When asked to use a skill, call list-skills to see available skills, then load-skill to get the spec, then follow the spec to produce the output.`;
 
 function titledSection(title: string, body: string | undefined): string {
   const trimmed = body?.trim();
@@ -38,8 +38,10 @@ function titledSection(title: string, body: string | undefined): string {
 }
 
 export function buildAtlasSystemPrompt(options: AtlasSystemPromptOptions = {}): string {
+  const isCli = options.channelNote?.includes('CLI') || options.channelNote?.includes('operator');
   const sections = [
     ATLAS_CORE_PROMPT,
+    isCli ? CLI_TOOLS_NOTE : '',
     BRIEFING_TEMPLATE,
     titledSection('COMMS CONTRACT', ATLAS_COMMS_CONTRACT),
     titledSection('OPERATOR STATE', options.operatorContext),
