@@ -257,15 +257,27 @@ bot.command('status', async (ctx) => {
       env: { ...process.env, NODE_NO_WARNINGS: '1' },
     });
     const data = JSON.parse(out);
+    const wakes = (data.wake_signals ?? []).map((s: any) => `  ⚠ ${s.subject}: ${s.detail?.slice(0, 80)}`);
+    const queued = (data.queue_signals ?? []).map((s: any) => `  · ${s.subject}: ${s.detail?.slice(0, 60)}`);
+    const stale = (data.stale_agents ?? []).map((a: any) => `  · ${a.agent_id} (${a.age_hours}h)`);
+    const dirty = (data.dirty_repos ?? []).map((r: any) => `${r.path.split('/').pop()}=${r.count}`);
     const lines = [
-      `Atlas Status — ${data.time ?? new Date().toISOString()}`,
+      `Atlas Status — ${new Date(data.time).toLocaleString('ru-RU', { timeZone: 'Asia/Baku' })}`,
       '',
-      `Prod: ${data.prod_health?.status ?? '?'} (sha: ${data.prod_health?.sha?.slice(0, 7) ?? '?'})`,
-      `Wake signals: ${data.wake_signals ?? 0}`,
-      `Queue: ${data.queue_signals ?? 0}`,
-      `Stale agents: ${data.stale_agents ?? 0}`,
-      `Dirty repos: ${JSON.stringify(data.dirty_repos ?? {})}`,
-    ];
+      `Prod: ${data.prod_health?.status ?? '?'} (v${data.prod_health?.version ?? '?'}, sha ${data.prod_health?.sha?.slice(0, 7) ?? '?'})`,
+      '',
+      wakes.length ? `Wake (${wakes.length}):` : 'Wake: 0',
+      ...wakes,
+      '',
+      queued.length ? `Queue (${queued.length}):` : 'Queue: 0',
+      ...queued.slice(0, 3),
+      queued.length > 3 ? `  ...и ещё ${queued.length - 3}` : '',
+      '',
+      stale.length ? `Stale agents (${stale.length}):` : 'Stale: 0',
+      ...stale,
+      '',
+      `Dirty: ${dirty.join(', ') || 'clean'}`,
+    ].filter(Boolean);
     const reply = lines.join('\n');
     addMsg(chatId, 'user', '/status');
     addMsg(chatId, 'assistant', reply);

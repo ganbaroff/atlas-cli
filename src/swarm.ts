@@ -6,9 +6,6 @@
  * results collected via IPC → lead synthesizes final answer.
  */
 
-import { fork, type ChildProcess } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
 import { createAtlasAgent } from './agent.js';
 import type { ProviderName } from './model-router.js';
 import { validateCompletion } from './gates/verify-before-done.js';
@@ -16,8 +13,6 @@ import { PERSPECTIVES } from './atlas/perspectives.js';
 import { logSwarmRun } from './atlas/swarm-logger.js';
 import { dedupFindings } from './atlas/dedup.js';
 import { controlAllowsModelCalls, describeControlBlock } from './atlas/control-plane.js';
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export interface Subtask {
   id: number;
@@ -58,39 +53,21 @@ Task: ${task}`,
   return JSON.parse(match[0]) as Subtask[];
 }
 
-/** Fork a worker process for one subtask. Communicates via IPC. */
-function spawnWorker(subtask: Subtask, env: NodeJS.ProcessEnv): Promise<WorkerResult> {
-  return new Promise((resolve) => {
-    const cwd = env['ATLAS_TARGET_CWD'] ?? process.cwd();
-    const child: ChildProcess = fork(join(__dirname, 'swarm-worker.js'), [], {
-      env: { ...env, ATLAS_SUBTASK: JSON.stringify(subtask) },
-      cwd,
-      stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
-    });
-
-    const timer = setTimeout(() => {
-      child.kill('SIGTERM');
-      resolve({ id: subtask.id, output: '', provider: subtask.provider ?? '?', durationMs: 60_000, error: 'timeout' });
-    }, 60_000);
-
-    child.on('message', (msg: WorkerResult) => {
-      clearTimeout(timer);
-      resolve(msg);
-      child.kill();
-    });
-
-    child.on('error', (err) => {
-      clearTimeout(timer);
-      resolve({ id: subtask.id, output: '', provider: subtask.provider ?? '?', durationMs: 0, error: err.message });
-    });
-
-    child.on('exit', (code) => {
-      clearTimeout(timer);
-      if (code !== 0 && code !== null) {
-        resolve({ id: subtask.id, output: '', provider: subtask.provider ?? '?', durationMs: 0, error: `exit code ${code}` });
-      }
-    });
-  });
+/** Run a single perspective in-process (no fork — API calls are I/O-bound, not CPU). */
+async function runWorker(subtask: Subtask): Promise<WorkerResult> {
+  const t0 = Date.now();
+  try {
+    const agent = await createAtlasAgent('WORKER', 'operator');
+    const res = await agent.generate(subtask.description);
+    const jidoka = validateCompletion(res.text);
+    const output = jidoka.passed ? res.text : `${res.text}\n\n[WORKER JIDOKA: ${jidoka.violation}]`;
+    return { id: subtask.id, output, provider: subtask.provider ?? 'auto', durationMs: Date.now() - t0 };
+  } catch (err) {
+    return {
+      id: subtask.id, output: '', provider: subtask.provider ?? 'auto',
+      durationMs: Date.now() - t0, error: err instanceof Error ? err.message.slice(0, 200) : String(err),
+    };
+  }
 }
 
 /** Lead synthesizes worker outputs into coherent answer. */
@@ -120,7 +97,7 @@ export async function runSwarm(task: string, useCustomDecompose = false): Promis
 
   const t0 = Date.now();
   const results = await Promise.all(
-    subtasks.map((st) => spawnWorker(st, process.env as NodeJS.ProcessEnv)),
+    subtasks.map((st) => runWorker(st)),
   );
   const elapsed = Date.now() - t0;
 
