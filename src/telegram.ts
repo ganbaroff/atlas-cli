@@ -308,6 +308,46 @@ bot.command('models', async (ctx) => {
   await ctx.reply(reply);
 });
 
+bot.command('run', async (ctx) => {
+  const cmd = ctx.message.text.replace(/^\/run\s*/, '').trim();
+  if (!cmd) {
+    await ctx.reply('Usage: /run <shell command>\nПримеры: /run git status, /run ls C:/Projects');
+    return;
+  }
+  const chatId = ctx.chat.id;
+
+  // Safety: block destructive/secret-touching commands
+  const BLOCKED = /rm\s+-rf|del\s+\/[sfq]|format\s|shutdown|reboot|mkfs|dd\s+if|>\s*\/dev|password|secret|token|api.key/i;
+  if (BLOCKED.test(cmd)) {
+    await ctx.reply('Заблокировано: команда содержит потенциально опасный паттерн.');
+    return;
+  }
+
+  addMsg(chatId, 'user', `/run ${cmd}`);
+  await ctx.reply(`[run] $ ${cmd.slice(0, 60)}...`);
+
+  try {
+    const { execSync } = await import('node:child_process');
+    const output = execSync(cmd, {
+      timeout: 30_000,
+      encoding: 'utf-8',
+      cwd: process.cwd(),
+      env: { ...process.env, NODE_NO_WARNINGS: '1' },
+      maxBuffer: 1024 * 1024,
+    }).trim();
+    const result = output.slice(0, 3800) || '(empty output)';
+    addMsg(chatId, 'assistant', result);
+    await sendLong(ctx, result);
+    console.log(`[run] chat=${chatId} cmd="${cmd.slice(0, 60)}" output=${output.length} chars`);
+  } catch (e: any) {
+    const stderr = e.stderr?.toString()?.slice(0, 500) || e.message?.slice(0, 500) || 'unknown error';
+    const reply = `Exit ${e.status ?? '?'}: ${stderr}`;
+    addMsg(chatId, 'assistant', reply);
+    await ctx.reply(reply.slice(0, 4096));
+    console.error(`[run] chat=${chatId} cmd="${cmd.slice(0, 60)}" FAILED: ${stderr.slice(0, 100)}`);
+  }
+});
+
 bot.command('swarm', async (ctx) => {
   const task = ctx.message.text.replace(/^\/swarm\s*/, '').trim();
   if (!task) {
