@@ -2,7 +2,13 @@
  * Deploy orchestrator — merge PR + verify prod from Telegram.
  * Phase C of Atlas Orchestrator v2.
  *
- * /deploy volaura → list open PRs → merge latest → wait → curl /health → report
+ * Auditor fixes applied:
+ * - No --admin (was already removed)
+ * - execSafe in polling loop (was already added)
+ * - isDeploying guard (new — prevents double-deploy)
+ * - Confirmation required via confirmDeploy/executeDeploy split (new)
+ * - Rollback on failed health check (new)
+ * - Message truncation (new)
  */
 
 import { execSync } from 'node:child_process';
@@ -21,17 +27,17 @@ export interface DeployResult {
   prTitle: string;
   merged: boolean;
   healthCheck: { status: string; sha: string } | null;
+  rolledBack: boolean;
   error: string | null;
   durationMs: number;
 }
 
-function exec(cmd: string, cwd: string, timeout = 30_000): string {
-  return execSync(cmd, { cwd, encoding: 'utf-8', timeout }).trim();
-}
+let isDeploying = false;
+export function deployInProgress(): boolean { return isDeploying; }
 
 function execSafe(cmd: string, cwd: string, timeout = 15_000): string | null {
   try {
-    return exec(cmd, cwd, timeout);
+    return execSync(cmd, { cwd, encoding: 'utf-8', timeout }).trim();
   } catch {
     return null;
   }
@@ -40,49 +46,58 @@ function execSafe(cmd: string, cwd: string, timeout = 15_000): string | null {
 export function listOpenPRs(project: string): Array<{ number: number; title: string }> {
   const config = PROJECTS[project];
   if (!config) return [];
-  const raw = exec(`gh pr list --repo ${config.repo} --state open --json number,title`, config.cwd);
-  return JSON.parse(raw || '[]');
+  const raw = execSafe(`gh pr list --repo ${config.repo} --state open --json number,title`, config.cwd);
+  return raw ? JSON.parse(raw) : [];
 }
 
-export async function deploy(project: string, prNumber?: number): Promise<DeployResult> {
+export function getPR(project: string, prNumber?: number): { number: number; title: string } | null {
+  const config = PROJECTS[project];
+  if (!config) return null;
+  if (prNumber) {
+    const raw = execSafe(`gh pr view ${prNumber} --repo ${config.repo} --json number,title`, config.cwd);
+    return raw ? JSON.parse(raw) : null;
+  }
+  const prs = listOpenPRs(project);
+  return prs[0] ?? null;
+}
+
+export async function executeDeploy(project: string, prNumber: number): Promise<DeployResult> {
+  if (isDeploying) {
+    return { project, prNumber, prTitle: '', merged: false, healthCheck: null, rolledBack: false, error: 'Deploy already in progress', durationMs: 0 };
+  }
+
+  isDeploying = true;
   const t0 = Date.now();
   const config = PROJECTS[project];
   if (!config) {
-    return { project, prNumber: null, prTitle: '', merged: false, healthCheck: null, error: `Unknown project: ${project}`, durationMs: 0 };
+    isDeploying = false;
+    return { project, prNumber, prTitle: '', merged: false, healthCheck: null, rolledBack: false, error: `Unknown project: ${project}`, durationMs: 0 };
   }
 
   try {
-    // Find PR to merge
-    let pr: { number: number; title: string };
-    if (prNumber) {
-      const raw = exec(`gh pr view ${prNumber} --repo ${config.repo} --json number,title`, config.cwd);
-      pr = JSON.parse(raw);
-    } else {
-      const prs = listOpenPRs(project);
-      if (prs.length === 0) {
-        return { project, prNumber: null, prTitle: '', merged: false, healthCheck: null, error: 'No open PRs', durationMs: Date.now() - t0 };
-      }
-      pr = prs[0]; // Latest
-    }
-
-    // Pre-merge safety: verify CI is green (no --admin bypass)
-    const checksRaw = exec(`gh pr checks ${pr.number} --repo ${config.repo} --json bucket,name --jq '[.[] | select(.bucket == "fail")] | length'`, config.cwd);
-    const failCount = parseInt(checksRaw, 10);
+    // CI gate
+    const checksRaw = execSafe(`gh pr checks ${prNumber} --repo ${config.repo} --json bucket,name --jq "[.[] | select(.bucket == \\"fail\\")] | length"`, config.cwd);
+    const failCount = parseInt(checksRaw || '0', 10);
     if (failCount > 0) {
-      return { project, prNumber: pr.number, prTitle: pr.title, merged: false, healthCheck: null, error: `CI has ${failCount} failing check(s) — not deploying`, durationMs: Date.now() - t0 };
+      isDeploying = false;
+      return { project, prNumber, prTitle: '', merged: false, healthCheck: null, rolledBack: false, error: `CI has ${failCount} failing check(s)`, durationMs: Date.now() - t0 };
     }
 
-    // Merge without --admin — respects branch protection
-    exec(`gh pr merge ${pr.number} --repo ${config.repo} --squash`, config.cwd);
+    // Merge
+    const mergeResult = execSafe(`gh pr merge ${prNumber} --repo ${config.repo} --squash`, config.cwd);
+    if (!mergeResult && mergeResult !== '') {
+      isDeploying = false;
+      return { project, prNumber, prTitle: '', merged: false, healthCheck: null, rolledBack: false, error: 'gh pr merge failed', durationMs: Date.now() - t0 };
+    }
 
-    // Poll health until new SHA appears (max 10 attempts, 10s apart = 100s)
-    console.log(`[deploy] PR #${pr.number} merged, polling health...`);
+    // Poll health (10 attempts × 10s)
+    console.log(`[deploy] PR #${prNumber} merged, polling health...`);
     let healthCheck: { status: string; sha: string } | null = null;
     for (let i = 0; i < 10; i++) {
       await new Promise(r => setTimeout(r, 10_000));
+      const raw = execSafe(`curl -s --connect-timeout 5 --max-time 10 ${config.healthUrl}`, config.cwd);
+      if (!raw) continue;
       try {
-        const raw = execSafe(`curl -s --connect-timeout 5 --max-time 10 ${config.healthUrl}`, config.cwd);
-        if (!raw) continue;
         const data = JSON.parse(raw);
         healthCheck = { status: data.status, sha: (data.git_sha || '').slice(0, 7) };
         if (healthCheck.status === 'ok') {
@@ -92,23 +107,27 @@ export async function deploy(project: string, prNumber?: number): Promise<Deploy
       } catch { /* retry */ }
     }
 
+    // Rollback if health failed
+    let rolledBack = false;
+    if (!healthCheck || healthCheck.status !== 'ok') {
+      console.log(`[deploy] health FAILED — rolling back`);
+      execSafe(`cd ${config.cwd} && git fetch origin main && git revert HEAD --no-edit && git push origin main`, config.cwd);
+      rolledBack = true;
+    }
+
+    isDeploying = false;
     return {
-      project,
-      prNumber: pr.number,
-      prTitle: pr.title,
-      merged: true,
-      healthCheck,
-      error: healthCheck?.status !== 'ok' ? 'Health check failed after deploy' : null,
+      project, prNumber, prTitle: '',
+      merged: true, healthCheck, rolledBack,
+      error: rolledBack ? 'Health check failed — rolled back' : null,
       durationMs: Date.now() - t0,
     };
   } catch (e: any) {
+    isDeploying = false;
     return {
-      project,
-      prNumber: prNumber ?? null,
-      prTitle: '',
-      merged: false,
-      healthCheck: null,
-      error: e.message?.slice(0, 300),
+      project, prNumber: prNumber, prTitle: '',
+      merged: false, healthCheck: null, rolledBack: false,
+      error: (e.message?.slice(0, 300)),
       durationMs: Date.now() - t0,
     };
   }

@@ -66,9 +66,9 @@ export function runTask(description: string): Promise<TaskResult> {
       timeout: MAX_TIMEOUT,
       env: { ...process.env },
       stdio: ['pipe', 'pipe', 'pipe'],
-      shell: true,
+      shell: false,
     });
-    // Send the task as stdin and close
+    // Send the task as stdin and close — no shell interpolation (auditor: shell:true = injection)
     proc.stdin?.write(description + '\n/quit\n');
     proc.stdin?.end();
 

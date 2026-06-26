@@ -29,7 +29,7 @@ import {
 } from './atlas/control-plane.js';
 import { buildAtlasBrainPlan } from './atlas/brain-planner.js';
 import { runTask, isTaskRunning } from './atlas/task-spawner.js';
-import { deploy, listOpenPRs } from './atlas/deploy.js';
+import { executeDeploy, deployInProgress, getPR, listOpenPRs } from './atlas/deploy.js';
 import { appendMessage, loadConversation, compactIfNeeded, type StoredMessage } from './atlas/conversation-store.js';
 import { listAvailableModels, routeModelWithFallback } from './model-router.js';
 import { analyzeWindow, emotionDirective } from './atlas/emotion.js';
@@ -336,32 +336,37 @@ bot.command('models', async (ctx) => {
   await ctx.reply(reply);
 });
 
+// Deploy with confirmation — auditor: no instant merge on typo
+const pendingDeploys = new Map<number, { project: string; prNumber: number; prTitle: string }>();
+
 bot.command('deploy', async (ctx) => {
   const args = ctx.message.text.replace(/^\/deploy\s*/, '').trim().split(/\s+/);
   const project = args[0] || 'volaura';
   const prNum = args[1] ? parseInt(args[1], 10) : undefined;
   const chatId = ctx.chat.id;
 
-  if (!project) {
-    await ctx.reply('Usage: /deploy <project> [pr_number]\nПример: /deploy volaura 155');
-    return;
-  }
+  if (deployInProgress()) { await ctx.reply('Deploy уже идёт. Жди.'); return; }
 
-  // Show open PRs first
-  const prs = listOpenPRs(project);
-  if (prs.length === 0 && !prNum) {
-    await ctx.reply(`No open PRs for ${project}.`);
-    return;
-  }
+  const pr = getPR(project, prNum);
+  if (!pr) { await ctx.reply(`No PR found for ${project}${prNum ? ` #${prNum}` : ''}.`); return; }
 
-  const target = prNum ? `PR #${prNum}` : `PR #${prs[0]?.number} "${prs[0]?.title?.slice(0, 50)}"`;
-  addMsg(chatId, 'user', `/deploy ${project} ${prNum || ''}`);
-  await ctx.reply(`[deploy] Мержу ${target} → main → Railway → health check.\nЭто займёт ~90 секунд.`);
+  pendingDeploys.set(chatId, { project, prNumber: pr.number, prTitle: pr.title });
+  await ctx.reply(`Deploy PR #${pr.number} "${pr.title.slice(0, 50)}" в ${project}?\n\nНапиши "да" для подтверждения.`);
+});
+
+bot.hears(/^да$/i, async (ctx) => {
+  const chatId = ctx.chat.id;
+  const pending = pendingDeploys.get(chatId);
+  if (!pending) return; // no pending deploy
+  pendingDeploys.delete(chatId);
+
+  addMsg(chatId, 'user', `deploy confirmed: ${pending.project} PR #${pending.prNumber}`);
+  await ctx.reply(`[deploy] Мержу PR #${pending.prNumber} → main → polling health...\n~2 мин.`);
 
   try {
-    const result = await deploy(project, prNum);
+    const result = await executeDeploy(pending.project, pending.prNumber);
     const reply = result.error
-      ? `[deploy FAIL] ${result.error}`
+      ? `[deploy FAIL] ${result.error}${result.rolledBack ? ' (ROLLED BACK)' : ''}`
       : `[deploy OK] PR #${result.prNumber} merged.\nProd: ${result.healthCheck?.status} sha:${result.healthCheck?.sha}\n${Math.round(result.durationMs / 1000)}s`;
     addMsg(chatId, 'assistant', reply);
     await sendLong(ctx, reply);
@@ -541,5 +546,6 @@ async function gracefulStop(signal: string): Promise<void> {
 
 process.once('SIGINT', () => { gracefulStop('SIGINT').catch(() => process.exit(0)); });
 process.once('SIGTERM', () => { gracefulStop('SIGTERM').catch(() => process.exit(0)); });
-process.on('uncaughtException', (e) => fatal('[CRASH]', e));
+// Auditor: uncaughtException should log, not crash — one bad Telegram message kills the bot
+process.on('uncaughtException', (e) => console.error('[CRASH] uncaught — continuing:', e));
 process.on('unhandledRejection', (e) => fatal('[UNHANDLED]', e));
