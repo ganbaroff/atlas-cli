@@ -550,7 +550,24 @@ async function writeSessionSummary(): Promise<void> {
     ].join('\n');
 
     await appendJournal(entry);
-    console.log(`[memory] journal written: ${totalMsgs} msgs`);
+    await writeHeartbeat({
+      source: 'telegram',
+      chats: sessionChats.length,
+      messages: totalMsgs,
+      providers: availableModels.map(m => `${m.provider}/${m.modelId}`).join(', '),
+      uptime: `${Math.round((Date.now() - new Date(bootTime).getTime()) / 60000)}min`,
+    });
+
+    // Supabase heartbeat (survives redeploy)
+    if (isSupabaseConfigured()) {
+      await writeHeartbeatDB({
+        providers: availableModels.length,
+        uptime_minutes: Math.round((Date.now() - new Date(bootTime).getTime()) / 60000),
+        message_count: totalMsgs,
+        chat_count: sessionChats.length,
+      });
+    }
+    console.log(`[memory] write-back OK: ${totalMsgs} msgs, ${sessionChats.length} chats${isSupabaseConfigured() ? ' + supabase' : ''}`);
   } catch (e) {
     console.error('[memory] write-back failed:', e);
   }
