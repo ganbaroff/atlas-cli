@@ -75,12 +75,17 @@ export async function executeDeploy(project: string, prNumber: number): Promise<
   }
 
   try {
-    // CI gate
-    const checksRaw = execSafe(`gh pr checks ${prNumber} --repo ${config.repo} --json bucket,name --jq "[.[] | select(.bucket == \\"fail\\")] | length"`, config.cwd);
-    const failCount = parseInt(checksRaw || '0', 10);
-    if (failCount > 0) {
+    // CI gate — audit #1: no jq dependency, parse in Node; fail-safe if gh fails
+    const checksRaw = execSafe(`gh pr checks ${prNumber} --repo ${config.repo} --json conclusion`, config.cwd);
+    if (!checksRaw) {
       isDeploying = false;
-      return { project, prNumber, prTitle: '', merged: false, healthCheck: null, rolledBack: false, error: `CI has ${failCount} failing check(s)`, durationMs: Date.now() - t0 };
+      return { project, prNumber, prTitle: '', merged: false, healthCheck: null, rolledBack: false, error: 'CI check command failed — gh not available or not authenticated', durationMs: Date.now() - t0 };
+    }
+    let failCount = 0;
+    try { failCount = JSON.parse(checksRaw).filter((c: any) => c.conclusion === 'failure').length; } catch { failCount = -1; }
+    if (failCount !== 0) {
+      isDeploying = false;
+      return { project, prNumber, prTitle: '', merged: false, healthCheck: null, rolledBack: false, error: failCount > 0 ? `CI has ${failCount} failing check(s)` : 'CI check parse failed', durationMs: Date.now() - t0 };
     }
 
     // Merge
@@ -110,8 +115,8 @@ export async function executeDeploy(project: string, prNumber: number): Promise<
     // Rollback if health failed
     let rolledBack = false;
     if (!healthCheck || healthCheck.status !== 'ok') {
-      console.log(`[deploy] health FAILED — rolling back`);
-      execSafe(`cd ${config.cwd} && git fetch origin main && git revert HEAD --no-edit && git push origin main`, config.cwd);
+      console.log(`[deploy] health FAILED — rolling back on main`);
+      execSafe(`cd ${config.cwd} && git stash 2>/dev/null; git checkout main && git pull origin main && git revert HEAD --no-edit && git push origin main`, config.cwd);
       rolledBack = true;
     }
 

@@ -371,14 +371,20 @@ bot.command('deploy', async (ctx) => {
   const pr = getPR(project, prNum);
   if (!pr) { await ctx.reply(`No PR found for ${project}${prNum ? ` #${prNum}` : ''}.`); return; }
 
-  pendingDeploys.set(chatId, { project, prNumber: pr.number, prTitle: pr.title });
+  pendingDeploys.set(chatId, { project, prNumber: pr.number, prTitle: pr.title, createdAt: Date.now() });
   await ctx.reply(`Deploy PR #${pr.number} "${pr.title.slice(0, 50)}" в ${project}?\n\nНапиши "да" для подтверждения.`);
 });
 
 bot.hears(/^да$/i, async (ctx) => {
   const chatId = ctx.chat.id;
   const pending = pendingDeploys.get(chatId);
-  if (!pending) return; // no pending deploy
+  if (!pending) return;
+  // Audit #4: TTL — expire after 5 minutes to prevent stale deploy on unrelated "да"
+  if (Date.now() - (pending.createdAt ?? 0) > 5 * 60 * 1000) {
+    pendingDeploys.delete(chatId);
+    await ctx.reply('Deploy request expired (>5 min). Start new /deploy.');
+    return;
+  }
   pendingDeploys.delete(chatId);
 
   addMsg(chatId, 'user', `deploy confirmed: ${pending.project} PR #${pending.prNumber}`);
@@ -617,4 +623,5 @@ process.once('SIGINT', () => { gracefulStop('SIGINT').catch(() => process.exit(0
 process.once('SIGTERM', () => { gracefulStop('SIGTERM').catch(() => process.exit(0)); });
 // Auditor: uncaughtException should log, not crash — one bad Telegram message kills the bot
 process.on('uncaughtException', (e) => console.error('[CRASH] uncaught — continuing:', e));
-process.on('unhandledRejection', (e) => fatal('[UNHANDLED]', e));
+// Audit #6: don't crash on unhandled rejection — let Railway health check decide
+process.on('unhandledRejection', (e) => console.error('[UNHANDLED] rejection — continuing:', e));

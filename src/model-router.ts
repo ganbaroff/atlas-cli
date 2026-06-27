@@ -297,8 +297,10 @@ export async function routeModelWithFallback(
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       errors.push({ provider: config.provider, error: msg.slice(0, 200) });
-      markProviderDead(config.provider);
-      // Continue to next provider
+      // Audit #8: only mark dead on infra errors, not content filter/rate limit
+      if (/ECONNREFUSED|ETIMEDOUT|ENETUNREACH|5\d\d|auth|unauthorized|invalid.*key/i.test(msg)) {
+        markProviderDead(config.provider);
+      }
     }
   }
 
