@@ -34,7 +34,7 @@ import { buildAtlasBrainPlan } from './atlas/brain-planner.js';
 import { runTask, isTaskRunning } from './atlas/task-spawner.js';
 import { executeDeploy, deployInProgress, getPR, listOpenPRs } from './atlas/deploy.js';
 import { appendMessage, loadConversation, compactIfNeeded, type StoredMessage } from './atlas/conversation-store.js';
-import { isSupabaseConfigured, createSession, saveMessage, loadMessages, writeHeartbeatDB, updateSession, getLatestSession } from './atlas/supabase-memory.js';
+import { isSupabaseConfigured, createSession, saveMessage, loadMessages, writeHeartbeatDB, updateSession, getLatestSession, queueRemoteCommand, pollCompletedCommands, deleteDeliveredCommand } from './atlas/supabase-memory.js';
 import { listAvailableModels, routeModelWithFallback } from './model-router.js';
 import { analyzeWindow, emotionDirective } from './atlas/emotion.js';
 import { loadPulse, savePulse, processEvent, pulseToneHint } from './atlas/pulse.js';
@@ -431,6 +431,38 @@ bot.command('task', async (ctx) => {
   }
 });
 
+// ── /remote — queue command for Claude Code (runs on CEO's machine via cron) ──
+bot.command('remote', async (ctx) => {
+  const desc = ctx.message.text.replace(/^\/remote\s*/, '').trim();
+  if (!desc) {
+    await ctx.reply(
+      'Usage: /remote <команда для Claude Code>\n' +
+      'Команда попадёт в очередь Supabase → Claude Code крон подхватит (до 15 мин).\n' +
+      'Результат придёт сюда автоматически.'
+    );
+    return;
+  }
+  if (!isSupabaseConfigured()) {
+    await ctx.reply('Supabase не настроен. /remote работает только через Supabase.');
+    return;
+  }
+  const chatId = ctx.chat.id;
+  addMsg(chatId, 'user', `/remote ${desc}`);
+  try {
+    const cmdId = await queueRemoteCommand(chatId, desc);
+    await ctx.reply(
+      `[remote] Команда в очереди: "${desc.slice(0, 60)}${desc.length > 60 ? '...' : ''}"\n` +
+      `ID: ${cmdId.slice(0, 8)}. Claude Code подхватит в течение 15 минут.\n` +
+      `Результат придёт автоматически.`
+    );
+    console.log(`[remote] queued cmd=${cmdId.slice(0, 8)} chat=${chatId} desc="${desc.slice(0, 80)}"`);
+  } catch (e: any) {
+    const err = `Remote queue failed: ${e.message?.slice(0, 300)}`;
+    addMsg(chatId, 'assistant', err);
+    await ctx.reply(err);
+  }
+});
+
 bot.command('swarm', async (ctx) => {
   const task = ctx.message.text.replace(/^\/swarm\s*/, '').trim();
   if (!task) {
@@ -606,9 +638,41 @@ createServer((req, res) => {
   }
 }).listen(PORT, () => console.log(`[health] listening on :${PORT}`));
 
+// ── Remote command result delivery ─────────────────────────────────
+// Poll Supabase every 2 min for completed /remote commands, deliver to CEO.
+const REMOTE_POLL_MS = 2 * 60 * 1000;
+const CEO_CHAT_ID = process.env['TELEGRAM_CEO_CHAT_ID'];
+
+async function deliverRemoteResults(): Promise<void> {
+  if (!isSupabaseConfigured() || !CEO_CHAT_ID) return;
+  try {
+    const chatId = parseInt(CEO_CHAT_ID, 10);
+    const completed = await pollCompletedCommands(chatId);
+    for (const cmd of completed) {
+      const resultText = cmd.status === 'done'
+        ? (typeof cmd.result === 'string' ? cmd.result : JSON.stringify(cmd.result)).slice(0, 3800)
+        : `ERROR: ${cmd.error?.slice(0, 500) ?? 'unknown'}`;
+      const msg = `[remote result] ${cmd.command.slice(0, 60)}\n\n${resultText}`;
+      try {
+        await bot.telegram.sendMessage(chatId, msg.slice(0, 4096));
+        await deleteDeliveredCommand(cmd.id);
+        console.log(`[remote] delivered cmd=${cmd.id.slice(0, 8)} status=${cmd.status}`);
+      } catch (e: any) {
+        console.error(`[remote] delivery failed cmd=${cmd.id.slice(0, 8)}:`, e.message);
+      }
+    }
+  } catch (e: any) {
+    // Non-fatal — will retry next cycle
+    console.error('[remote] poll failed:', e.message?.slice(0, 200));
+  }
+}
+
 async function boot(): Promise<void> {
   void bot.launch(() => {
     console.log(`[bot] Atlas Telegram alive @${bot.botInfo?.username ?? 'unknown'} — ${bootTime} fallback=routeModelWithFallback providers=${availableModels.map((m) => m.provider).join(',')}`);
+    // Start remote result polling after bot is alive
+    setInterval(() => { deliverRemoteResults().catch(() => {}); }, REMOTE_POLL_MS);
+    console.log(`[remote] polling every ${REMOTE_POLL_MS / 1000}s for completed commands`);
   }).catch((error) => fatal('[LAUNCH FAILED]', error));
 }
 boot().catch((error) => fatal('[BOOT FAILED]', error));
