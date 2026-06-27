@@ -87,6 +87,36 @@ export async function loadMessages(chatId: number, limit = 20): Promise<Array<{
   ).then((rows: any[]) => rows?.reverse() ?? []);
 }
 
+// ── Command Queue (Atlas→Claude Code bridge) ──
+// Bot writes commands, Claude Code cron reads+executes, bot polls results.
+
+export async function queueRemoteCommand(chatId: number, command: string): Promise<string> {
+  const key = `tg-${chatId}-${Date.now().toString(36)}`;
+  const [row] = await supaFetch('atlas_command_queue', {
+    method: 'POST',
+    body: JSON.stringify({
+      idempotency_key: key,
+      source: 'telegram',
+      chat_id: chatId,
+      command,
+    }),
+    headers: { 'Prefer': 'return=representation' },
+  });
+  return row.id;
+}
+
+export async function pollCompletedCommands(chatId: number): Promise<Array<{
+  id: string; command: string; status: string; result: any; error: string | null;
+}>> {
+  return supaFetch(
+    `atlas_command_queue?chat_id=eq.${chatId}&status=in.(done,failed)&select=id,command,status,result,error&order=created_at.desc&limit=5`
+  ).then((rows: any[]) => rows ?? []);
+}
+
+export async function deleteDeliveredCommand(id: string): Promise<void> {
+  await supaFetch(`atlas_command_queue?id=eq.${id}`, { method: 'DELETE' });
+}
+
 // ── Heartbeats ──
 
 export async function writeHeartbeatDB(data: {
