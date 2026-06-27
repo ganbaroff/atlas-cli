@@ -11,7 +11,10 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
 const ANUS_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-config({ path: resolve(ANUS_ROOT, '.env') });
+// .env optional — on Railway env vars come from dashboard, not file
+import { existsSync } from 'node:fs';
+const envPath = resolve(ANUS_ROOT, '.env');
+if (existsSync(envPath)) config({ path: envPath });
 process.chdir(ANUS_ROOT);
 import { Telegraf } from 'telegraf';
 import { Agent } from '@mastra/core/agent';
@@ -31,6 +34,7 @@ import { buildAtlasBrainPlan } from './atlas/brain-planner.js';
 import { runTask, isTaskRunning } from './atlas/task-spawner.js';
 import { executeDeploy, deployInProgress, getPR, listOpenPRs } from './atlas/deploy.js';
 import { appendMessage, loadConversation, compactIfNeeded, type StoredMessage } from './atlas/conversation-store.js';
+import { isSupabaseConfigured, createSession, saveMessage, loadMessages, writeHeartbeatDB, updateSession, getLatestSession } from './atlas/supabase-memory.js';
 import { listAvailableModels, routeModelWithFallback } from './model-router.js';
 import { analyzeWindow, emotionDirective } from './atlas/emotion.js';
 import { loadPulse, savePulse, processEvent, pulseToneHint } from './atlas/pulse.js';
@@ -107,15 +111,32 @@ function getConvo(chatId: number) {
 let msgCount = 0;
 const WRITEBACK_INTERVAL = 10; // write heartbeat every N messages
 
-function addMsg(chatId: number, role: 'user' | 'assistant', content: string) {
+// Track active Supabase session per chat
+const dbSessions = new Map<number, string>();
+
+function addMsg(chatId: number, role: 'user' | 'assistant', content: string, provider?: string, model?: string) {
   const c = getConvo(chatId);
   c.msgs.push({ role, content });
 
+  // JSONL fallback (always — local dev, Railway without Supabase, etc.)
   appendMessage(chatId, {
     ts: new Date().toISOString(),
     role,
     text: content,
   }).catch(err => console.error('[memory] write failed:', err));
+
+  // Supabase (primary when configured — survives redeploy)
+  if (isSupabaseConfigured()) {
+    (async () => {
+      let sid = dbSessions.get(chatId);
+      if (!sid) {
+        sid = await createSession(chatId);
+        dbSessions.set(chatId, sid);
+      }
+      await saveMessage(sid, chatId, { role, content, provider, model });
+      await updateSession(sid, { message_count: c.msgs.length });
+    })().catch(err => console.error('[supabase] message save failed:', err));
+  }
 
   // Periodic write-back — don't rely on graceful shutdown (Class 7 on SIGTERM)
   msgCount++;
@@ -516,9 +537,19 @@ async function writeSessionSummary(): Promise<void> {
       chats: sessionChats.length,
       messages: totalMsgs,
       providers: availableModels.map(m => `${m.provider}/${m.modelId}`).join(', '),
-      shutdownReason: 'signal',
+      uptime: `${Math.round((Date.now() - new Date(bootTime).getTime()) / 60000)}min`,
     });
-    console.log(`[memory] session summary written: ${totalMsgs} msgs across ${sessionChats.length} chats`);
+
+    // Supabase heartbeat (survives redeploy)
+    if (isSupabaseConfigured()) {
+      await writeHeartbeatDB({
+        providers: availableModels.length,
+        uptime_minutes: Math.round((Date.now() - new Date(bootTime).getTime()) / 60000),
+        message_count: totalMsgs,
+        chat_count: sessionChats.length,
+      });
+    }
+    console.log(`[memory] write-back OK: ${totalMsgs} msgs, ${sessionChats.length} chats${isSupabaseConfigured() ? ' + supabase' : ''}`);
   } catch (e) {
     console.error('[memory] write-back failed:', e);
   }
