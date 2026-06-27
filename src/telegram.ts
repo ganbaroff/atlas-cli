@@ -15,7 +15,6 @@ const ANUS_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 import { existsSync } from 'node:fs';
 const envPath = resolve(ANUS_ROOT, '.env');
 if (existsSync(envPath)) config({ path: envPath });
-process.chdir(ANUS_ROOT);
 import { Telegraf } from 'telegraf';
 import { Agent } from '@mastra/core/agent';
 import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
@@ -44,7 +43,7 @@ import { runSwarm } from './swarm.js';
 // ── Env verification ────────────────────────────────────────────────
 const REQUIRED = ['TELEGRAM_BOT_TOKEN'] as const;
 for (const key of REQUIRED) {
-  if (!process.env[key]) { console.error(`FATAL: ${key} missing from .env`); process.exit(1); }
+  if (!process.env[key]) throw new Error(`FATAL: ${key} missing from .env`);
 }
 
 if (!process.env['OLLAMA_URL'] && !process.env['OLLAMA_HOST']) {
@@ -55,8 +54,7 @@ if (!process.env['OLLAMA_URL'] && !process.env['OLLAMA_HOST']) {
 const bot = new Telegraf(process.env['TELEGRAM_BOT_TOKEN']!);
 const availableModels = listAvailableModels();
 if (availableModels.length === 0) {
-  console.error('FATAL: no model provider keys configured in .env');
-  process.exit(1);
+  throw new Error('FATAL: no model provider keys configured in .env');
 }
 
 type ModelReply = {
@@ -588,23 +586,6 @@ async function writeSessionSummary(): Promise<void> {
     ].join('\n');
 
     await appendJournal(entry);
-    await writeHeartbeat({
-      source: 'telegram',
-      chats: sessionChats.length,
-      messages: totalMsgs,
-      providers: availableModels.map(m => `${m.provider}/${m.modelId}`).join(', '),
-      uptime: `${Math.round((Date.now() - new Date(bootTime).getTime()) / 60000)}min`,
-    });
-
-    // Supabase heartbeat (survives redeploy)
-    if (isSupabaseConfigured()) {
-      await writeHeartbeatDB({
-        providers: availableModels.length,
-        uptime_minutes: Math.round((Date.now() - new Date(bootTime).getTime()) / 60000),
-        message_count: totalMsgs,
-        chat_count: sessionChats.length,
-      });
-    }
     console.log(`[memory] write-back OK: ${totalMsgs} msgs, ${sessionChats.length} chats${isSupabaseConfigured() ? ' + supabase' : ''}`);
   } catch (e) {
     console.error('[memory] write-back failed:', e);
