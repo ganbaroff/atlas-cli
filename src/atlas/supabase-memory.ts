@@ -1,0 +1,102 @@
+/**
+ * Supabase memory adapter — replaces file-based JSONL conversation store.
+ * Tables: bot_sessions, bot_messages, bot_heartbeats (created 2026-06-27).
+ *
+ * Falls back to file-based store if SUPABASE_URL not set (local dev).
+ */
+
+const SUPABASE_URL = process.env['SUPABASE_URL'] ?? '';
+const SUPABASE_KEY = process.env['SUPABASE_SERVICE_ROLE_KEY'] ?? '';
+
+export function isSupabaseConfigured(): boolean {
+  return !!(SUPABASE_URL && SUPABASE_KEY);
+}
+
+async function supaFetch(path: string, options: RequestInit = {}): Promise<any> {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    ...options,
+    headers: {
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+      'Prefer': options.method === 'POST' ? 'return=representation' : 'return=minimal',
+      ...options.headers,
+    },
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Supabase ${res.status}: ${body.slice(0, 200)}`);
+  }
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+}
+
+// ── Sessions ──
+
+export async function createSession(chatId: number): Promise<string> {
+  const [row] = await supaFetch('bot_sessions', {
+    method: 'POST',
+    body: JSON.stringify({ chat_id: chatId }),
+  });
+  return row.id;
+}
+
+export async function updateSession(sessionId: string, data: {
+  message_count?: number;
+  emotional_state?: Record<string, unknown>;
+  provider_used?: string;
+  summary?: string;
+}): Promise<void> {
+  await supaFetch(`bot_sessions?id=eq.${sessionId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ ...data, last_message_at: new Date().toISOString() }),
+  });
+}
+
+export async function getLatestSession(chatId: number): Promise<any | null> {
+  const rows = await supaFetch(
+    `bot_sessions?chat_id=eq.${chatId}&order=created_at.desc&limit=1`
+  );
+  return rows?.[0] ?? null;
+}
+
+// ── Messages ──
+
+export async function saveMessage(sessionId: string, chatId: number, msg: {
+  role: 'user' | 'assistant';
+  content: string;
+  provider?: string;
+  model?: string;
+  emotional_read?: Record<string, unknown>;
+}): Promise<void> {
+  await supaFetch('bot_messages', {
+    method: 'POST',
+    body: JSON.stringify({
+      session_id: sessionId,
+      chat_id: chatId,
+      ...msg,
+    }),
+  });
+}
+
+export async function loadMessages(chatId: number, limit = 20): Promise<Array<{
+  role: string; content: string; created_at: string;
+}>> {
+  return supaFetch(
+    `bot_messages?chat_id=eq.${chatId}&order=created_at.desc&limit=${limit}&select=role,content,created_at`
+  ).then((rows: any[]) => rows?.reverse() ?? []);
+}
+
+// ── Heartbeats ──
+
+export async function writeHeartbeatDB(data: {
+  providers: number;
+  uptime_minutes: number;
+  message_count: number;
+  chat_count: number;
+}): Promise<void> {
+  await supaFetch('bot_heartbeats', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+}
