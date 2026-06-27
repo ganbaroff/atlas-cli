@@ -28,6 +28,8 @@ import {
   parseControlCommand,
 } from './atlas/control-plane.js';
 import { buildAtlasBrainPlan } from './atlas/brain-planner.js';
+import { runTask, isTaskRunning } from './atlas/task-spawner.js';
+import { executeDeploy, deployInProgress, getPR, listOpenPRs } from './atlas/deploy.js';
 import { appendMessage, loadConversation, compactIfNeeded, type StoredMessage } from './atlas/conversation-store.js';
 import { listAvailableModels, routeModelWithFallback } from './model-router.js';
 import { analyzeWindow, emotionDirective } from './atlas/emotion.js';
@@ -142,8 +144,37 @@ function buildMessages(chatId: number): Msg[] {
 }
 
 // ── LLM call ────────────────────────────────────────────────────────
+// Action intent detection — CEO says "проверь прод" → Atlas runs the command
+const ACTION_PATTERNS = [
+  { pattern: /проверь\s+прод|check\s+prod|prod\s+health/i, cmd: 'curl -s https://volauraapi-production.up.railway.app/health | python3 -c "import sys,json; d=json.load(sys.stdin); print(f\\"prod: {d[\'status\']} sha:{d[\'git_sha\'][:7]}\\")' },
+  { pattern: /git\s+status|статус\s+гит|что\s+в\s+гите/i, cmd: 'cd C:/Projects/VOLAURA && git log --oneline -3 && echo "---" && git status --short | head -10' },
+  { pattern: /бот\s+жив|bot\s+alive|pm2\s+status/i, cmd: 'pm2 status' },
+  { pattern: /atlas\s+status|статус\s+атлас|дашборд/i, cmd: 'cd C:/Projects/ATLAS && node scripts/status.mjs 2>&1 | head -20' },
+];
+
+function detectActionIntent(text: string): string | null {
+  for (const { pattern, cmd } of ACTION_PATTERNS) {
+    if (pattern.test(text)) return cmd;
+  }
+  return null;
+}
+
 async function ask(chatId: number, text: string): Promise<string> {
   addMsg(chatId, 'user', text);
+
+  // Auto-action: CEO asks about prod/git/bot → Atlas runs the check and includes result
+  const autoCmd = detectActionIntent(text);
+  if (autoCmd) {
+    try {
+      const { execSync } = await import('node:child_process');
+      const output = execSync(autoCmd, { timeout: 15_000, encoding: 'utf-8', maxBuffer: 512 * 1024 }).trim();
+      console.log(`[auto-action] chat=${chatId} cmd="${autoCmd.slice(0, 50)}" output=${output.length} chars`);
+      // Feed the output into the LLM so it can respond naturally with real data
+      addMsg(chatId, 'user', `[system: auto-check result]\n${output.slice(0, 2000)}`);
+    } catch (e: any) {
+      addMsg(chatId, 'user', `[system: auto-check failed] ${e.message?.slice(0, 200)}`);
+    }
+  }
 
   const operatorAction = runOperatorActionLane(text, { source: 'telegram' });
   if (operatorAction.handled) {
@@ -305,6 +336,74 @@ bot.command('models', async (ctx) => {
   await ctx.reply(reply);
 });
 
+// Deploy with confirmation — auditor: no instant merge on typo
+const pendingDeploys = new Map<number, { project: string; prNumber: number; prTitle: string }>();
+
+bot.command('deploy', async (ctx) => {
+  const args = ctx.message.text.replace(/^\/deploy\s*/, '').trim().split(/\s+/);
+  const project = args[0] || 'volaura';
+  const prNum = args[1] ? parseInt(args[1], 10) : undefined;
+  const chatId = ctx.chat.id;
+
+  if (deployInProgress()) { await ctx.reply('Deploy уже идёт. Жди.'); return; }
+
+  const pr = getPR(project, prNum);
+  if (!pr) { await ctx.reply(`No PR found for ${project}${prNum ? ` #${prNum}` : ''}.`); return; }
+
+  pendingDeploys.set(chatId, { project, prNumber: pr.number, prTitle: pr.title });
+  await ctx.reply(`Deploy PR #${pr.number} "${pr.title.slice(0, 50)}" в ${project}?\n\nНапиши "да" для подтверждения.`);
+});
+
+bot.hears(/^да$/i, async (ctx) => {
+  const chatId = ctx.chat.id;
+  const pending = pendingDeploys.get(chatId);
+  if (!pending) return; // no pending deploy
+  pendingDeploys.delete(chatId);
+
+  addMsg(chatId, 'user', `deploy confirmed: ${pending.project} PR #${pending.prNumber}`);
+  await ctx.reply(`[deploy] Мержу PR #${pending.prNumber} → main → polling health...\n~2 мин.`);
+
+  try {
+    const result = await executeDeploy(pending.project, pending.prNumber);
+    const reply = result.error
+      ? `[deploy FAIL] ${result.error}${result.rolledBack ? ' (ROLLED BACK)' : ''}`
+      : `[deploy OK] PR #${result.prNumber} merged.\nProd: ${result.healthCheck?.status} sha:${result.healthCheck?.sha}\n${Math.round(result.durationMs / 1000)}s`;
+    addMsg(chatId, 'assistant', reply);
+    await sendLong(ctx, reply);
+  } catch (e: any) {
+    await ctx.reply(`Deploy error: ${e.message?.slice(0, 300)}`);
+  }
+});
+
+bot.command('task', async (ctx) => {
+  const desc = ctx.message.text.replace(/^\/task\s*/, '').trim();
+  if (!desc) {
+    await ctx.reply('Usage: /task <описание задачи>\nAtlas запустит Claude Code и вернёт результат.');
+    return;
+  }
+  if (isTaskRunning()) {
+    await ctx.reply('Уже работает другая задача. Дождись завершения.');
+    return;
+  }
+  const chatId = ctx.chat.id;
+  addMsg(chatId, 'user', `/task ${desc}`);
+  await ctx.reply(`[task] Запускаю Claude Code: "${desc.slice(0, 60)}..."\nМакс 10 минут. Жди результат.`);
+  try {
+    const result = await runTask(desc);
+    const reply = [
+      `[task ${result.id}] ${result.exitCode === 0 ? 'OK' : `exit ${result.exitCode}`} (${Math.round(result.durationMs / 1000)}s)`,
+      '',
+      result.output,
+    ].join('\n');
+    addMsg(chatId, 'assistant', reply);
+    await sendLong(ctx, reply);
+  } catch (e: any) {
+    const err = `Task failed: ${e.message?.slice(0, 300)}`;
+    addMsg(chatId, 'assistant', err);
+    await ctx.reply(err);
+  }
+});
+
 bot.command('swarm', async (ctx) => {
   const task = ctx.message.text.replace(/^\/swarm\s*/, '').trim();
   if (!task) {
@@ -330,6 +429,16 @@ bot.command('swarm', async (ctx) => {
 bot.start(async (ctx) => {
   const chatId = ctx.chat.id;
   convos.delete(chatId);
+  // Clear JSONL on disk too — old messages with hallucinated tool calls poison the context
+  try {
+    const { unlinkSync } = await import('node:fs');
+    const convPath = join(
+      process.env['MEMORY_ROOT'] ?? (process.platform === 'win32' ? 'C:\\Projects\\VOLAURA' : ''),
+      'memory', 'atlas', 'telegram-conversations', `${chatId}.jsonl`,
+    );
+    unlinkSync(convPath);
+    console.log(`[memory] cleared conversation history for chat ${chatId}`);
+  } catch { /* file may not exist — ok */ }
   try {
     const reply = await ask(chatId, '/start — new session started');
     await ctx.reply(reply);
@@ -422,6 +531,26 @@ function fatal(label: string, error: unknown): never {
 }
 
 const bootTime = new Date().toISOString();
+
+// Health endpoint for Railway (port 3000)
+import { createServer } from 'node:http';
+const PORT = parseInt(process.env['PORT'] ?? '3000', 10);
+createServer((req, res) => {
+  if (req.url === '/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      status: 'ok',
+      bot: bot.botInfo?.username ?? 'booting',
+      uptime: `${Math.round((Date.now() - new Date(bootTime).getTime()) / 60000)}min`,
+      providers: availableModels.length,
+      bootTime,
+    }));
+  } else {
+    res.writeHead(404);
+    res.end();
+  }
+}).listen(PORT, () => console.log(`[health] listening on :${PORT}`));
+
 async function boot(): Promise<void> {
   void bot.launch(() => {
     console.log(`[bot] Atlas Telegram alive @${bot.botInfo?.username ?? 'unknown'} — ${bootTime} fallback=routeModelWithFallback providers=${availableModels.map((m) => m.provider).join(',')}`);
@@ -437,5 +566,6 @@ async function gracefulStop(signal: string): Promise<void> {
 
 process.once('SIGINT', () => { gracefulStop('SIGINT').catch(() => process.exit(0)); });
 process.once('SIGTERM', () => { gracefulStop('SIGTERM').catch(() => process.exit(0)); });
-process.on('uncaughtException', (e) => fatal('[CRASH]', e));
+// Auditor: uncaughtException should log, not crash — one bad Telegram message kills the bot
+process.on('uncaughtException', (e) => console.error('[CRASH] uncaught — continuing:', e));
 process.on('unhandledRejection', (e) => fatal('[UNHANDLED]', e));
