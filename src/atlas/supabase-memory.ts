@@ -13,15 +13,21 @@ export function isSupabaseConfigured(): boolean {
 }
 
 async function supaFetch(path: string, options: RequestInit = {}): Promise<any> {
+  // sb_secret_... keys use apikey header only (not a JWT, can't be Bearer).
+  // Legacy eyJhbG... JWTs work as both apikey + Bearer.
+  const isLegacyJWT = SUPABASE_KEY.startsWith('eyJ');
+  const baseHeaders: Record<string, string> = {
+    'apikey': SUPABASE_KEY,
+    'Content-Type': 'application/json',
+    'Prefer': options.method === 'POST' ? 'return=representation' : 'return=minimal',
+  };
+  if (isLegacyJWT) {
+    baseHeaders['Authorization'] = `Bearer ${SUPABASE_KEY}`;
+  }
+
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     ...options,
-    headers: {
-      'apikey': SUPABASE_KEY,
-      'Authorization': `Bearer ${SUPABASE_KEY}`,
-      'Content-Type': 'application/json',
-      'Prefer': options.method === 'POST' ? 'return=representation' : 'return=minimal',
-      ...options.headers,
-    },
+    headers: { ...baseHeaders, ...options.headers },
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
