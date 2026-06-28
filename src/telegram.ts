@@ -654,6 +654,10 @@ async function boot(): Promise<void> {
     // Start remote result polling after bot is alive
     setInterval(() => { deliverRemoteResults().catch(() => {}); }, REMOTE_POLL_MS);
     console.log(`[remote] polling every ${REMOTE_POLL_MS / 1000}s for completed commands`);
+    // Periodic heartbeat — don't rely on message count or SIGTERM (found gap: 143min uptime, 0 heartbeats)
+    const HEARTBEAT_MS = 5 * 60 * 1000;
+    setInterval(() => { writeSessionSummary().catch(err => console.error('[heartbeat-timer]', err.message)); }, HEARTBEAT_MS);
+    console.log(`[heartbeat] periodic timer every ${HEARTBEAT_MS / 1000}s`);
   }).catch((error) => fatal('[LAUNCH FAILED]', error));
 }
 boot().catch((error) => fatal('[BOOT FAILED]', error));
