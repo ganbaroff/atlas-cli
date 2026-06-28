@@ -28,20 +28,14 @@ import * as readline from 'node:readline';
 import { capture, shutdown } from './analytics.js';
 
 // CWD-FIX: resolve .env from module dir, not process.cwd()
+import { parse as dotenvParse } from 'dotenv';
 import { fileURLToPath } from 'node:url';
 import { dirname } from 'node:path';
 const ANUS_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-process.chdir(ANUS_ROOT);
 const envPath = resolve(ANUS_ROOT, '.env');
 if (existsSync(envPath)) {
-  const lines = readFileSync(envPath, 'utf-8').split('\n');
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const eq = trimmed.indexOf('=');
-    if (eq === -1) continue;
-    const key = trimmed.slice(0, eq).trim();
-    const val = trimmed.slice(eq + 1).trim();
+  const parsed = dotenvParse(readFileSync(envPath, 'utf-8'));
+  for (const [key, val] of Object.entries(parsed)) {
     if (!process.env[key]) process.env[key] = val;
   }
 }
@@ -679,4 +673,6 @@ program
     process.exit(report.failed > 0 ? 1 : 0);
   });
 
-program.parse();
+if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith('cli.js')) {
+  program.parse();
+}

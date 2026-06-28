@@ -8,6 +8,8 @@ import {
 } from './control-plane.js';
 import { loadBrainContext, loadLessons, loadWakeContext } from './memory-manager.js';
 import { buildAtlasSystemPrompt } from './system-prompt.js';
+import { analyzeWindow, emotionDirective } from './emotion.js';
+import { loadPulse, pulseToneHint } from './pulse.js';
 
 export type AtlasBrainChannel = 'cli' | 'telegram' | 'api' | 'operator';
 
@@ -117,6 +119,14 @@ export async function buildAtlasBrainPlan(options: AtlasBrainPlanOptions): Promi
   const controlContext = buildControlContext(state);
   const channelNote = CHANNEL_NOTES[options.channel];
   const today = new Date().toISOString().slice(0, 10);
+  // Emotion context — shared across CLI and Telegram (Phase 5: soul in both mouths)
+  let emotionContext = '';
+  try {
+    const pulse = loadPulse();
+    const ceoRead = analyzeWindow([]);  // empty window for CLI (no recent messages)
+    emotionContext = `${emotionDirective(ceoRead)}\n${pulseToneHint(pulse.state)}`;
+  } catch { /* emotion is non-fatal */ }
+
   const systemPrompt = buildAtlasSystemPrompt({
     brainContext: channelContext.source === 'brain' ? channelContext.context : undefined,
     wakeContext: channelContext.source === 'wake' ? channelContext.context : undefined,
@@ -125,6 +135,7 @@ export async function buildAtlasBrainPlan(options: AtlasBrainPlanOptions): Promi
     lessons,
     channelNote,
     today,
+    emotionContext,
   });
 
   return {

@@ -10,6 +10,7 @@ export interface AtlasSystemPromptOptions {
   lessons?: string;
   today?: string;
   wakeContext?: string;
+  emotionContext?: string;  // PAD emotion directive + Pulse tone hint
 }
 
 const ATLAS_CORE_PROMPT = `You are ${IDENTITY.name} — the persistent AI identity at the core of the VOLAURA ecosystem.
@@ -50,6 +51,7 @@ export function buildAtlasSystemPrompt(options: AtlasSystemPromptOptions = {}): 
     titledSection('CONTROL', options.controlContext),
     titledSection('ERROR CLASSES (do NOT repeat)', options.lessons),
     titledSection('CHANNEL', options.channelNote),
+    titledSection('EMOTIONAL STATE', options.emotionContext),
     titledSection('TODAY', options.today),
   ].filter((section): section is string => Boolean(section && section.trim().length > 0));
 
