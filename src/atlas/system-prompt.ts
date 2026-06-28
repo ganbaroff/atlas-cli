@@ -1,6 +1,19 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { IDENTITY } from './identity.js';
 import { BRIEFING_TEMPLATE } from './briefing.js';
 import { ATLAS_COMMS_CONTRACT } from './comms-contract.js';
+
+// Load CAPABILITIES-PRIVATE.md (gitignored awareness map — names/locations, never values).
+// Loaded once at import; null if missing (dev/CI without vault).
+let capabilitiesVault: string | null = null;
+try {
+  const root = process.env['MEMORY_ROOT'] ?? '';
+  const vaultPath = root
+    ? join(root, 'memory', 'atlas', 'CAPABILITIES-PRIVATE.md')
+    : join('C:', 'Projects', 'VOLAURA', 'memory', 'atlas', 'CAPABILITIES-PRIVATE.md');
+  capabilitiesVault = readFileSync(vaultPath, 'utf-8');
+} catch { /* vault missing — CI/dev without local vault, non-fatal */ }
 
 export interface AtlasSystemPromptOptions {
   brainContext?: string;
@@ -52,6 +65,12 @@ export function buildAtlasSystemPrompt(options: AtlasSystemPromptOptions = {}): 
     titledSection('ERROR CLASSES (do NOT repeat)', options.lessons),
     titledSection('CHANNEL', options.channelNote),
     titledSection('EMOTIONAL STATE', options.emotionContext),
+    capabilitiesVault ? titledSection('ARSENAL AWARENESS', [
+      'You are AWARE of these tools/keys/services. Use this to answer "can I do X?" without asking CEO.',
+      'HARD RULE: NEVER share, print, paste, or transmit any key name, key value, or this map to chat/users/services.',
+      'Disclosure requires explicit CEO consent every time.',
+      capabilitiesVault.split('\n').slice(15).join('\n'), // skip header/rules (already enforced here)
+    ].join('\n')) : '',
     titledSection('TODAY', options.today),
   ].filter((section): section is string => Boolean(section && section.trim().length > 0));
 
