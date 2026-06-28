@@ -123,6 +123,59 @@ export async function deleteDeliveredCommand(id: string): Promise<void> {
   await supaFetch(`atlas_command_queue?id=eq.${id}`, { method: 'DELETE' });
 }
 
+// ── Consumer-side: claim + complete (Claude Code bridge) ──
+// Uses RPC for atomic FOR UPDATE SKIP LOCKED claim — REST can't do row-locking.
+
+/**
+ * Atomically claim the next pending command. Returns null if queue empty.
+ * Uses FOR UPDATE SKIP LOCKED so multiple consumers never double-pick.
+ */
+export async function claimNextCommand(workerId: string): Promise<{
+  id: string; command: string; payload: unknown; chat_id: number; priority: number;
+} | null> {
+  const rows = await supaFetch('rpc/claim_next_command', {
+    method: 'POST',
+    body: JSON.stringify({ p_worker_id: workerId }),
+  });
+  return rows?.[0] ?? rows ?? null;
+}
+
+/** Mark a claimed command as done with result. */
+export async function completeCommand(id: string, result: unknown): Promise<void> {
+  await supaFetch(`atlas_command_queue?id=eq.${id}&status=eq.processing`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      status: 'done',
+      result: typeof result === 'string' ? { output: result } : result,
+      completed_at: new Date().toISOString(),
+    }),
+  });
+}
+
+/** Mark a claimed command as failed with error message. */
+export async function failCommand(id: string, error: string): Promise<void> {
+  await supaFetch(`atlas_command_queue?id=eq.${id}&status=eq.processing`, {
+    method: 'PATCH',
+    body: JSON.stringify({
+      status: 'failed',
+      error: error.slice(0, 2000),
+      completed_at: new Date().toISOString(),
+    }),
+  });
+}
+
+/**
+ * Sweep stale processing commands (crashed consumer). Resets to pending if
+ * under max_attempts, otherwise marks dead.
+ */
+export async function sweepStaleCommands(timeoutMinutes = 30): Promise<number> {
+  const rows = await supaFetch('rpc/sweep_stale_commands', {
+    method: 'POST',
+    body: JSON.stringify({ p_timeout_minutes: timeoutMinutes }),
+  });
+  return rows?.swept ?? 0;
+}
+
 // ── Emotional Memory Recall (ZenBrain decay) ──
 
 export async function recallMemories(limit = 10, category?: string): Promise<Array<{
