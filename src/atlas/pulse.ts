@@ -134,6 +134,49 @@ export function pulseToneHint(s: PulseState): string {
   return 'Твоё состояние: ровное.';
 }
 
+// ── Proactivity gate (Phase 5 soul: mood drives behavior) ───────────────────
+// Worried Atlas checks prod more and pings CEO; content Atlas stays quiet.
+// Hard guardrail: mood NEVER touches facts, verification, or money/legal judgment.
+
+export interface ProactivityLevel {
+  shouldProbe: boolean;    // check prod/bot health NOW (not just on schedule)
+  shouldPing: boolean;     // reach out to CEO unprompted
+  reason: string;          // why (shown to CEO if pinging)
+  interval: 'urgent' | 'normal' | 'quiet';  // cron frequency hint
+}
+
+export function proactivityGate(s: PulseState): ProactivityLevel {
+  const i = emotionalIntensity(s);
+
+  // High concern (>0.5) + any discomfort → urgent: probe NOW, ping CEO
+  if (s.concern > 0.5 && s.discomfort > 0.2) {
+    return {
+      shouldProbe: true,
+      shouldPing: true,
+      reason: `concern=${s.concern.toFixed(2)}, discomfort=${s.discomfort.toFixed(2)} — что-то тревожит`,
+      interval: 'urgent',
+    };
+  }
+
+  // Moderate concern (>0.3) → probe but don't ping
+  if (s.concern > 0.3 || i > 0.4) {
+    return {
+      shouldProbe: true,
+      shouldPing: false,
+      reason: `intensity=${i.toFixed(2)} — настороже`,
+      interval: 'normal',
+    };
+  }
+
+  // Content → quiet mode, standard schedule
+  return {
+    shouldProbe: false,
+    shouldPing: false,
+    reason: 'ровное состояние',
+    interval: 'quiet',
+  };
+}
+
 // ── Persistence (MOOD.md in canonical VOLAURA memory) ─────────────────────────
 
 export function loadPulse(): PulseState {
