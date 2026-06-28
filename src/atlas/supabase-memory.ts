@@ -117,6 +117,38 @@ export async function deleteDeliveredCommand(id: string): Promise<void> {
   await supaFetch(`atlas_command_queue?id=eq.${id}`, { method: 'DELETE' });
 }
 
+// ── Emotional Memory Recall (ZenBrain decay) ──
+
+export async function recallMemories(limit = 10, category?: string): Promise<Array<{
+  category: string; content: string; emotional_intensity: number; decay_score: number;
+}>> {
+  const params = new URLSearchParams();
+  params.set('p_limit', String(limit));
+  if (category) params.set('p_category', category);
+
+  return supaFetch(`rpc/recall_atlas_memories?${params}`, {
+    method: 'POST',
+    body: JSON.stringify({ p_limit: limit, ...(category ? { p_category: category } : {}) }),
+  }).then((rows: any[]) => rows?.map(r => ({
+    category: r.category,
+    content: r.content,
+    emotional_intensity: r.emotional_intensity,
+    decay_score: r.decay_score,
+  })) ?? []);
+}
+
+export async function saveMemory(category: string, content: string, emotionalIntensity: number, sourceMessage?: string): Promise<void> {
+  await supaFetch('atlas_learnings', {
+    method: 'POST',
+    body: JSON.stringify({
+      category,
+      content,
+      emotional_intensity: emotionalIntensity,
+      source_message: sourceMessage,
+    }),
+  });
+}
+
 // ── Heartbeats ──
 
 export async function writeHeartbeatDB(data: {
