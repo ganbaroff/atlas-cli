@@ -10,6 +10,7 @@ import { loadBrainContext, loadLessons, loadWakeContext } from './memory-manager
 import { buildAtlasSystemPrompt } from './system-prompt.js';
 import { analyzeWindow, emotionDirective } from './emotion.js';
 import { loadPulse, pulseToneHint } from './pulse.js';
+import { isSupabaseConfigured, recallMemories } from './supabase-memory.js';
 
 export type AtlasBrainChannel = 'cli' | 'telegram' | 'api' | 'operator';
 
@@ -123,9 +124,22 @@ export async function buildAtlasBrainPlan(options: AtlasBrainPlanOptions): Promi
   let emotionContext = '';
   try {
     const pulse = loadPulse();
-    const ceoRead = analyzeWindow([]);  // empty window for CLI (no recent messages)
+    const ceoRead = analyzeWindow([]);
     emotionContext = `${emotionDirective(ceoRead)}\n${pulseToneHint(pulse.state)}`;
   } catch { /* emotion is non-fatal */ }
+
+  // Emotional memory recall — ZenBrain decay (Phase 4: high-intensity memories surface first)
+  if (isSupabaseConfigured()) {
+    try {
+      const memories = await recallMemories(5);
+      if (memories.length > 0) {
+        const memoryLines = memories.map(m =>
+          `[${m.category}] ${m.content} (intensity=${m.emotional_intensity})`
+        ).join('\n');
+        emotionContext += `\n\n## ATLAS EMOTIONAL MEMORY (top ${memories.length} by decay score)\n${memoryLines}`;
+      }
+    } catch { /* memory recall is non-fatal */ }
+  }
 
   const systemPrompt = buildAtlasSystemPrompt({
     brainContext: channelContext.source === 'brain' ? channelContext.context : undefined,
