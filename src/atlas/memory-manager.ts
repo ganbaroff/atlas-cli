@@ -6,7 +6,7 @@
  * Default: C:\Projects\VOLAURA (Windows) / ~/Projects/VOLAURA (Unix)
  */
 
-import { readFile, appendFile, writeFile, readdir } from 'node:fs/promises';
+import { readFile, appendFile, writeFile, readdir, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
@@ -157,6 +157,7 @@ export async function loadWakeContext(): Promise<string> {
  */
 export async function appendJournal(entry: string): Promise<void> {
   const separator = '\n\n---\n\n';
+  await mkdir(atlasDir(), { recursive: true });
   await appendFile(f('journal.md'), `${separator}${entry.trim()}\n`, 'utf-8');
 }
 
@@ -171,5 +172,7 @@ export async function writeHeartbeat(session: Record<string, unknown>): Promise<
     .join('\n');
 
   const content = `# Atlas — Heartbeat\n\nUpdated: ${now}\n\n${rows}\n`;
+  // Ensure atlas dir exists (Railway container may not have it after redeploy)
+  await mkdir(atlasDir(), { recursive: true });
   await writeFile(f('heartbeat.md'), content, 'utf-8');
 }
