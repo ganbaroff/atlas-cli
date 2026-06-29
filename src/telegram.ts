@@ -686,13 +686,20 @@ async function autonomousBrainLoop(): Promise<void> {
     const pulse = loadPulse();
     const proactivity = (await import('./atlas/pulse.js')).proactivityGate(pulse);
 
-    // Pick next task based on proactivity level
+    // Pick next task based on proactivity level + rotation
+    const tick = Math.floor(Date.now() / BRAIN_LOOP_MS); // monotonic tick counter
     let command: string;
     if (proactivity.shouldProbe) {
       command = 'health check: curl prod + bot, verify heartbeats in Supabase, report any issues';
     } else {
-      // Default: read CURRENT-SPRINT.md and pick the next unchecked item
-      command = 'read C:/Projects/VOLAURA/memory/atlas/CURRENT-SPRINT.md, find the first unchecked [ ] item, execute it, mark done';
+      // Rotate between useful autonomous tasks (don't re-seed the same blocked sprint item)
+      const tasks = [
+        'health check: curl prod + bot, check heartbeat count in Supabase, check CI status on GitHub',
+        'read C:/Projects/VOLAURA/memory/atlas/CURRENT-SPRINT.md, find the first unchecked [ ] item that is NOT blocked on CEO, execute it, mark done',
+        'screenshot: take a screenshot of CEO screen, describe what you see, report anything unusual',
+        'read C:/Projects/VOLAURA/.claude/breadcrumb.md (first 10 lines), summarize current state to CEO in Telegram',
+      ];
+      command = tasks[tick % tasks.length]!;
     }
 
     // Queue the command
