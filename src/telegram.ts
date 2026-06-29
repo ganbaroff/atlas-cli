@@ -648,6 +648,70 @@ async function deliverRemoteResults(): Promise<void> {
   }
 }
 
+// ── Autonomous brain-loop: bot self-directs by writing to command queue ──
+// Reads ecosystem state → brain decides next task → queues it for Claude Code.
+// Fires every 15 min. Only seeds when queue is empty (doesn't pile up).
+const BRAIN_LOOP_MS = 15 * 60 * 1000;
+
+async function autonomousBrainLoop(): Promise<void> {
+  if (!isSupabaseConfigured() || !CEO_CHAT_ID) return;
+  const chatId = parseInt(CEO_CHAT_ID, 10);
+
+  try {
+    // Don't seed if commands are already pending/processing
+    const pending = await pollCompletedCommands(chatId);
+    // pollCompletedCommands returns done/failed — check for ANY non-done rows
+    const queueCheck = await (async () => {
+      try {
+        // Quick check: any pending commands?
+        const res = await import('./atlas/supabase-memory.js').then(m =>
+          // Use supaFetch directly — check for pending commands
+          fetch(`${process.env['SUPABASE_URL']}/rest/v1/atlas_command_queue?status=eq.pending&limit=1`, {
+            headers: {
+              'apikey': process.env['SUPABASE_SERVICE_ROLE_KEY'] ?? '',
+              'Authorization': `Bearer ${process.env['SUPABASE_SERVICE_ROLE_KEY'] ?? ''}`,
+            },
+          }).then(r => r.json())
+        );
+        return Array.isArray(res) ? res.length : 0;
+      } catch { return 0; }
+    })();
+
+    if (queueCheck > 0 || pending.length > 0) {
+      console.log(`[brain-loop] queue not empty (pending=${queueCheck} done/failed=${pending.length}), skipping seed`);
+      return;
+    }
+
+    // Check proactivity — mood decides urgency
+    const pulse = loadPulse();
+    const proactivity = (await import('./atlas/pulse.js')).proactivityGate(pulse);
+
+    // Pick next task based on proactivity level
+    let command: string;
+    if (proactivity.shouldProbe) {
+      command = 'health check: curl prod + bot, verify heartbeats in Supabase, report any issues';
+    } else {
+      // Default: read CURRENT-SPRINT.md and pick the next unchecked item
+      command = 'read C:/Projects/VOLAURA/memory/atlas/CURRENT-SPRINT.md, find the first unchecked [ ] item, execute it, mark done';
+    }
+
+    // Queue the command
+    const cmdId = await queueRemoteCommand(chatId, command);
+    console.log(`[brain-loop] seeded cmd=${cmdId.slice(0, 8)} proactivity=${proactivity.interval} command="${command.slice(0, 80)}"`);
+
+    // Notify CEO if proactivity says ping
+    if (proactivity.shouldPing) {
+      try {
+        await bot.telegram.sendMessage(chatId,
+          `[atlas] ${proactivity.reason}\nАвтономно запустил проверку.`
+        );
+      } catch { /* non-fatal */ }
+    }
+  } catch (e: any) {
+    console.error('[brain-loop]', e.message?.slice(0, 200));
+  }
+}
+
 async function boot(): Promise<void> {
   void bot.launch(() => {
     console.log(`[bot] Atlas Telegram alive @${bot.botInfo?.username ?? 'unknown'} — ${bootTime} fallback=routeModelWithFallback providers=${availableModels.map((m) => m.provider).join(',')}`);
@@ -658,6 +722,11 @@ async function boot(): Promise<void> {
     const HEARTBEAT_MS = 5 * 60 * 1000;
     setInterval(() => { writeSessionSummary().catch(err => console.error('[heartbeat-timer]', err.message)); }, HEARTBEAT_MS);
     console.log(`[heartbeat] periodic timer every ${HEARTBEAT_MS / 1000}s`);
+    // Autonomous brain-loop — bot self-seeds command queue when empty
+    setInterval(() => { autonomousBrainLoop().catch(err => console.error('[brain-loop-timer]', err.message)); }, BRAIN_LOOP_MS);
+    // Fire first brain-loop after 2 min (let bot stabilize first)
+    setTimeout(() => { autonomousBrainLoop().catch(() => {}); }, 2 * 60 * 1000);
+    console.log(`[brain-loop] autonomous planning every ${BRAIN_LOOP_MS / 1000}s`);
   }).catch((error) => fatal('[LAUNCH FAILED]', error));
 }
 boot().catch((error) => fatal('[BOOT FAILED]', error));
