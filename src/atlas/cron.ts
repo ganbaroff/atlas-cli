@@ -10,6 +10,7 @@ import { writeFile, readFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { runHealthCheck, formatHealthReport, type HealthReport } from './health-check.js';
+import { evaluateHeartbeat } from './heartbeat-alert.js';
 
 function healthDir(): string {
   const root = process.env.MEMORY_ROOT ??
@@ -53,7 +54,10 @@ export async function readLastReport(): Promise<string | null> {
 }
 
 /** Start recurring cron. Returns cleanup function. */
-export function startCron(intervalMinutes = 30): { stop: () => void } {
+export function startCron(
+  intervalMinutes = 30,
+  onStaleAlert?: (msg: string, detail: string) => void,
+): { stop: () => void } {
   const ms = intervalMinutes * 60 * 1000;
 
   const tick = async () => {
@@ -61,6 +65,14 @@ export function startCron(intervalMinutes = 30): { stop: () => void } {
       const report = await runAndPersist();
       const time = new Date().toISOString().slice(11, 19);
       console.log(`[cron ${time}] ${report.summary}`);
+      // Heartbeat-stale alert: fire once after 3 consecutive stale runs (Phase 4.3).
+      const hb = evaluateHeartbeat(report);
+      if (hb.shouldAlert && onStaleAlert) {
+        onStaleAlert(
+          `Не смог подтвердить пульс, причина: heartbeat устал ${hb.consecutiveStale} прогона подряд (${hb.detail}). Делаю: проверяю писателя heartbeat.`,
+          hb.detail,
+        );
+      }
     } catch (err) {
       console.error(`[cron] check failed: ${err instanceof Error ? err.message : err}`);
     }
