@@ -170,7 +170,13 @@ program
         }
 
         try {
-          const { agent, route } = await createAtlasAgentWithRoute(role);
+          // Emotion source: recent user turns, newest-first (matches analyzeWindow contract).
+          const recentUserMessages = messages
+            .filter((m) => m.role === 'user')
+            .map((m) => m.content)
+            .reverse()
+            .slice(0, 8);
+          const { agent, route } = await createAtlasAgentWithRoute(role, 'cli', recentUserMessages);
           const response = await agent.generate(messages);
           recordAgentSpend(response, route, 'cli');
           const delivery = await deliverReply(response.text, async (prompt) => {
