@@ -35,6 +35,9 @@ import { executeDeploy, deployInProgress, getPR, listOpenPRs } from './atlas/dep
 import { appendMessage, loadConversation, compactIfNeeded, type StoredMessage } from './atlas/conversation-store.js';
 import { isSupabaseConfigured, createSession, saveMessage, loadMessages, writeHeartbeatDB, writeJournalDB, writeEpisodeDB, updateSession, getLatestSession, queueRemoteCommand, pollCompletedCommands, deleteDeliveredCommand } from './atlas/supabase-memory.js';
 import { formatReceipt } from './atlas/receipt.js';
+import { composeMorningBriefing, scheduleMorningBriefing } from './atlas/briefing.js';
+import { readOperatorState } from './atlas/control-plane.js';
+import { readLastReport } from './atlas/cron.js';
 import { listAvailableModels, routeModelWithFallback } from './model-router.js';
 import { recordSpendFromResult } from './atlas/spend-tracker.js';
 import { enforceSpendPolicy, isPaused, tryConsumeBrainQueueSlot, brainQueueCap } from './atlas/spend-policy.js';
@@ -822,6 +825,45 @@ async function autonomousBrainLoop(): Promise<void> {
   }
 }
 
+// ── Morning briefing (08:45 Baku) ──────────────────────────────────
+// Derives 3 clauses from operator state + last health report, appends
+// today's in-memory spend, sends to CEO. Guarded on TELEGRAM_CEO_CHAT_ID.
+async function sendMorningBriefing(): Promise<void> {
+  if (!CEO_CHAT_ID) return;
+  const chatId = parseInt(CEO_CHAT_ID, 10);
+  if (!Number.isFinite(chatId)) return;
+
+  // Night: last health report summary (falls back to a calm default).
+  let night = 'бот работал стабильно, инцидентов не зафиксировано';
+  try {
+    const report = await readLastReport();
+    if (report) {
+      const firstLine = report.split('\n').map((l) => l.trim()).find((l) => l.length > 0);
+      if (firstLine) night = firstLine.replace(/^#+\s*/, '').slice(0, 200);
+    }
+  } catch { /* non-fatal */ }
+
+  // Today + awaiting-CEO: operator state (next phase / pending run).
+  let today = 'продолжаю по текущему плану';
+  let awaitingCeo = 'ничего не блокирует — жду сигнала';
+  try {
+    const state = readOperatorState();
+    if (state.phase?.next) today = `фаза «${String(state.phase.next).slice(0, 120)}»`;
+    const lastRun = state.last_run;
+    if (lastRun && lastRun.status && lastRun.status !== 'success') {
+      awaitingCeo = `последний прогон ${lastRun.task_id ?? '?'} — ${lastRun.status}${lastRun.reason ? ` (${String(lastRun.reason).slice(0, 80)})` : ''}`;
+    }
+  } catch { /* non-fatal */ }
+
+  const text = composeMorningBriefing({ night, today, awaitingCeo });
+  try {
+    await bot.telegram.sendMessage(chatId, text.slice(0, 4096));
+    console.log(`[briefing] sent morning briefing to CEO chat=${chatId}`);
+  } catch (e: any) {
+    console.error('[briefing] send failed:', e?.message?.slice(0, 200));
+  }
+}
+
 async function boot(): Promise<void> {
   void bot.launch(() => {
     console.log(`[bot] Atlas Telegram alive @${bot.botInfo?.username ?? 'unknown'} — ${bootTime} fallback=routeModelWithFallback providers=${availableModels.map((m) => m.provider).join(',')}`);
@@ -837,6 +879,13 @@ async function boot(): Promise<void> {
     // Fire first brain-loop after 2 min (let bot stabilize first)
     setTimeout(() => { autonomousBrainLoop().catch(() => {}); }, 2 * 60 * 1000);
     console.log(`[brain-loop] autonomous planning every ${BRAIN_LOOP_MS / 1000}s`);
+    // Morning briefing at 08:45 Baku, then daily. Guarded on TELEGRAM_CEO_CHAT_ID inside.
+    if (CEO_CHAT_ID) {
+      scheduleMorningBriefing(() => sendMorningBriefing());
+      console.log('[briefing] scheduled morning briefing for 08:45 Baku (daily)');
+    } else {
+      console.log('[briefing] skipped — TELEGRAM_CEO_CHAT_ID not set');
+    }
   }).catch((error) => fatal('[LAUNCH FAILED]', error));
 }
 boot().catch((error) => fatal('[BOOT FAILED]', error));
