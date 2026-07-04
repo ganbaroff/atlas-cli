@@ -33,7 +33,8 @@ import { buildAtlasBrainPlan } from './atlas/brain-planner.js';
 import { runTask, isTaskRunning } from './atlas/task-spawner.js';
 import { executeDeploy, deployInProgress, getPR, listOpenPRs } from './atlas/deploy.js';
 import { appendMessage, loadConversation, compactIfNeeded, type StoredMessage } from './atlas/conversation-store.js';
-import { isSupabaseConfigured, createSession, saveMessage, loadMessages, writeHeartbeatDB, updateSession, getLatestSession, queueRemoteCommand, pollCompletedCommands, deleteDeliveredCommand } from './atlas/supabase-memory.js';
+import { isSupabaseConfigured, createSession, saveMessage, loadMessages, writeHeartbeatDB, writeJournalDB, writeEpisodeDB, updateSession, getLatestSession, queueRemoteCommand, pollCompletedCommands, deleteDeliveredCommand } from './atlas/supabase-memory.js';
+import { formatReceipt } from './atlas/receipt.js';
 import { listAvailableModels, routeModelWithFallback } from './model-router.js';
 import { analyzeWindow, emotionDirective } from './atlas/emotion.js';
 import { loadPulse, savePulse, processEvent, pulseToneHint } from './atlas/pulse.js';
@@ -356,7 +357,7 @@ bot.command('models', async (ctx) => {
 });
 
 // Deploy with confirmation — auditor: no instant merge on typo
-const pendingDeploys = new Map<number, { project: string; prNumber: number; prTitle: string }>();
+const pendingDeploys = new Map<number, { project: string; prNumber: number; prTitle: string; createdAt: number }>();
 
 bot.command('deploy', async (ctx) => {
   const args = ctx.message.text.replace(/^\/deploy\s*/, '').trim().split(/\s+/);
@@ -390,9 +391,19 @@ bot.hears(/^да$/i, async (ctx) => {
 
   try {
     const result = await executeDeploy(pending.project, pending.prNumber);
-    const reply = result.error
+    const baseReply = result.error
       ? `[deploy FAIL] ${result.error}${result.rolledBack ? ' (ROLLED BACK)' : ''}`
       : `[deploy OK] PR #${result.prNumber} merged.\nProd: ${result.healthCheck?.status} sha:${result.healthCheck?.sha}\n${Math.round(result.durationMs / 1000)}s`;
+    const reply = `${baseReply}\n\n${formatReceipt(
+      `deploy ${pending.project} PR #${pending.prNumber}`,
+      JSON.stringify({
+        merged: result.merged,
+        healthCheck: result.healthCheck,
+        rolledBack: result.rolledBack,
+        error: result.error,
+        durationMs: result.durationMs,
+      }),
+    )}`;
     addMsg(chatId, 'assistant', reply);
     await sendLong(ctx, reply);
   } catch (e: any) {
@@ -419,6 +430,8 @@ bot.command('task', async (ctx) => {
       `[task ${result.id}] ${result.exitCode === 0 ? 'OK' : `exit ${result.exitCode}`} (${Math.round(result.durationMs / 1000)}s)`,
       '',
       result.output,
+      '',
+      formatReceipt(`node dist/cli.js chat --role WORKER << task:${result.id}`, result.output),
     ].join('\n');
     addMsg(chatId, 'assistant', reply);
     await sendLong(ctx, reply);
@@ -461,6 +474,21 @@ bot.command('remote', async (ctx) => {
   }
 });
 
+bot.command('test', async (ctx) => {
+  const chatId = ctx.chat.id;
+  addMsg(chatId, 'user', '/test');
+  const reply =
+    '🎯 Бесплатный AI-тест профессиональных навыков\n\n' +
+    'VOLAURA оценивает 8 компетенций — коммуникация, лидерство, надёжность, ' +
+    'английский, адаптивность, техническая грамотность, работа на мероприятиях, ' +
+    'эмпатия — и выдаёт балл AURA.\n\n' +
+    '15 вопросов, ~5 минут, результат сразу.\n\n' +
+    '👉 Начать: https://volaura.app/az/assessment\n\n' +
+    'Или напиши мне «хочу тест» — помогу выбрать компетенцию.';
+  addMsg(chatId, 'assistant', reply);
+  await ctx.reply(reply, { disable_web_page_preview: true });
+});
+
 bot.command('swarm', async (ctx) => {
   const task = ctx.message.text.replace(/^\/swarm\s*/, '').trim();
   if (!task) {
@@ -472,8 +500,9 @@ bot.command('swarm', async (ctx) => {
   await ctx.reply('[swarm] Запускаю рой — несколько перспектив параллельно...');
   try {
     const result = await runSwarm(task);
-    addMsg(chatId, 'assistant', result);
-    await sendLong(ctx, result);
+    const reply = `${result}\n\n${formatReceipt(`/swarm ${task}`, result)}`;
+    addMsg(chatId, 'assistant', reply);
+    await sendLong(ctx, reply);
     console.log(`[swarm] chat=${chatId} task="${task.slice(0, 80)}" result=${result.length} chars`);
   } catch (e) {
     const err = `Рой упал: ${e instanceof Error ? e.message : String(e)}`;
@@ -516,8 +545,9 @@ bot.on('text', async (ctx) => {
       addMsg(chatId, 'user', text);
       await ctx.reply('[swarm] Запускаю рой...');
       const result = await runSwarm(swarmCheck.task);
-      addMsg(chatId, 'assistant', result);
-      await sendLong(ctx, result);
+      const reply = `${result}\n\n${formatReceipt(`/swarm ${swarmCheck.task}`, result)}`;
+      addMsg(chatId, 'assistant', reply);
+      await sendLong(ctx, reply);
       console.log(`[swarm] chat=${chatId} trigger="${text.slice(0, 40)}" result=${result.length} chars`);
       return;
     }
@@ -560,15 +590,21 @@ async function writeSessionSummary(): Promise<void> {
       providers: availableModels.map(m => `${m.provider}/${m.modelId}`).join(', '),
       uptime: `${Math.round((Date.now() - new Date(bootTime).getTime()) / 60000)}min`,
     });
+    let supabaseWrite = false;
     if (isSupabaseConfigured()) {
-      await writeHeartbeatDB({
-        providers: availableModels.length,
-        uptime_minutes: Math.round((Date.now() - new Date(bootTime).getTime()) / 60000),
-        message_count: totalMsgs,
-        chat_count: sessionChats.length,
-      });
+      try {
+        await writeHeartbeatDB({
+          providers: availableModels.length,
+          uptime_minutes: Math.round((Date.now() - new Date(bootTime).getTime()) / 60000),
+          message_count: totalMsgs,
+          chat_count: sessionChats.length,
+        });
+        supabaseWrite = true;
+      } catch (err) {
+        console.error('[supabase] heartbeat write failed:', err);
+      }
     }
-    console.log(`[memory] heartbeat OK: ${totalMsgs} msgs, ${sessionChats.length} chats${isSupabaseConfigured() ? ' + supabase' : ''}`);
+    console.log(`[memory] heartbeat OK: ${totalMsgs} msgs, ${sessionChats.length} chats${supabaseWrite ? ' + supabase' : ''}`);
 
     if (sessionChats.length === 0) return;
     const topics = sessionChats
@@ -586,7 +622,29 @@ async function writeSessionSummary(): Promise<void> {
     ].join('\n');
 
     await appendJournal(entry);
-    console.log(`[memory] write-back OK: ${totalMsgs} msgs, ${sessionChats.length} chats${isSupabaseConfigured() ? ' + supabase' : ''}`);
+    if (isSupabaseConfigured()) {
+      try {
+        await writeJournalDB(entry);
+        await writeEpisodeDB({
+          date: new Date().toISOString().slice(0, 10),
+          agent: 'atlas-telegram',
+          type: 'telegram-session-summary',
+          shipped: [],
+          failed: [],
+          lessons: [],
+          next: 'continue from persisted bot session',
+          metrics: {
+            chats: sessionChats.length,
+            messages: totalMsgs,
+            providers: availableModels.length,
+          },
+        });
+        supabaseWrite = true;
+      } catch (err) {
+        console.error('[supabase] journal/episode write failed:', err);
+      }
+    }
+    console.log(`[memory] write-back OK: ${totalMsgs} msgs, ${sessionChats.length} chats${supabaseWrite ? ' + supabase' : ''}`);
   } catch (e) {
     console.error('[memory] write-back failed:', e);
   }
