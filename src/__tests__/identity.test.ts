@@ -20,6 +20,5 @@ describe('Atlas Identity', () => {
     expect(IDENTITY.ecosystem_products).toContain('mindshift');
     expect(IDENTITY.ecosystem_products).toContain('lifesim');
     expect(IDENTITY.ecosystem_products).toContain('brandedby');
-    expect(IDENTITY.ecosystem_products).toContain('zeus');
   });
 });

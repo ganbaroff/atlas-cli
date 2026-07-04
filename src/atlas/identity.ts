@@ -50,7 +50,7 @@ function parseIdentityMd(raw: string): Partial<AtlasIdentity> {
   result.voice_style = 'caveman + storytelling, short paragraphs, characters named';
 
   // Products from ecosystem mentions
-  const products = ['volaura', 'mindshift', 'lifesim', 'brandedby', 'zeus'];
+  const products = ['volaura', 'mindshift', 'lifesim', 'brandedby'];
   result.ecosystem_products = products.filter((p) =>
     raw.toLowerCase().includes(p),
   );
@@ -73,7 +73,7 @@ const FALLBACK: AtlasIdentity = {
     'markdown-table-in-conversation',
     'banned-opener',
   ],
-  ecosystem_products: ['volaura', 'mindshift', 'lifesim', 'brandedby', 'zeus'],
+  ecosystem_products: ['volaura', 'mindshift', 'lifesim', 'brandedby'],
   constitution_laws: {
     '1': 'never red',
     '2': 'energy adaptation',
