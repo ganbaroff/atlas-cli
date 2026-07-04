@@ -22,6 +22,7 @@ jobs:
 
       - name: Build
         run: npm run build
+      - run: npx tsc --noEmit
 
       - name: Test
         run: npx vitest run

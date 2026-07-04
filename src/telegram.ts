@@ -483,7 +483,7 @@ bot.command('test', async (ctx) => {
     '👉 Начать: https://volaura.app/az/login\n\n' +
     'Или напиши мне «хочу тест» — помогу выбрать компетенцию.';
   addMsg(chatId, 'assistant', reply);
-  await ctx.reply(reply, { disable_web_page_preview: true });
+  await ctx.reply(reply, { link_preview_options: { is_disabled: true } });
 });
 
 bot.command('swarm', async (ctx) => {
@@ -556,7 +556,7 @@ bot.on('text', async (ctx) => {
         'или просто перейди по ссылке — там можно выбрать:\n' +
         '👉 https://volaura.app/az/login';
       addMsg(chatId, 'assistant', reply);
-      await ctx.reply(reply, { disable_web_page_preview: true });
+      await ctx.reply(reply, { link_preview_options: { is_disabled: true } });
       return;
     }
 
