@@ -6,7 +6,7 @@
  * results collected via IPC → lead synthesizes final answer.
  */
 
-import { createAtlasAgent } from './agent.js';
+import { createAtlasAgentWithRoute, recordAgentSpend } from './agent.js';
 import type { ProviderName } from './model-router.js';
 import { validateCompletion } from './gates/verify-before-done.js';
 import { PERSPECTIVES } from './atlas/perspectives.js';
@@ -41,13 +41,14 @@ function decomposeWithPerspectives(task: string): Subtask[] {
 
 /** Lead agent decomposes into custom subtasks (fallback for non-standard tasks). */
 async function decomposeCustom(task: string): Promise<Subtask[]> {
-  const agent = await createAtlasAgent('JUDGE', 'operator');
+  const { agent, route } = await createAtlasAgentWithRoute('JUDGE', 'operator');
   const res = await agent.generate(
     `Decompose this task into 2-5 independent parallel subtasks.
 Return ONLY a JSON array. Each element: {"id": number, "description": "...", "provider": "nvidia"|"openai"|"openrouter"|"ollama"}
 Spread providers for load diversity. Match complexity to provider capability.
 Task: ${task}`,
   );
+  recordAgentSpend(res, route, 'swarm');
   const match = res.text.match(/\[[\s\S]*\]/);
   if (!match) throw new Error('Lead failed to produce subtask JSON');
   return JSON.parse(match[0]) as Subtask[];
@@ -57,8 +58,9 @@ Task: ${task}`,
 async function runWorker(subtask: Subtask): Promise<WorkerResult> {
   const t0 = Date.now();
   try {
-    const agent = await createAtlasAgent('WORKER', 'operator');
+    const { agent, route } = await createAtlasAgentWithRoute('WORKER', 'operator');
     const res = await agent.generate(subtask.description);
+    recordAgentSpend(res, route, 'swarm');
     const jidoka = validateCompletion(res.text);
     const output = jidoka.passed ? res.text : `${res.text}\n\n[WORKER JIDOKA: ${jidoka.violation}]`;
     return { id: subtask.id, output, provider: subtask.provider ?? 'auto', durationMs: Date.now() - t0 };
@@ -72,13 +74,14 @@ async function runWorker(subtask: Subtask): Promise<WorkerResult> {
 
 /** Lead synthesizes worker outputs into coherent answer. */
 async function synthesize(task: string, results: WorkerResult[]): Promise<string> {
-  const agent = await createAtlasAgent('JUDGE', 'operator');
+  const { agent, route } = await createAtlasAgentWithRoute('JUDGE', 'operator');
   const body = results
     .map((r) => `### Subtask ${r.id} [${r.provider}, ${r.durationMs}ms]${r.error ? ` ERROR: ${r.error}` : ''}\n${r.output}`)
     .join('\n\n');
   const res = await agent.generate(
     `Original task: ${task}\n\nWorker results:\n${body}\n\nSynthesize one coherent answer. Include key findings from each worker.`,
   );
+  recordAgentSpend(res, route, 'swarm');
   return res.text;
 }
 

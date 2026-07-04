@@ -36,6 +36,7 @@ import { appendMessage, loadConversation, compactIfNeeded, type StoredMessage } 
 import { isSupabaseConfigured, createSession, saveMessage, loadMessages, writeHeartbeatDB, writeJournalDB, writeEpisodeDB, updateSession, getLatestSession, queueRemoteCommand, pollCompletedCommands, deleteDeliveredCommand } from './atlas/supabase-memory.js';
 import { formatReceipt } from './atlas/receipt.js';
 import { listAvailableModels, routeModelWithFallback } from './model-router.js';
+import { recordSpendFromResult } from './atlas/spend-tracker.js';
 import { analyzeWindow, emotionDirective } from './atlas/emotion.js';
 import { loadPulse, savePulse, processEvent, pulseToneHint } from './atlas/pulse.js';
 import { runOperatorActionLane } from './operator/action-lane.js';
@@ -68,6 +69,7 @@ type ModelReply = {
 async function generateWithFallback(
   messages: Msg[],
   system: string,
+  caller = 'telegram',
 ): Promise<ModelReply> {
   const { result } = await routeModelWithFallback(
     { role: 'WORKER' },
@@ -81,6 +83,8 @@ async function generateWithFallback(
       const response = route.provider === 'ollama'
         ? await agent.generateLegacy(messages as any)
         : await agent.generate(messages as any);
+      // FinOps telemetry: one llm_spend row per real call (non-blocking).
+      recordSpendFromResult(response, { provider: route.provider, model: route.modelId, caller });
       return {
         modelId: route.modelId,
         provider: route.provider,

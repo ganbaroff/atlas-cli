@@ -6,6 +6,7 @@ import { Agent } from '@mastra/core/agent';
 import { IDENTITY } from './atlas/identity.js';
 import { buildAtlasBrainPlan, type AtlasBrainChannel } from './atlas/brain-planner.js';
 import { routeModel, type ModelRole } from './model-router.js';
+import { recordSpendFromResult } from './atlas/spend-tracker.js';
 import { readFileTool } from './tools/read-file.js';
 import { writeFileTool } from './tools/write-file.js';
 import { globTool } from './tools/glob.js';
@@ -36,6 +37,43 @@ export async function createAtlasAgent(role: ModelRole = 'WORKER', channel: Atla
       loadSkillTool,
     },
   });
+}
+
+/**
+ * Route-aware agent factory. Returns the built agent plus the resolved route so
+ * callers can attribute LLM spend (FinOps telemetry) to a provider/model.
+ */
+export async function createAtlasAgentWithRoute(
+  role: ModelRole = 'WORKER',
+  channel: AtlasBrainChannel = 'cli',
+): Promise<{ agent: Agent; route: ReturnType<typeof routeModel> }> {
+  const route = routeModel({ role, excludeProviders: ['anthropic'] });
+  const plan = await buildAtlasBrainPlan({ channel, role });
+  const agent = new Agent({
+    id: 'atlas-core',
+    name: IDENTITY.name,
+    instructions: plan.systemPrompt,
+    model: route.model,
+    tools: {
+      readFileTool,
+      writeFileTool,
+      globTool,
+      grepTool,
+      shellTool,
+      listSkillsTool,
+      loadSkillTool,
+    },
+  });
+  return { agent, route };
+}
+
+/** Record spend for an agent.generate() result against a known route. */
+export function recordAgentSpend(
+  result: unknown,
+  route: { provider: string; modelId: string },
+  caller: string,
+): void {
+  recordSpendFromResult(result, { provider: route.provider, model: route.modelId, caller });
 }
 
 export { routeModel, listAvailableModels } from './model-router.js';

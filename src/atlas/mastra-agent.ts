@@ -11,7 +11,8 @@ import {
   parseControlCommand,
 } from './control-plane.js';
 import { buildAtlasBrainPlan } from './brain-planner.js';
-import { routeModel, type ModelRole } from '../model-router.js';
+import { routeModel, type ModelRole, type RouteResult } from '../model-router.js';
+import { recordSpendFromResult } from './spend-tracker.js';
 import { readFileTool } from '../tools/read-file.js';
 import { writeFileTool } from '../tools/write-file.js';
 import { globTool } from '../tools/glob.js';
@@ -33,6 +34,7 @@ const RAW_DIR = join(MEMORY_ROOT, 'memory', 'raw');
 const CONCEPTS_DIR = join(MEMORY_ROOT, 'memory', 'concepts');
 
 let _agent: Agent | null = null;
+let _lastRoute: RouteResult | null = null;
 
 /**
  * Lazily boot the Mastra Agent with state-driven prompt injected.
@@ -45,6 +47,7 @@ async function getAgent(role: ModelRole = 'WORKER'): Promise<Agent> {
   ]);
 
   const route = routeModel({ role });
+  _lastRoute = route;
 
   const agent = new Agent({
     id: 'atlas-core',
@@ -82,6 +85,7 @@ export async function chat(prompt: string): Promise<string> {
 
   const agent = await getAgent();
   const result = await agent.generate(prompt);
+  if (_lastRoute) recordSpendFromResult(result, { provider: _lastRoute.provider, model: _lastRoute.modelId, caller: 'api' });
   return result.text;
 }
 
@@ -163,6 +167,7 @@ export async function reflect(): Promise<{ new: number; updated: number }> {
       : `Compile this raw memory into a clean concept note.\n\nRaw:\n${raw}\n\nReturn ONLY clean markdown.`;
 
     const result = await agent.generate(prompt);
+    if (_lastRoute) recordSpendFromResult(result, { provider: _lastRoute.provider, model: _lastRoute.modelId, caller: 'api' });
     await writeFile(join(CONCEPTS_DIR, conceptSlug), result.text, 'utf-8');
 
     if (existed) updatedCount++;
@@ -175,4 +180,5 @@ export async function reflect(): Promise<{ new: number; updated: number }> {
 /** Reset cached agent (useful for tests or re-wake). */
 export function resetAgent(): void {
   _agent = null;
+  _lastRoute = null;
 }

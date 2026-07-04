@@ -6,7 +6,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { program } from 'commander';
-import { createAtlasAgent, listAvailableModels } from './agent.js';
+import { createAtlasAgentWithRoute, recordAgentSpend, listAvailableModels } from './agent.js';
 import { appendMessage, loadConversation } from './atlas/conversation-store.js';
 import { IDENTITY } from './atlas/identity.js';
 import { loadWakeContext, appendJournal, writeHeartbeat } from './atlas/memory-manager.js';
@@ -170,10 +170,12 @@ program
         }
 
         try {
-          const agent = await createAtlasAgent(role);
+          const { agent, route } = await createAtlasAgentWithRoute(role);
           const response = await agent.generate(messages);
+          recordAgentSpend(response, route, 'cli');
           const delivery = await deliverReply(response.text, async (prompt) => {
             const retryResponse = await agent.generate([...messages, { role: 'user', content: prompt }]);
+            recordAgentSpend(retryResponse, route, 'cli');
             return {
               reply: retryResponse.text,
               evidence: extractTurnEvidence(retryResponse),
@@ -212,7 +214,7 @@ program
       console.error(describeControlBlock());
       process.exit(2);
     }
-    const agent = await createAtlasAgent(role);
+    const { agent, route } = await createAtlasAgentWithRoute(role);
 
     const contextExtra = opts.context ? `\nAdditional context: ${opts.context}` : '';
     const prompt = `Load the skill "${skill}" using the load-skill tool and execute it against the current working directory (${process.cwd()}). Follow the skill spec precisely. Use your other tools (read-file, glob, grep, shell) as needed to gather the input data the skill requires.${contextExtra}`;
@@ -222,6 +224,7 @@ program
 
     try {
       const response = await agent.generate(prompt);
+      recordAgentSpend(response, route, 'cli');
       console.log(response.text);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -380,9 +383,10 @@ program
       console.error(describeControlBlock());
       process.exit(2);
     }
-    const agent = await createAtlasAgent('FAST');
+    const { agent, route } = await createAtlasAgentWithRoute('FAST');
     try {
       const res = await agent.generate('List all available skills. Use the list-skills tool. Output just the names, one per line.');
+      recordAgentSpend(res, route, 'cli');
       console.log(res.text);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -484,8 +488,9 @@ program
       process.exit(2);
     }
     try {
-      const agent = await createAtlasAgent('FAST');
+      const { agent, route } = await createAtlasAgentWithRoute('FAST');
       const response = await agent.generate('respond with exactly: Атлас здесь.');
+      recordAgentSpend(response, route, 'cli');
       console.log(response.text);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
