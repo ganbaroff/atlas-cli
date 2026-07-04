@@ -483,7 +483,7 @@ bot.command('test', async (ctx) => {
     'английский, адаптивность, техническая грамотность, работа на мероприятиях, ' +
     'эмпатия — и выдаёт балл AURA.\n\n' +
     '15 вопросов, ~5 минут, результат сразу.\n\n' +
-    '👉 Начать: https://volaura.app/az/assessment\n\n' +
+    '👉 Начать: https://volaura.app/az/login\n\n' +
     'Или напиши мне «хочу тест» — помогу выбрать компетенцию.';
   addMsg(chatId, 'assistant', reply);
   await ctx.reply(reply, { disable_web_page_preview: true });
@@ -557,7 +557,7 @@ bot.on('text', async (ctx) => {
         competencies + '\n\n' +
         'Напиши название (например «communication» или «лидерство»), ' +
         'или просто перейди по ссылке — там можно выбрать:\n' +
-        '👉 https://volaura.app/az/assessment';
+        '👉 https://volaura.app/az/login';
       addMsg(chatId, 'assistant', reply);
       await ctx.reply(reply, { disable_web_page_preview: true });
       return;
