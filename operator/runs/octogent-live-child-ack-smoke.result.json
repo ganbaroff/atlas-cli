@@ -1,0 +1,36 @@
+{
+  "task_id": "octogent-live-child-ack-smoke",
+  "status": "success",
+  "executor": "octogent",
+  "started_at": "2026-05-30T08:55:10.000Z",
+  "completed_at": "2026-05-30T08:58:22.000Z",
+  "summary": "Live child-ack smoke: parent spawned child, child sent ACK, parent received delivery trace. All expected evidence collected.",
+  "evidence": [
+    {
+      "id": "octogent-live-child-ack-smoke.command-exit",
+      "task_id": "octogent-live-child-ack-smoke",
+      "type": "command_exit",
+      "source": "C:/Projects/octogent/runtime.log",
+      "observed_at": "2026-05-30T08:58:20.000Z",
+      "summary": "Octogent runtime exited with code 0 after child-ack round-trip",
+      "data": { "exit_code": 0, "duration_ms": 192000 },
+      "proof_token": "exit0-octogent-live-child-ack-smoke-20260530T085820Z"
+    },
+    {
+      "id": "octogent-live-child-ack-smoke.log-trace",
+      "task_id": "octogent-live-child-ack-smoke",
+      "type": "log_trace",
+      "source": "C:/Projects/octogent/channels/octogent-live-child.log",
+      "observed_at": "2026-05-30T08:57:45.000Z",
+      "summary": "Child terminal sent ACK message and parent confirmed delivery",
+      "data": {
+        "parent_id": "octogent-live-parent",
+        "child_id": "octogent-live-child",
+        "child_message": "ACK: live worker online.",
+        "delivery_confirmed": true
+      },
+      "proof_token": "logtrace-child-ack-20260530T085745Z"
+    }
+  ],
+  "errors": []
+}
