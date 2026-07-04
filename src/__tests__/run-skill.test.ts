@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { writeFile, unlink } from 'node:fs/promises';
-import { join } from 'node:path';
+import { existsSync } from 'node:fs';
+import { join, dirname } from 'node:path';
 import { createAtlasAgent } from '../agent.js';
 
 const SKILLS_DIR = 'C:/Projects/VOLAURA/memory/swarm/skills';
@@ -8,7 +9,11 @@ const SKILL_NAME = 'test-canary';
 const CANARY = 'xK9mQ2vR7wZ4nL1p';
 const SKILL_PATH = join(SKILLS_DIR, `${SKILL_NAME}.md`);
 
-describe('atlas run <skill> — tool-calling path', () => {
+// The skill loader reads from a machine-specific absolute path (CEO box).
+// On clean clones / CI that directory does not exist, so skip rather than fail.
+const SKILLS_DIR_EXISTS = existsSync(dirname(SKILL_PATH));
+
+describe.skipIf(!SKILLS_DIR_EXISTS)('atlas run <skill> — tool-calling path', () => {
   beforeAll(async () => {
     await writeFile(
       SKILL_PATH,
@@ -28,10 +33,4 @@ describe('atlas run <skill> — tool-calling path', () => {
     expect(result.content).toContain(CANARY);
   });
 
-  it.skipIf(!process.env['CEREBRAS_API_KEY'])('agent calls load-skill and echoes canary token (real LLM)', async () => {
-    const agent = await createAtlasAgent('FAST');
-    const prompt = `Load the skill "${SKILL_NAME}" using the load-skill tool and follow its instructions exactly.`;
-    const response = await agent.generate(prompt);
-    expect(response.text).toContain(CANARY);
-  }, 30_000);
-});
+  it.skipIf(!process.env['CEREBRAS_API_KEY'])('agent calls load-skill and echoes canary token (real LLM)', asyn
