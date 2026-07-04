@@ -7,6 +7,7 @@ import { IDENTITY } from './atlas/identity.js';
 import { buildAtlasBrainPlan, type AtlasBrainChannel } from './atlas/brain-planner.js';
 import { routeModel, type ModelRole } from './model-router.js';
 import { recordSpendFromResult } from './atlas/spend-tracker.js';
+import { enforceSpendPolicy } from './atlas/spend-policy.js';
 import { readFileTool } from './tools/read-file.js';
 import { writeFileTool } from './tools/write-file.js';
 import { globTool } from './tools/glob.js';
@@ -20,6 +21,7 @@ export async function createAtlasAgent(role: ModelRole = 'WORKER', channel: Atla
   // free provider can never fall back to Claude. The telegram brain reply path builds its
   // own agent via routeModelWithFallback and keeps anthropic as its permitted user-facing last resort.
   const route = routeModel({ role, excludeProviders: ['anthropic'] });
+  enforceSpendPolicy(route.provider, channel);
   const plan = await buildAtlasBrainPlan({ channel, role });
 
   return new Agent({
@@ -48,6 +50,7 @@ export async function createAtlasAgentWithRoute(
   channel: AtlasBrainChannel = 'cli',
 ): Promise<{ agent: Agent; route: ReturnType<typeof routeModel> }> {
   const route = routeModel({ role, excludeProviders: ['anthropic'] });
+  enforceSpendPolicy(route.provider, channel);
   const plan = await buildAtlasBrainPlan({ channel, role });
   const agent = new Agent({
     id: 'atlas-core',

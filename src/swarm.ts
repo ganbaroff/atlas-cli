@@ -13,6 +13,7 @@ import { PERSPECTIVES } from './atlas/perspectives.js';
 import { logSwarmRun } from './atlas/swarm-logger.js';
 import { dedupFindings } from './atlas/dedup.js';
 import { controlAllowsModelCalls, describeControlBlock } from './atlas/control-plane.js';
+import { isPaused } from './atlas/spend-policy.js';
 
 export interface Subtask {
   id: number;
@@ -87,6 +88,10 @@ async function synthesize(task: string, results: WorkerResult[]): Promise<string
 
 /** Main entry: perspectives analyze in parallel → synthesize. */
 export async function runSwarm(task: string, useCustomDecompose = false): Promise<string> {
+  if (isPaused()) {
+    console.warn('[swarm] refused: ATLAS_PAUSE=1 (kill switch active)');
+    throw new Error('Swarm refused: ATLAS_PAUSE=1 is set. Unset ATLAS_PAUSE to resume autonomy.');
+  }
   if (!controlAllowsModelCalls()) {
     throw new Error(describeControlBlock());
   }

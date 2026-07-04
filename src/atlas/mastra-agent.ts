@@ -13,6 +13,7 @@ import {
 import { buildAtlasBrainPlan } from './brain-planner.js';
 import { routeModel, type ModelRole, type RouteResult } from '../model-router.js';
 import { recordSpendFromResult } from './spend-tracker.js';
+import { enforceSpendPolicy } from './spend-policy.js';
 import { readFileTool } from '../tools/read-file.js';
 import { writeFileTool } from '../tools/write-file.js';
 import { globTool } from '../tools/glob.js';
@@ -47,6 +48,7 @@ async function getAgent(role: ModelRole = 'WORKER'): Promise<Agent> {
   ]);
 
   const route = routeModel({ role });
+  enforceSpendPolicy(route.provider, 'api');
   _lastRoute = route;
 
   const agent = new Agent({

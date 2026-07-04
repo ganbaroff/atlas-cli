@@ -37,6 +37,7 @@ import { isSupabaseConfigured, createSession, saveMessage, loadMessages, writeHe
 import { formatReceipt } from './atlas/receipt.js';
 import { listAvailableModels, routeModelWithFallback } from './model-router.js';
 import { recordSpendFromResult } from './atlas/spend-tracker.js';
+import { enforceSpendPolicy, isPaused, tryConsumeBrainQueueSlot, brainQueueCap } from './atlas/spend-policy.js';
 import { analyzeWindow, emotionDirective } from './atlas/emotion.js';
 import { loadPulse, savePulse, processEvent, pulseToneHint } from './atlas/pulse.js';
 import { runOperatorActionLane } from './operator/action-lane.js';
@@ -74,6 +75,8 @@ async function generateWithFallback(
   const { result } = await routeModelWithFallback(
     { role: 'WORKER' },
     async (route) => {
+      // FinOps gateway: block paid providers over cap / behind flag before spending.
+      enforceSpendPolicy(route.provider, caller);
       const agent = new Agent({
         id: 'atlas-telegram',
         name: 'Atlas',
@@ -740,6 +743,10 @@ async function deliverRemoteResults(): Promise<void> {
 const BRAIN_LOOP_MS = 15 * 60 * 1000;
 
 async function autonomousBrainLoop(): Promise<void> {
+  if (isPaused()) {
+    console.warn('[brain-loop] paused: ATLAS_PAUSE=1 — iteration skipped');
+    return;
+  }
   if (!isSupabaseConfigured() || !CEO_CHAT_ID) return;
   const chatId = parseInt(CEO_CHAT_ID, 10);
 
@@ -786,6 +793,12 @@ async function autonomousBrainLoop(): Promise<void> {
         'read C:/Projects/VOLAURA/.claude/breadcrumb.md (first 10 lines), summarize current state to CEO in Telegram',
       ];
       command = tasks[tick % tasks.length]!;
+    }
+
+    // Daily cap on autonomous queue seeds — bound the brain-loop's spend surface.
+    if (!tryConsumeBrainQueueSlot()) {
+      console.warn(`[brain-loop] daily queue cap ${brainQueueCap()} reached — not seeding`);
+      return;
     }
 
     // Queue the command
