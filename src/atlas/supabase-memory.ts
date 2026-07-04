@@ -5,14 +5,25 @@
  * Falls back to file-based store if SUPABASE_URL not set (local dev).
  */
 
-const SUPABASE_URL = process.env['SUPABASE_URL'] ?? '';
-const SUPABASE_KEY = process.env['SUPABASE_SERVICE_ROLE_KEY'] ?? '';
+function supabaseUrl(): string {
+  return process.env['SUPABASE_URL'] ?? '';
+}
+
+function supabaseKey(): string {
+  return process.env['SUPABASE_SERVICE_ROLE_KEY'] ?? '';
+}
 
 export function isSupabaseConfigured(): boolean {
-  return !!(SUPABASE_URL && SUPABASE_KEY);
+  return !!(supabaseUrl() && supabaseKey());
 }
 
 async function supaFetch(path: string, options: RequestInit = {}): Promise<any> {
+  const SUPABASE_URL = supabaseUrl();
+  const SUPABASE_KEY = supabaseKey();
+  if (!SUPABASE_URL || !SUPABASE_KEY) {
+    throw new Error('Supabase not configured');
+  }
+
   // sb_secret_... keys use apikey header only (not a JWT, can't be Bearer).
   // Legacy eyJhbG... JWTs work as both apikey + Bearer.
   const isLegacyJWT = SUPABASE_KEY.startsWith('eyJ');
@@ -206,6 +217,24 @@ export async function saveMemory(category: string, content: string, emotionalInt
       source_message: sourceMessage,
     }),
   });
+}
+
+export async function writeJournalDB(entry: string, source = 'telegram-session-summary'): Promise<void> {
+  await saveMemory(
+    'project_context',
+    `[journal:${source}]\n${entry}`,
+    1,
+    source,
+  );
+}
+
+export async function writeEpisodeDB(episode: Record<string, unknown>, source = 'telegram-session-summary'): Promise<void> {
+  await saveMemory(
+    'project_context',
+    `[episode:${source}]\n${JSON.stringify(episode)}`,
+    1,
+    source,
+  );
 }
 
 // ── Heartbeats ──

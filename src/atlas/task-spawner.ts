@@ -51,7 +51,7 @@ export function runTask(description: string): Promise<TaskResult> {
   const id = taskId();
   const t0 = Date.now();
 
-  return new Promise((resolve) => {
+  return new Promise((finish) => {
     const chunks: Buffer[] = [];
     const errChunks: Buffer[] = [];
 
@@ -103,13 +103,13 @@ export function runTask(description: string): Promise<TaskResult> {
 
       console.log(`[task] ${id} done in ${durationMs}ms, exit=${code}, output=${fullOutput.length} chars`);
 
-      resolve({ id, description, output, exitCode: code, durationMs, truncated });
+      finish({ id, description, output, exitCode: code, durationMs, truncated });
     });
 
     proc.on('error', (err) => {
       clearTimeout(timer);
       activeTask = null;
-      resolve({
+      finish({
         id,
         description,
         output: `spawn error: ${err.message}`,

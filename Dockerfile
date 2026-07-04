@@ -14,6 +14,7 @@ RUN npm prune --omit=dev --legacy-peer-deps
 
 # Memory directory (ephemeral, survives container restarts but not redeploys)
 RUN mkdir -p /app/memory/atlas/telegram-conversations /app/memory/atlas/episodes /app/memory/atlas/swarm-runs
+VOLUME ["/app/memory"]
 
 ENV NODE_ENV=production
 ENV MEMORY_ROOT=/app

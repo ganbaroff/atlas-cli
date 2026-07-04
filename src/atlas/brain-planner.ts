@@ -125,7 +125,7 @@ export async function buildAtlasBrainPlan(options: AtlasBrainPlanOptions): Promi
   try {
     const pulse = loadPulse();
     const ceoRead = analyzeWindow([]);
-    emotionContext = `${emotionDirective(ceoRead)}\n${pulseToneHint(pulse.state)}`;
+    emotionContext = `${emotionDirective(ceoRead)}\n${pulseToneHint(pulse)}`;
   } catch { /* emotion is non-fatal */ }
 
   // Emotional memory recall — ZenBrain decay (Phase 4: high-intensity memories surface first)
