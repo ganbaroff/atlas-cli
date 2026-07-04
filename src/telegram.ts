@@ -539,6 +539,30 @@ bot.on('text', async (ctx) => {
     const text = ctx.message.text;
     const chatId = ctx.chat.id;
 
+    // Assessment trigger: "хочу тест", "тест навыков", "assessment"
+    if (/хочу тест|тест навыков|assessment|пройти тест/i.test(text)) {
+      addMsg(chatId, 'user', text);
+      const competencies = [
+        '💬 communication — коммуникация',
+        '🎯 reliability — надёжность',
+        '🌍 english_proficiency — английский',
+        '👑 leadership — лидерство',
+        '💻 tech_literacy — техническая грамотность',
+        '🔄 adaptability — адаптивность',
+        '🎪 event_performance — мероприятия',
+        '🤝 empathy_safeguarding — эмпатия',
+      ].join('\n');
+      const reply =
+        'Выбери компетенцию для теста:\n\n' +
+        competencies + '\n\n' +
+        'Напиши название (например «communication» или «лидерство»), ' +
+        'или просто перейди по ссылке — там можно выбрать:\n' +
+        '👉 https://volaura.app/az/assessment';
+      addMsg(chatId, 'assistant', reply);
+      await ctx.reply(reply, { disable_web_page_preview: true });
+      return;
+    }
+
     // Natural language swarm trigger: "рой, ..." or "swarm ..."
     const swarmCheck = isSwarmRequest(text);
     if (swarmCheck.isSwarm && swarmCheck.task) {

@@ -7,7 +7,6 @@
 
 import { createOpenRouter } from '@openrouter/ai-sdk-provider';
 import { createAnthropic } from '@ai-sdk/anthropic';
-import { createCerebras } from '@ai-sdk/cerebras';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { ollama } from 'ollama-ai-provider';
 import { createOpenAI } from '@ai-sdk/openai';
@@ -17,7 +16,6 @@ export type ModelRole = 'FAST' | 'WORKER' | 'JUDGE' | 'CRITICAL';
 export type ProviderName =
   | 'ollama'
   | 'freellmapi'
-  | 'cerebras'
   | 'groq'
   | 'nvidia'
   | 'openai'
@@ -41,14 +39,12 @@ export interface RouteResult {
 
 const MODEL_REGISTRY: ModelConfig[] = [
   {
-    // Free Gemini gateway (8 models behind one OpenAI-compatible endpoint).
-    // Listed BEFORE ollama: registry order breaks costTier ties, and OLLAMA_URL
-    // defaults to localhost even when no Ollama is running — putting the gateway
-    // first saves a guaranteed-failed attempt per message on machines without Ollama.
-    provider: 'freellmapi',
-    modelId: 'gemini-2.5-flash',
+    // Canon provider order (CLAUDE.md): NVIDIA first, then local/free, paid last.
+    // NVIDIA NIM — free tier, first per Constitution provider hierarchy.
+    provider: 'nvidia',
+    modelId: 'meta/llama-3.3-70b-instruct',
     costTier: 0,
-    roles: ['FAST', 'WORKER', 'JUDGE'],
+    roles: ['WORKER'],
   },
   {
     provider: 'ollama',
@@ -57,8 +53,11 @@ const MODEL_REGISTRY: ModelConfig[] = [
     roles: ['FAST', 'WORKER'],
   },
   {
-    provider: 'cerebras',
-    modelId: 'qwen-3-235b-a22b-instruct-2507',
+    // Free Gemini gateway (8 models behind one OpenAI-compatible endpoint).
+    // Only selected when FREELLMAPI_BASE_URL is set (isAvailable gate), so it
+    // never costs a guaranteed-failed attempt on machines without the gateway.
+    provider: 'freellmapi',
+    modelId: 'gemini-2.5-flash',
     costTier: 0,
     roles: ['FAST', 'WORKER', 'JUDGE'],
   },
@@ -67,12 +66,6 @@ const MODEL_REGISTRY: ModelConfig[] = [
     modelId: 'llama-3.3-70b-versatile',
     costTier: 0,
     roles: ['FAST', 'WORKER', 'JUDGE'],
-  },
-  {
-    provider: 'nvidia',
-    modelId: 'meta/llama-3.3-70b-instruct',
-    costTier: 0,
-    roles: ['WORKER'],
   },
   {
     provider: 'openai',
@@ -98,7 +91,6 @@ function getEnvKey(provider: ProviderName): string | undefined {
   const map: Record<ProviderName, string> = {
     ollama: 'OLLAMA_URL',
     freellmapi: 'FREELLMAPI_API_KEY',
-    cerebras: 'CEREBRAS_API_KEY',
     groq: 'GROQ_API_KEY',
     nvidia: 'NVIDIA_API_KEY',
     openai: 'OPENAI_API_KEY',
@@ -161,11 +153,6 @@ function createModel(config: ModelConfig): any {
         },
       }).languageModel(config.modelId);
     }
-
-    case 'cerebras':
-      return createCerebras({
-        apiKey: process.env['CEREBRAS_API_KEY'],
-      })(config.modelId);
 
     case 'groq':
       return createOpenAICompatible({
