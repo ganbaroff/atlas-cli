@@ -469,11 +469,13 @@ bot.command('remote', async (ctx) => {
   addMsg(chatId, 'user', `/remote ${desc}`);
   try {
     const cmdId = await queueRemoteCommand(chatId, desc);
-    await ctx.reply(
+    const queued =
       `[remote] Команда в очереди: "${desc.slice(0, 60)}${desc.length > 60 ? '...' : ''}"\n` +
       `ID: ${cmdId.slice(0, 8)}. Claude Code подхватит в течение 15 минут.\n` +
-      `Результат придёт автоматически.`
-    );
+      `Результат придёт автоматически.`;
+    const reply = `${queued}\n\n${formatReceipt(`/remote ${desc}`, `queued cmd=${cmdId} chat=${chatId}`)}`;
+    addMsg(chatId, 'assistant', reply);
+    await sendLong(ctx, reply);
     console.log(`[remote] queued cmd=${cmdId.slice(0, 8)} chat=${chatId} desc="${desc.slice(0, 80)}"`);
   } catch (e: any) {
     const err = `Remote queue failed: ${e.message?.slice(0, 300)}`;
@@ -723,7 +725,8 @@ async function deliverRemoteResults(): Promise<void> {
       const resultText = cmd.status === 'done'
         ? (typeof cmd.result === 'string' ? cmd.result : JSON.stringify(cmd.result)).slice(0, 3800)
         : `ERROR: ${cmd.error?.slice(0, 500) ?? 'unknown'}`;
-      const msg = `[remote result] ${cmd.command.slice(0, 60)}\n\n${resultText}`;
+      const receipt = formatReceipt(`/remote ${cmd.command}`, resultText);
+      const msg = `[remote result] ${cmd.command.slice(0, 60)}\n\n${resultText}\n\n${receipt}`;
       try {
         await bot.telegram.sendMessage(chatId, msg.slice(0, 4096));
         await deleteDeliveredCommand(cmd.id);
