@@ -684,6 +684,16 @@ program
     process.exit(report.failed > 0 ? 1 : 0);
   });
 
+// --- Status command (parity with Telegram /status) ---
+
+program
+  .command('status')
+  .description("One-line status: health, today's spend, brain-loop queue, heartbeat")
+  .action(async () => {
+    const { buildStatusReport } = await import('./atlas/status-report.js');
+    console.log(buildStatusReport());
+  });
+
 if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith('cli.js')) {
   program.parse();
 }
