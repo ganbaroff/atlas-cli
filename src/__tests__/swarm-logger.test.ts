@@ -20,7 +20,7 @@ describe('swarm-logger', () => {
       ts: '2026-04-27T01:00:00.000Z',
       task: 'test task',
       subtasks: [{ id: 0, description: 'sub1' }],
-      results: [{ id: 0, output: 'result', provider: 'cerebras', durationMs: 100 }],
+      results: [{ id: 0, output: 'result', provider: 'nvidia', durationMs: 100 }],
       synthesis: 'final answer',
       durationMs: 500,
       jidokaViolation: null,

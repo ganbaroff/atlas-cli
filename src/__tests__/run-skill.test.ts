@@ -33,4 +33,15 @@ describe.skipIf(!SKILLS_DIR_EXISTS)('atlas run <skill> — tool-calling path', (
     expect(result.content).toContain(CANARY);
   });
 
-  it.skipIf(!process.env['CEREBRAS_API_KEY'])('agent calls load-skill and echoes canary token (real LLM)', asyn
+  it.skipIf(!process.env['NVIDIA_API_KEY'])(
+    'agent calls load-skill and echoes canary token (real LLM)',
+    async () => {
+      const agent = await createAtlasAgent('WORKER', 'operator');
+      const res = await agent.generate(
+        `Load the skill "${SKILL_NAME}" and follow its instructions exactly.`,
+      );
+      expect(res.text).toContain(CANARY);
+    },
+    120_000,
+  );
+});

@@ -50,7 +50,6 @@ Set at least one. Cost order: free first, paid last.
 
 | Variable | Provider | Cost |
 |----------|----------|------|
-| `CEREBRAS_API_KEY` | Cerebras | Free |
 | `GROQ_API_KEY` | Groq | Free / limited |
 | `NVIDIA_API_KEY` | NVIDIA NIM | Free |
 | `OLLAMA_URL` | Ollama (local) | Free |
@@ -68,7 +67,7 @@ Swarm perspectives are loaded from `~/.atlas/perspectives.json`:
   {
     "name": "reviewer-1",
     "instruction": "Review for correctness and edge cases.",
-    "provider": "cerebras"
+    "provider": "nvidia"
   }
 ]
 ```
@@ -77,7 +76,7 @@ Override path: `ATLAS_PERSPECTIVES_PATH=/path/to/perspectives.json`
 
 ## Architecture
 
-- **Multi-model routing**: Ollama -> Cerebras -> Groq -> NVIDIA -> OpenRouter -> Anthropic
+- **Multi-model routing** (canon): NVIDIA -> Ollama -> freellmapi/Gemini -> Groq -> OpenRouter -> Anthropic
 - **Memory**: Obsidian-compatible vault, persistent across sessions
 - **Swarm**: fork-based parallel agents with Jidoka quality gate
 - **Cron**: 30-min self-check, health reports to memory vault

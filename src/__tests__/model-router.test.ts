@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { routeModel, listAvailableModels } from '../model-router.js';
 
 function clearProviderEnvs(): void {
-  vi.stubEnv('CEREBRAS_API_KEY', '');
   vi.stubEnv('GROQ_API_KEY', '');
   vi.stubEnv('NVIDIA_API_KEY', '');
   vi.stubEnv('OPENAI_API_KEY', '');
@@ -24,22 +23,30 @@ describe('Model Router', () => {
     expect(models).toEqual([]);
   });
 
-  it('detects Cerebras when key is set', () => {
-    vi.stubEnv('CEREBRAS_API_KEY', 'test-key');
+  it('detects Groq when key is set', () => {
+    vi.stubEnv('GROQ_API_KEY', 'test-key');
     const models = listAvailableModels();
-    expect(models.some((m) => m.provider === 'cerebras')).toBe(true);
+    expect(models.some((m) => m.provider === 'groq')).toBe(true);
   });
 
-  it('routes WORKER to Cerebras when it is the only configured provider', () => {
-    vi.stubEnv('CEREBRAS_API_KEY', 'test-key');
+  it('routes WORKER to Groq when it is the only configured provider', () => {
+    vi.stubEnv('GROQ_API_KEY', 'test-key');
     const result = routeModel({ role: 'WORKER' });
-    expect(result.provider).toBe('cerebras');
+    expect(result.provider).toBe('groq');
   });
 
-  it('routes JUDGE to Cerebras when it is the only configured provider', () => {
-    vi.stubEnv('CEREBRAS_API_KEY', 'test-key');
+  it('routes JUDGE to Groq when it is the only configured provider', () => {
+    vi.stubEnv('GROQ_API_KEY', 'test-key');
     const result = routeModel({ role: 'JUDGE' });
-    expect(result.provider).toBe('cerebras');
+    expect(result.provider).toBe('groq');
+  });
+
+  it('routes WORKER to NVIDIA first per canon order when NVIDIA + Groq are both set', () => {
+    vi.stubEnv('NVIDIA_API_KEY', 'test-key');
+    vi.stubEnv('GROQ_API_KEY', 'test-key');
+    const result = routeModel({ role: 'WORKER' });
+    expect(result.provider).toBe('nvidia');
+    expect(result.costTier).toBe(0);
   });
 
   it('routes WORKER to cheapest available provider', () => {

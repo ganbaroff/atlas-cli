@@ -31,7 +31,7 @@ ANUS CLI is being reborn as Atlas CLI — the core runtime of the VOLAURA 5-prod
 
 **Status:** Fully implemented, not in original ADR.
 
-`model-router.ts`: 7 providers (Ollama, Cerebras, Groq, NVIDIA, OpenAI, OpenRouter, Anthropic), cost-ordered routing, role-based selection (FAST/WORKER/JUDGE/CRITICAL), runtime fallback across providers. This works and is tested.
+`model-router.ts`: 7 providers (NVIDIA, Ollama, freellmapi/Gemini, Groq, OpenAI, OpenRouter, Anthropic), cost-ordered routing, role-based selection (FAST/WORKER/JUDGE/CRITICAL), runtime fallback across providers. This works and is tested. (A paid provider was removed after a real-spend incident — CEO decision.)
 
 ### 3. Rebrand: ANUS → Atlas CLI — PARTIAL
 

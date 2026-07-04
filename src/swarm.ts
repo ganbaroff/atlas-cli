@@ -44,7 +44,7 @@ async function decomposeCustom(task: string): Promise<Subtask[]> {
   const agent = await createAtlasAgent('JUDGE', 'operator');
   const res = await agent.generate(
     `Decompose this task into 2-5 independent parallel subtasks.
-Return ONLY a JSON array. Each element: {"id": number, "description": "...", "provider": "cerebras"|"nvidia"|"openai"|"openrouter"|"anthropic"|"ollama"}
+Return ONLY a JSON array. Each element: {"id": number, "description": "...", "provider": "nvidia"|"openai"|"openrouter"|"anthropic"|"ollama"}
 Spread providers for load diversity. Match complexity to provider capability.
 Task: ${task}`,
   );

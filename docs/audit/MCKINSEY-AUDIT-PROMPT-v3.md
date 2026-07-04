@@ -206,13 +206,13 @@ sed -i \
   /tmp/audit-for-review.md
 ```
 
-Call **Gemini 2.5 Pro** (primary, via `GEMINI_API_KEY` from `apps/api/.env`) or **Cerebras Qwen3-235B** (fallback, via `CEREBRAS_API_KEY`):
+Call **Gemini 2.5 Pro** (primary, via `GEMINI_API_KEY` from `apps/api/.env`) or **NVIDIA Llama-3.3-70B** (fallback, via `NVIDIA_API_KEY`):
 
 Prompt to external model: "You are reviewing a startup audit. Read the synthesis below. Find the 3 weakest claims — where evidence is thin, logic is circular, or the recommendation doesn't follow from the finding. For each: quote the claim, explain why it's weak, suggest what would make it strong. Be adversarial, not helpful."
 
 Save response to `.audit/2026-04-27/devils-advocate-external.md`.
 
-**Fallback:** If both Gemini and Cerebras unavailable, run as Claude self-review with system prompt: "Assume you share the auditor's blind spots. What would a hostile VC due-diligence team challenge?"
+**Fallback:** If both Gemini and NVIDIA unavailable, run as Claude self-review with system prompt: "Assume you share the auditor's blind spots. What would a hostile VC due-diligence team challenge?"
 
 ---
 
