@@ -38,8 +38,8 @@ import { formatReceipt } from './atlas/receipt.js';
 import { listAvailableModels, routeModelWithFallback } from './model-router.js';
 import { recordSpendFromResult } from './atlas/spend-tracker.js';
 import { enforceSpendPolicy, isPaused, tryConsumeBrainQueueSlot, brainQueueCap } from './atlas/spend-policy.js';
-import { analyzeWindow, emotionDirective } from './atlas/emotion.js';
-import { loadPulse, savePulse, processEvent, pulseToneHint } from './atlas/pulse.js';
+import { analyzeWindow } from './atlas/emotion.js';
+import { loadPulse, savePulse, processEvent } from './atlas/pulse.js';
 import { runOperatorActionLane } from './operator/action-lane.js';
 import { runSwarm } from './swarm.js';
 
@@ -226,7 +226,9 @@ async function ask(chatId: number, text: string): Promise<string> {
   console.log(`[in]  chat=${chatId} msg="${text.slice(0, 100)}"`);
 
   // Emotion layer: read CEO state over the last 2-3 user messages (05-emotional-states.md:59),
-  // update Atlas's own Pulse, persist MOOD.md. Both bias TONE only — never facts, never refusals.
+  // update Atlas's own Pulse, persist MOOD.md. The emotion DIRECTIVE now lives in the shared
+  // brain-planner (one soul, both mouths) — here we only run the pulse mutation + log, then hand
+  // the message window to the builder so CLI and Telegram derive tone from the same code path.
   const userWindow = getConvo(chatId)
     .msgs.filter((m) => m.role === 'user')
     .slice(-3)
@@ -239,8 +241,7 @@ async function ask(chatId: number, text: string): Promise<string> {
     `[emotion] chat=${chatId} ceo=${ceoRead.state}/${ceoRead.intensity} pulse-int=${pulse.intensity.toFixed(2)}${pulse.wouldBlock ? ' [would-block: log-only]' : ''}`,
   );
 
-  const basePrompt = (await buildAtlasBrainPlan({ channel: 'telegram' })).systemPrompt;
-  const system = `${basePrompt}\n\n${emotionDirective(ceoRead)}\n${pulseToneHint(pulse.state)}`;
+  const system = (await buildAtlasBrainPlan({ channel: 'telegram', recentUserMessages: userWindow })).systemPrompt;
   const firstPass = await generateWithFallback(messages, system);
   console.log(`[out] chat=${chatId} provider=${firstPass.provider}/${firstPass.modelId} reply="${firstPass.reply.slice(0, 100)}"`);
   const delivery = await deliverReply(firstPass.reply, async (prompt) => {

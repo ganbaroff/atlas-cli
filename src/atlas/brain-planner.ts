@@ -22,6 +22,8 @@ export interface AtlasBrainPlanOptions {
   wakeContext?: string;
   lessons?: string;
   operatorContext?: string;
+  /** Recent user messages (newest-first) — the single emotion source for both CLI and Telegram. */
+  recentUserMessages?: string[];
 }
 
 export interface AtlasBrainPlan {
@@ -124,7 +126,7 @@ export async function buildAtlasBrainPlan(options: AtlasBrainPlanOptions): Promi
   let emotionContext = '';
   try {
     const pulse = loadPulse();
-    const ceoRead = analyzeWindow([]);
+    const ceoRead = analyzeWindow(options.recentUserMessages ?? []);
     emotionContext = `${emotionDirective(ceoRead)}\n${pulseToneHint(pulse)}`;
   } catch { /* emotion is non-fatal */ }
 
