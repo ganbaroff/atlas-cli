@@ -41,6 +41,8 @@ import { readLastReport } from './atlas/cron.js';
 import { listAvailableModels, routeModelWithFallback } from './model-router.js';
 import { recordSpendFromResult } from './atlas/spend-tracker.js';
 import { enforceSpendPolicy, isPaused, tryConsumeBrainQueueSlot, brainQueueCap } from './atlas/spend-policy.js';
+import { buildStatusReport } from './atlas/status-report.js';
+import { renderHelp } from './atlas/commands.js';
 import { analyzeWindow } from './atlas/emotion.js';
 import { loadPulse, savePulse, processEvent } from './atlas/pulse.js';
 import { runOperatorActionLane } from './operator/action-lane.js';
@@ -317,47 +319,29 @@ function isSwarmRequest(text: string): { isSwarm: boolean; task: string } {
 // ── Bot handlers ────────────────────────────────────────────────────
 bot.command('status', async (ctx) => {
   const chatId = ctx.chat.id;
-  await ctx.reply('[atlas] Проверяю статус экосистемы...');
+  addMsg(chatId, 'user', '/status');
   try {
-    const { execSync } = await import('node:child_process');
-    const statusScript = 'C:/Projects/ATLAS/scripts/status.mjs';
-    const out = execSync(`node "${statusScript}" --json`, {
-      cwd: 'C:/Projects/ATLAS',
-      timeout: 15_000,
-      encoding: 'utf-8',
-      env: { ...process.env, NODE_NO_WARNINGS: '1' },
-    });
-    const data = JSON.parse(out);
-    const wakes = (data.wake_signals ?? []).map((s: any) => `  ⚠ ${s.subject}: ${s.detail?.slice(0, 80)}`);
-    const queued = (data.queue_signals ?? []).map((s: any) => `  · ${s.subject}: ${s.detail?.slice(0, 60)}`);
-    const stale = (data.stale_agents ?? []).map((a: any) => `  · ${a.agent_id} (${a.age_hours}h)`);
-    const dirty = (data.dirty_repos ?? []).map((r: any) => `${r.path.split('/').pop()}=${r.count}`);
-    const lines = [
-      `Atlas Status — ${new Date(data.time).toLocaleString('ru-RU', { timeZone: 'Asia/Baku' })}`,
-      '',
-      `Prod: ${data.prod_health?.status ?? '?'} (v${data.prod_health?.version ?? '?'}, sha ${data.prod_health?.sha?.slice(0, 7) ?? '?'})`,
-      '',
-      wakes.length ? `Wake (${wakes.length}):` : 'Wake: 0',
-      ...wakes,
-      '',
-      queued.length ? `Queue (${queued.length}):` : 'Queue: 0',
-      ...queued.slice(0, 3),
-      queued.length > 3 ? `  ...и ещё ${queued.length - 3}` : '',
-      '',
-      stale.length ? `Stale agents (${stale.length}):` : 'Stale: 0',
-      ...stale,
-      '',
-      `Dirty: ${dirty.join(', ') || 'clean'}`,
-    ].filter(Boolean);
-    const reply = lines.join('\n');
-    addMsg(chatId, 'user', '/status');
+    // In-process status: health checks + today's spend + brain-loop queue + heartbeat.
+    // No external script, no shell-out — reads the same live meters the bot runs on.
+    const reply = buildStatusReport();
     addMsg(chatId, 'assistant', reply);
     await ctx.reply(reply);
   } catch (e) {
-    const err = `Status check failed: ${e instanceof Error ? e.message.slice(0, 200) : String(e)}`;
+    const err = `Не смог собрать статус, причина: ${e instanceof Error ? e.message.slice(0, 200) : String(e)}. Проверь логи бота.`;
+    addMsg(chatId, 'assistant', err);
     await ctx.reply(err);
     console.error('[status error]', e);
   }
+});
+
+// /help — generated from the command registry (src/atlas/commands.ts), never
+// hand-maintained. RU/EN by the user's Telegram language_code.
+bot.command('help', async (ctx) => {
+  const chatId = ctx.chat.id;
+  addMsg(chatId, 'user', '/help');
+  const reply = renderHelp(ctx.from?.language_code);
+  addMsg(chatId, 'assistant', reply);
+  await ctx.reply(reply);
 });
 
 bot.command('models', async (ctx) => {
