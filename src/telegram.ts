@@ -35,6 +35,7 @@ import { executeDeploy, deployInProgress, getPR, listOpenPRs } from './atlas/dep
 import { appendMessage, loadConversation, compactIfNeeded, type StoredMessage } from './atlas/conversation-store.js';
 import { isSupabaseConfigured, createSession, saveMessage, loadMessages, writeHeartbeatDB, writeJournalDB, writeEpisodeDB, updateSession, getLatestSession, queueRemoteCommand, pollCompletedCommands, deleteDeliveredCommand } from './atlas/supabase-memory.js';
 import { formatReceipt } from './atlas/receipt.js';
+import { startInProcWorker, inProcWorkerEnabled } from './atlas/queue-worker.js';
 import { composeMorningBriefing, scheduleMorningBriefing } from './atlas/briefing.js';
 import { readOperatorState } from './atlas/control-plane.js';
 import { readLastReport } from './atlas/cron.js';
@@ -863,6 +864,15 @@ async function boot(): Promise<void> {
     // Fire first brain-loop after 2 min (let bot stabilize first)
     setTimeout(() => { autonomousBrainLoop().catch(() => {}); }, 2 * 60 * 1000);
     console.log(`[brain-loop] autonomous planning every ${BRAIN_LOOP_MS / 1000}s`);
+    // In-repo queue CONSUMER — OPT-IN ONLY (ATLAS_INPROC_WORKER=1). Closes the
+    // external-consumer gap in docs/QUEUE-CONTRACT.md. Exactly one consumer may
+    // be active: if this is on, the external CEO-machine consumer must be off.
+    if (inProcWorkerEnabled()) {
+      const WORKER_POLL_MS = 30 * 1000;
+      startInProcWorker(WORKER_POLL_MS);
+    } else {
+      console.log('[queue-worker] in-proc worker OFF (external consumer expected)');
+    }
     // Morning briefing at 08:45 Baku, then daily. Guarded on TELEGRAM_CEO_CHAT_ID inside.
     if (CEO_CHAT_ID) {
       scheduleMorningBriefing(() => sendMorningBriefing());
