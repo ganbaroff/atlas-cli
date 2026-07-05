@@ -230,6 +230,59 @@ export async function saveMemory(
   });
 }
 
+// ── Emotional Memory Write (compound loop) ──
+// Atlas WRITES emotional memories on meaningful turns so recall can compound from its
+// own operation. Gated on intensity so trivia doesn't flood the store, deduped against
+// recent identical content, and fully non-blocking: any failure is logged, never thrown
+// (a lost memory must never break a reply). Pairs with recallMemories()/emotion.ts.
+
+/** Minimum ZenBrain intensity (0-5) for a turn to be worth remembering. */
+export const EMOTIONAL_MEMORY_MIN_INTENSITY = 2;
+
+// Tiny in-process dedup: skip re-saving the exact same content we just saved.
+const recentSaves: string[] = [];
+const RECENT_SAVE_MAX = 32;
+
+export interface EmotionalMemoryInput {
+  category: string;
+  content: string;
+  intensity: number; // REAL emotion.analyzeWindow(...).intensity — never a constant
+  decayMultiplier?: number; // REAL emotion read decayMultiplier (1.0 + intensity*2.0)
+  sourceMessage?: string;
+  minIntensity?: number; // override the gate (tests)
+}
+
+/**
+ * Save an emotional memory IF the turn cleared the intensity gate and isn't a dup.
+ * Returns whether a write was attempted. Never throws.
+ */
+export async function saveEmotionalMemory(input: EmotionalMemoryInput): Promise<boolean> {
+  const threshold = input.minIntensity ?? EMOTIONAL_MEMORY_MIN_INTENSITY;
+  if (!Number.isFinite(input.intensity) || input.intensity < threshold) {
+    return false; // trivial exchange — don't remember it
+  }
+  const dedupKey = `${input.category}::${input.content}`;
+  if (recentSaves.includes(dedupKey)) {
+    return false; // obvious repeat — already remembered
+  }
+  try {
+    await saveMemory(
+      input.category,
+      input.content,
+      input.intensity,
+      input.sourceMessage,
+      input.decayMultiplier,
+    );
+    recentSaves.push(dedupKey);
+    if (recentSaves.length > RECENT_SAVE_MAX) recentSaves.shift();
+    return true;
+  } catch (e) {
+    // Non-blocking: a lost memory must never break the reply path.
+    console.warn(`[emotional-memory] save failed (non-fatal): ${e instanceof Error ? e.message : String(e)}`);
+    return false;
+  }
+}
+
 export async function writeJournalDB(entry: string, source = 'telegram-session-summary'): Promise<void> {
   await saveMemory(
     'project_context',

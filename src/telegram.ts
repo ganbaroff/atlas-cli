@@ -33,7 +33,7 @@ import { buildAtlasBrainPlan } from './atlas/brain-planner.js';
 import { runTask, isTaskRunning } from './atlas/task-spawner.js';
 import { executeDeploy, deployInProgress, getPR, listOpenPRs } from './atlas/deploy.js';
 import { appendMessage, loadConversation, compactIfNeeded, type StoredMessage } from './atlas/conversation-store.js';
-import { isSupabaseConfigured, createSession, saveMessage, loadMessages, writeHeartbeatDB, writeJournalDB, writeEpisodeDB, updateSession, getLatestSession, queueRemoteCommand, pollCompletedCommands, deleteDeliveredCommand } from './atlas/supabase-memory.js';
+import { isSupabaseConfigured, createSession, saveMessage, loadMessages, writeHeartbeatDB, writeJournalDB, writeEpisodeDB, updateSession, getLatestSession, queueRemoteCommand, pollCompletedCommands, deleteDeliveredCommand, saveEmotionalMemory } from './atlas/supabase-memory.js';
 import { formatReceipt } from './atlas/receipt.js';
 import { startInProcWorker, inProcWorkerEnabled } from './atlas/queue-worker.js';
 import { composeMorningBriefing, scheduleMorningBriefing } from './atlas/briefing.js';
@@ -272,6 +272,21 @@ async function ask(chatId: number, text: string): Promise<string> {
 
   const finalReply = reply.trim() || 'Молчу. Повтори?';
   addMsg(chatId, 'assistant', finalReply);
+
+  // Compound-memory loop: remember emotionally meaningful CEO turns using the REAL
+  // ZenBrain read (ceoRead.intensity / ceoRead.decayMultiplier from emotion.ts — not a
+  // constant). Gated + deduped + non-blocking inside saveEmotionalMemory; high-emotion
+  // memories persist longer and feed the next wake via recallMemories().
+  if (isSupabaseConfigured()) {
+    void saveEmotionalMemory({
+      category: `ceo_turn:${ceoRead.state}`,
+      content: text.slice(0, 1000),
+      intensity: ceoRead.intensity,
+      decayMultiplier: ceoRead.decayMultiplier,
+      sourceMessage: text.slice(0, 200),
+    });
+  }
+
   return finalReply;
 }
 
