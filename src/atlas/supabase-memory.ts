@@ -207,13 +207,24 @@ export async function recallMemories(limit = 10, category?: string): Promise<Arr
   })) ?? []);
 }
 
-export async function saveMemory(category: string, content: string, emotionalIntensity: number, sourceMessage?: string): Promise<void> {
+export async function saveMemory(
+  category: string,
+  content: string,
+  emotionalIntensity: number,
+  sourceMessage?: string,
+  decayMultiplier?: number,
+): Promise<void> {
+  // decay_multiplier is the ZenBrain half-life scaler (emotion.ts:175). Default it from
+  // intensity when the caller doesn't pass the real read, so the row is still rankable
+  // by recall_atlas_memories (db/migrations/001_emotional_memory.sql).
+  const decay = decayMultiplier ?? 1.0 + emotionalIntensity * 2.0;
   await supaFetch('atlas_learnings', {
     method: 'POST',
     body: JSON.stringify({
       category,
       content,
       emotional_intensity: emotionalIntensity,
+      decay_multiplier: decay,
       source_message: sourceMessage,
     }),
   });
