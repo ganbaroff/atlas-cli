@@ -5,3 +5,4 @@ export { grepTool } from './grep.js';
 export { shellTool } from './shell.js';
 export { listSkillsTool, loadSkillTool } from './skill.js';
 export { compileWikiTool } from './compile-wiki.js';
+export { surfTool } from './surf.js';

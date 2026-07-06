@@ -14,6 +14,7 @@ import { globTool } from './tools/glob.js';
 import { grepTool } from './tools/grep.js';
 import { shellTool } from './tools/shell.js';
 import { listSkillsTool, loadSkillTool } from './tools/skill.js';
+import { surfTool } from './tools/surf.js';
 
 export async function createAtlasAgent(
   role: ModelRole = 'WORKER',
@@ -41,6 +42,7 @@ export async function createAtlasAgent(
       shellTool,
       listSkillsTool,
       loadSkillTool,
+      surfTool,
     },
   });
 }
@@ -70,6 +72,7 @@ export async function createAtlasAgentWithRoute(
       shellTool,
       listSkillsTool,
       loadSkillTool,
+      surfTool,
     },
   });
   return { agent, route };
