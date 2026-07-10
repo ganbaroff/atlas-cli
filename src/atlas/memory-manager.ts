@@ -10,6 +10,7 @@ import { readFile, appendFile, writeFile, readdir, mkdir } from 'node:fs/promise
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { getMemoryRoot } from './path-util.js';
+import { isSupabaseConfigured, loadLatestHeartbeatDB, loadRecentJournalDB } from './supabase-memory.js';
 
 function atlasDir(): string {
   const root = getMemoryRoot();
@@ -60,6 +61,33 @@ export async function loadLessons(compact = true): Promise<string> {
 }
 
 /**
+ * Build the "## RECENT STATE (last session)" section: local heartbeat.md + last 3
+ * journal entries first, falling back to Supabase (loadLatestHeartbeatDB /
+ * loadRecentJournalDB) when the local vault is missing/empty (Railway redeploy wipes
+ * the anonymous volume). Returns '' when there is nothing to show — the compressed
+ * brain context injects no recent state today, so an empty result is a no-op append.
+ */
+async function loadRecentStateSection(): Promise<string> {
+  let heartbeat = await safeRead(f('heartbeat.md'));
+  let journal = await lastJournalEntries(3);
+
+  if (heartbeat.startsWith('[missing:') && isSupabaseConfigured()) {
+    const hb = await loadLatestHeartbeatDB();
+    if (hb) heartbeat = hb;
+  }
+  if ((!journal.trim() || journal.startsWith('[missing:')) && isSupabaseConfigured()) {
+    const j = await loadRecentJournalDB(3);
+    if (j) journal = j;
+  }
+
+  const hasHeartbeat = !heartbeat.startsWith('[missing:') && heartbeat.trim().length > 0;
+  const hasJournal = journal.trim().length > 0 && !journal.startsWith('[missing:');
+  if (!hasHeartbeat && !hasJournal) return '';
+
+  return `\n\n## RECENT STATE (last session)\n${hasHeartbeat ? heartbeat : ''}\n\n### recent journal\n${hasJournal ? journal : ''}`;
+}
+
+/**
  * Load compressed brain context for Telegram bot (~4K chars instead of 137K).
  * Reads TELEGRAM-BRAIN.md first, then compiled BRAIN.md if present.
  * Falls back to loadWakeContext() if brain file missing.
@@ -67,12 +95,14 @@ export async function loadLessons(compact = true): Promise<string> {
 export async function loadBrainContext(): Promise<string> {
   const telegramBrain = await safeRead(f('TELEGRAM-BRAIN.md'));
   if (!telegramBrain.startsWith('[missing:')) {
-    return `## ATLAS BRAIN — COMPRESSED IDENTITY\n\n${telegramBrain}`;
+    const recentState = await loadRecentStateSection();
+    return `## ATLAS BRAIN — COMPRESSED IDENTITY\n\n${telegramBrain}${recentState}`;
   }
 
   const compiledBrain = await safeRead(f('BRAIN.md'));
   if (!compiledBrain.startsWith('[missing:')) {
-    return `## ATLAS BRAIN — COMPILED IDENTITY\n\n${compiledBrain}`;
+    const recentState = await loadRecentStateSection();
+    return `## ATLAS BRAIN — COMPILED IDENTITY\n\n${compiledBrain}${recentState}`;
   }
 
   // Brain file not found — fall back to full wake (degraded but functional)
@@ -90,8 +120,8 @@ export async function loadWakeContext(): Promise<string> {
 
   const [
     identity,
-    heartbeat,
-    journal,
+    heartbeatRaw,
+    journalRaw,
     lessons,
     relationships,
     voice,
@@ -111,6 +141,21 @@ export async function loadWakeContext(): Promise<string> {
     safeRead(f('atlas-debts-to-ceo.md')),
     safeRead(f('project_v0laura_vision.md')),
   ]);
+
+  // Local vault is on Railway's anonymous (ephemeral) volume — wiped on every
+  // redeploy. When the local files are missing/empty, fall back to what was
+  // already durably written to Supabase (writeHeartbeatDB/writeJournalDB), so
+  // the bot recalls last session state even after a redeploy wipes the disk.
+  let heartbeat = heartbeatRaw;
+  let journal = journalRaw;
+  if (heartbeat.startsWith('[missing:') && isSupabaseConfigured()) {
+    const hb = await loadLatestHeartbeatDB();
+    if (hb) heartbeat = hb;
+  }
+  if ((!journal.trim() || journal.startsWith('[missing:')) && isSupabaseConfigured()) {
+    const j = await loadRecentJournalDB(3);
+    if (j) journal = j;
+  }
 
   return [
     '## ATLAS WAKE CONTEXT — FULL IDENTITY',

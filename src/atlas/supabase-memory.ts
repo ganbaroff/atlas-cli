@@ -314,3 +314,44 @@ export async function writeHeartbeatDB(data: {
     body: JSON.stringify(data),
   });
 }
+
+// ── Durable read-back (Railway anonymous-volume mitigation) ──
+// journal.md/heartbeat.md live on the local Docker filesystem, which Railway wipes on
+// every redeploy (no persistent volume configured — MASTER-PLAN Rank 3). The rows are
+// already written above via writeJournalDB/writeHeartbeatDB; these two read them BACK
+// so memory-manager.ts can hydrate wake/brain context from Supabase when the local
+// vault is missing or empty. Both are strictly non-fatal — any error/empty/unconfigured
+// state resolves to the "nothing to show" value so a Supabase hiccup never breaks boot.
+
+/** Read the most recent journal entries written by writeJournalDB, newest-last. */
+export async function loadRecentJournalDB(limit = 3): Promise<string> {
+  if (!isSupabaseConfigured()) return '';
+  try {
+    const rows = await supaFetch(
+      `atlas_learnings?content=like.[journal:*&order=created_at.desc&limit=${limit}&select=content,created_at`
+    );
+    if (!Array.isArray(rows) || rows.length === 0) return '';
+    const entries = rows
+      .map((r: any) => String(r.content ?? '').replace(/^\[journal:[^\]]*\]\n/, ''))
+      .filter((s: string) => s.trim().length > 0)
+      .reverse(); // rows arrive newest-first (desc); caller wants newest-last
+    return entries.join('\n---\n');
+  } catch (e) {
+    console.warn(`[supabase-memory] loadRecentJournalDB failed (non-fatal): ${e instanceof Error ? e.message : String(e)}`);
+    return '';
+  }
+}
+
+/** Read the latest heartbeat row written by writeHeartbeatDB, formatted as short markdown. */
+export async function loadLatestHeartbeatDB(): Promise<string | null> {
+  if (!isSupabaseConfigured()) return null;
+  try {
+    const rows = await supaFetch('bot_heartbeats?order=created_at.desc&limit=1');
+    const row = rows?.[0];
+    if (!row) return null;
+    return `Updated (DB): ${row.created_at}\nproviders: ${row.providers} | uptime_min: ${row.uptime_minutes} | messages: ${row.message_count} | chats: ${row.chat_count}`;
+  } catch (e) {
+    console.warn(`[supabase-memory] loadLatestHeartbeatDB failed (non-fatal): ${e instanceof Error ? e.message : String(e)}`);
+    return null;
+  }
+}
