@@ -35,6 +35,7 @@ import { executeDeploy, deployInProgress, getPR, listOpenPRs } from './atlas/dep
 import { appendMessage, loadConversation, compactIfNeeded, type StoredMessage } from './atlas/conversation-store.js';
 import { isSupabaseConfigured, createSession, saveMessage, loadMessages, writeHeartbeatDB, writeJournalDB, writeEpisodeDB, updateSession, getLatestSession, pollCompletedCommands, deleteDeliveredCommand, saveEmotionalMemory } from './atlas/supabase-memory.js';
 import { formatReceipt } from './atlas/receipt.js';
+import { launchWithRetry } from './atlas/resilient-launch.js';
 import { startInProcWorker, inProcWorkerEnabled } from './atlas/queue-worker.js';
 import { composeMorningBriefing, scheduleMorningBriefing } from './atlas/briefing.js';
 import { readOperatorState } from './atlas/control-plane.js';
@@ -799,7 +800,7 @@ async function sendMorningBriefing(): Promise<void> {
 }
 
 async function boot(): Promise<void> {
-  void bot.launch(() => {
+  const onLaunchCb = () => {
     console.log(`[bot] Atlas Telegram alive @${bot.botInfo?.username ?? 'unknown'} — ${bootTime} fallback=routeModelWithFallback providers=${availableModels.map((m) => m.provider).join(',')}`);
     // Start remote result polling after bot is alive
     setInterval(() => { deliverRemoteResults().catch(() => {}); }, REMOTE_POLL_MS);
@@ -829,7 +830,43 @@ async function boot(): Promise<void> {
     } else {
       console.log('[briefing] skipped — TELEGRAM_CEO_CHAT_ID not set');
     }
-  }).catch((error) => fatal('[LAUNCH FAILED]', error));
+  };
+
+  // Telegraf invokes onLaunch right after getMe() succeeds — BEFORE
+  // deleteWebhook/startPolling actually run (see telegraf/lib/telegraf.js
+  // launch()). getMe() succeeds independent of any long-poll conflict, so on
+  // a retried launch() (below) it would fire again on every attempt, not
+  // just the one that actually starts polling — re-registering the
+  // intervals/in-proc worker/briefing schedule above each time. Guard so the
+  // body above runs at most once, without changing what it does.
+  let onLaunchFired = false;
+  const onLaunchOnce = () => {
+    if (onLaunchFired) return;
+    onLaunchFired = true;
+    onLaunchCb();
+  };
+
+  // Railway zero-downtime deploys run the old + new container together
+  // briefly, so the new container's launch() can hit Telegram 409 Conflict
+  // while the old poller is still attached (see polling.js: 401/409 rethrow
+  // out of launch()). Exiting on that (old behavior) killed the new
+  // container before Railway's healthcheck ever saw it healthy, so the
+  // deploy failed and the old container never got retired. Retry with
+  // backoff instead — the /health server (below) stays up independently, so
+  // Railway marks the new container healthy, retires the old one, and this
+  // retry connects cleanly.
+  const LAUNCH_MAX_TRIES = 120;
+  const LAUNCH_RETRY_DELAY_MS = 5000;
+  void launchWithRetry(
+    () => bot.launch({ dropPendingUpdates: true }, onLaunchOnce),
+    {
+      maxTries: LAUNCH_MAX_TRIES,
+      delayMs: LAUNCH_RETRY_DELAY_MS,
+      onRetry: (attempt, err) => {
+        console.warn(`[launch] conflict/err, retry ${attempt}/${LAUNCH_MAX_TRIES} in ${LAUNCH_RETRY_DELAY_MS / 1000}s`, err);
+      },
+    },
+  ).catch((error) => fatal('[LAUNCH FAILED after retries]', error));
 }
 boot().catch((error) => fatal('[BOOT FAILED]', error));
 
