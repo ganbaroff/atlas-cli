@@ -3,6 +3,23 @@ import { z } from 'zod';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
+/**
+ * Pure, testable ReDoS guard. True if the pattern is unreasonably long, or
+ * contains a classic nested-quantifier catastrophic-backtracking shape —
+ * e.g. (a+)+, (a*)*, (a+)*, (.*){2,} — the textbook ReDoS payload shapes.
+ * Heuristic, not a full regex parser: it can't catch every pathological
+ * pattern, but it blocks the well-known families before they ever reach
+ * RegExp execution against untrusted (e.g. web-surfed) file content.
+ */
+export function isRiskyPattern(pattern: string): boolean {
+  if (pattern.length > 512) return true;
+
+  const nestedQuantifier =
+    /\([^()]*[+*][^()]*\)[+*]|\([^()]*\{\d*,?\d*\}[^()]*\)[+*]|\([^()]*[+*][^()]*\)\{\d*,?\d*\}/;
+
+  return nestedQuantifier.test(pattern);
+}
+
 export const grepTool = createTool({
   id: 'grep',
   description: 'Search for a regex pattern in files. Returns matching lines with file paths.',
@@ -16,8 +33,13 @@ export const grepTool = createTool({
       line: z.number(),
       text: z.string(),
     })),
+    error: z.string().optional(),
   }),
   execute: async ({ pattern, paths }) => {
+    if (isRiskyPattern(pattern)) {
+      return { matches: [], error: 'pattern rejected: possible ReDoS' };
+    }
+
     const regex = new RegExp(pattern, 'gi');
     const matches: { file: string; line: number; text: string }[] = [];
 
