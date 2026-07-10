@@ -8,15 +8,13 @@
 
 import { writeFile, readFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { runHealthCheck, formatHealthReport, type HealthReport } from './health-check.js';
 import { evaluateHeartbeat } from './heartbeat-alert.js';
+import { getMemoryRoot } from './path-util.js';
 
 function healthDir(): string {
-  const root = process.env.MEMORY_ROOT ??
-    (process.platform === 'win32'
-      ? 'C:\\Projects\\VOLAURA'
-      : resolve(process.env.HOME ?? '~', 'Projects', 'VOLAURA'));
+  const root = getMemoryRoot();
   return join(root, 'memory', 'atlas', 'health');
 }
 

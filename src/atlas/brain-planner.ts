@@ -128,7 +128,9 @@ export async function buildAtlasBrainPlan(options: AtlasBrainPlanOptions): Promi
     const pulse = loadPulse();
     const ceoRead = analyzeWindow(options.recentUserMessages ?? []);
     emotionContext = `${emotionDirective(ceoRead)}\n${pulseToneHint(pulse)}`;
-  } catch { /* emotion is non-fatal */ }
+  } catch (err: any) {
+    console.warn(`[brain-planner] Failed to analyze emotional context: ${err.message}`);
+  }
 
   // Emotional memory recall — ZenBrain decay (Phase 4: high-intensity memories surface first)
   if (isSupabaseConfigured()) {
@@ -140,7 +142,9 @@ export async function buildAtlasBrainPlan(options: AtlasBrainPlanOptions): Promi
         ).join('\n');
         emotionContext += `\n\n## ATLAS EMOTIONAL MEMORY (top ${memories.length} by decay score)\n${memoryLines}`;
       }
-    } catch { /* memory recall is non-fatal */ }
+    } catch (err: any) {
+      console.warn(`[brain-planner] Failed to recall emotional memories: ${err.message}`);
+    }
   }
 
   const systemPrompt = buildAtlasSystemPrompt({

@@ -48,6 +48,7 @@ import { analyzeWindow } from './atlas/emotion.js';
 import { loadPulse, savePulse, processEvent } from './atlas/pulse.js';
 import { runOperatorActionLane } from './operator/action-lane.js';
 import { runSwarm } from './swarm.js';
+import { getMemoryRoot } from './atlas/path-util.js';
 
 // ── Env verification ────────────────────────────────────────────────
 const REQUIRED = ['TELEGRAM_BOT_TOKEN'] as const;
@@ -423,6 +424,14 @@ bot.hears(/^да$/i, async (ctx) => {
 });
 
 bot.command('task', async (ctx) => {
+  if (isPaused()) {
+    await ctx.reply('Emergency pause active: ATLAS_PAUSE=1');
+    return;
+  }
+  if (!controlAllowsModelCalls()) {
+    await ctx.reply(describeControlBlock());
+    return;
+  }
   const desc = ctx.message.text.replace(/^\/task\s*/, '').trim();
   if (!desc) {
     await ctx.reply('Usage: /task <описание задачи>\nAtlas запустит Claude Code и вернёт результат.');
@@ -532,7 +541,7 @@ bot.start(async (ctx) => {
   try {
     const { unlinkSync } = await import('node:fs');
     const convPath = join(
-      process.env['MEMORY_ROOT'] ?? (process.platform === 'win32' ? 'C:\\Projects\\VOLAURA' : ''),
+      getMemoryRoot(),
       'memory', 'atlas', 'telegram-conversations', `${chatId}.jsonl`,
     );
     unlinkSync(convPath);

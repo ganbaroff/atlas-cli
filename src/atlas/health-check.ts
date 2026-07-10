@@ -6,6 +6,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { listAvailableModels } from '../model-router.js';
+import { getMemoryRoot } from './path-util.js';
 
 export interface HealthReport {
   ts: string;
@@ -22,10 +23,7 @@ export interface HealthCheck {
 }
 
 function memoryRoot(): string {
-  return process.env.MEMORY_ROOT ??
-    (process.platform === 'win32'
-      ? 'C:\\Projects\\VOLAURA'
-      : resolve(process.env.HOME ?? '~', 'Projects', 'VOLAURA'));
+  return getMemoryRoot();
 }
 
 function checkMemoryVault(): HealthCheck {

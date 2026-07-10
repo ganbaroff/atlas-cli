@@ -3,15 +3,14 @@ import { join } from 'node:path';
 import { IDENTITY } from './identity.js';
 import { BRIEFING_TEMPLATE } from './briefing.js';
 import { ATLAS_COMMS_CONTRACT } from './comms-contract.js';
+import { getMemoryRoot } from './path-util.js';
 
 // Load CAPABILITIES-PRIVATE.md (gitignored awareness map — names/locations, never values).
 // Loaded once at import; null if missing (dev/CI without vault).
 let capabilitiesVault: string | null = null;
 try {
-  const root = process.env['MEMORY_ROOT'] ?? '';
-  const vaultPath = root
-    ? join(root, 'memory', 'atlas', 'CAPABILITIES-PRIVATE.md')
-    : join('C:', 'Projects', 'VOLAURA', 'memory', 'atlas', 'CAPABILITIES-PRIVATE.md');
+  const root = getMemoryRoot();
+  const vaultPath = join(root, 'memory', 'atlas', 'CAPABILITIES-PRIVATE.md');
   capabilitiesVault = readFileSync(vaultPath, 'utf-8');
 } catch { /* vault missing — CI/dev without local vault, non-fatal */ }
 

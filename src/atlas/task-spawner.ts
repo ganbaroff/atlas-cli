@@ -10,6 +10,8 @@ import { spawn } from 'node:child_process';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isPaused } from './spend-policy.js';
+import { controlAllowsModelCalls, describeControlBlock } from './control-plane.js';
 
 const ANUS_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -37,6 +39,28 @@ export function isTaskRunning(): boolean {
 }
 
 export function runTask(description: string): Promise<TaskResult> {
+  if (isPaused()) {
+    return Promise.resolve({
+      id: 'blocked',
+      description,
+      output: 'Emergency pause active: ATLAS_PAUSE=1',
+      exitCode: null,
+      durationMs: 0,
+      truncated: false,
+    });
+  }
+
+  if (!controlAllowsModelCalls()) {
+    return Promise.resolve({
+      id: 'blocked',
+      description,
+      output: describeControlBlock(),
+      exitCode: null,
+      durationMs: 0,
+      truncated: false,
+    });
+  }
+
   if (activeTask) {
     return Promise.resolve({
       id: 'blocked',

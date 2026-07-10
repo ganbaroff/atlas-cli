@@ -13,12 +13,10 @@
 import { appendFile, readFile, writeFile, rename, mkdir } from 'node:fs/promises';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { getMemoryRoot } from './path-util.js';
 
 function convDir(): string {
-  const root = process.env['MEMORY_ROOT'] ??
-    (process.platform === 'win32'
-      ? 'C:\\Projects\\VOLAURA'
-      : join(process.env['HOME'] ?? '~', 'Projects', 'VOLAURA'));
+  const root = getMemoryRoot();
   return join(root, 'memory', 'atlas', 'telegram-conversations');
 }
 

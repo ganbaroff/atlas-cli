@@ -4,7 +4,8 @@
  */
 
 import { readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { join } from 'node:path';
+import { getMemoryRoot } from './path-util.js';
 
 export interface AtlasIdentity {
   name: string;
@@ -20,10 +21,7 @@ export interface AtlasIdentity {
   version: string;
 }
 
-const MEMORY_ROOT = process.env.MEMORY_ROOT
-  ?? (process.platform === 'win32'
-    ? 'C:\\Projects\\VOLAURA'
-    : resolve(process.env.HOME ?? '~', 'Projects', 'VOLAURA'));
+const MEMORY_ROOT = getMemoryRoot();
 
 const IDENTITY_MD_PATH = join(MEMORY_ROOT, 'memory', 'atlas', 'identity.md');
 
@@ -92,7 +90,8 @@ function loadFromDiskSync(): AtlasIdentity {
     const raw = readFileSync(IDENTITY_MD_PATH, 'utf-8');
     const parsed = parseIdentityMd(raw);
     return { ...FALLBACK, ...parsed };
-  } catch {
+  } catch (err: any) {
+    console.warn(`[identity] Warning: Failed to load identity from ${IDENTITY_MD_PATH}, using inline fallback. Reason: ${err.message}`);
     return FALLBACK;
   }
 }
@@ -104,7 +103,8 @@ export async function loadIdentityFromDisk(): Promise<AtlasIdentity> {
     const raw = await readFile(IDENTITY_MD_PATH, 'utf-8');
     const parsed = parseIdentityMd(raw);
     return { ...FALLBACK, ...parsed };
-  } catch {
+  } catch (err: any) {
+    console.warn(`[identity] Warning: Failed to load identity from ${IDENTITY_MD_PATH}, using inline fallback. Reason: ${err.message}`);
     return FALLBACK;
   }
 }

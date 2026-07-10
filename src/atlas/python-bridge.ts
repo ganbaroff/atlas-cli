@@ -9,9 +9,9 @@ import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { getVolauraRoot } from './path-util.js';
 
-const VOLAURA_ROOT = process.env['VOLAURA_ROOT'] ??
-  (process.platform === 'win32' ? 'C:\\Projects\\VOLAURA' : join(process.env['HOME'] ?? '~', 'Projects', 'VOLAURA'));
+const VOLAURA_ROOT = getVolauraRoot();
 
 const PROPOSALS_PATH = join(VOLAURA_ROOT, 'memory', 'swarm', 'proposals.json');
 const SHARED_BUS = join(VOLAURA_ROOT, 'memory', 'shared-bus');
@@ -32,33 +32,56 @@ export async function callPythonSwarm(task: string, mode = 'coordinator', timeou
     return { success: false, proposals: [], error: 'VOLAURA Python swarm not found', source: 'python' };
   }
 
-  return new Promise((resolve) => {
-    const args = ['-m', 'packages.swarm.autonomous_run', `--mode=${mode}`, `--task=${task}`];
-    const child = execFile('python3', args, {
-      cwd: VOLAURA_ROOT,
-      timeout: timeoutMs,
-      env: { ...process.env, PYTHONPATH: VOLAURA_ROOT },
-      maxBuffer: 10 * 1024 * 1024,
-    }, async (error) => {
-      if (error) {
-        console.error(`[python-bridge] error: ${error.message}`);
-        resolve({ success: false, proposals: [], error: error.message, source: 'python' });
-        return;
-      }
+  const args = ['-m', 'packages.swarm.autonomous_run', `--mode=${mode}`, `--task=${task}`];
+  const executables = ['python3', 'python', 'py'];
 
-      try {
-        const raw = await readFile(PROPOSALS_PATH, 'utf-8');
-        const data = JSON.parse(raw);
-        const proposals = Array.isArray(data) ? data : data.proposals ?? [];
-        resolve({ success: true, proposals, source: 'python' });
-      } catch (readErr) {
-        resolve({ success: false, proposals: [], error: `proposals.json read failed: ${readErr}`, source: 'python' });
-      }
+  const tryExec = (index: number): Promise<SwarmResult> => {
+    const cmd = executables[index];
+    if (!cmd) {
+      const msg = `Python executable not found in PATH (tried ${executables.join(', ')})`;
+      console.warn(`[python-bridge] ${msg}`);
+      return Promise.resolve({
+        success: false,
+        proposals: [],
+        error: msg,
+        source: 'python',
+      });
+    }
+
+    return new Promise((resolve) => {
+      const child = execFile(cmd, args, {
+        cwd: VOLAURA_ROOT,
+        timeout: timeoutMs,
+        env: { ...process.env, PYTHONPATH: VOLAURA_ROOT },
+        maxBuffer: 10 * 1024 * 1024,
+      }, async (error) => {
+        if (error) {
+          if ((error as any).code === 'ENOENT') {
+            console.warn(`[python-bridge] ${cmd} not found in PATH, trying fallback...`);
+            resolve(tryExec(index + 1));
+            return;
+          }
+          console.error(`[python-bridge] ${cmd} error: ${error.message}`);
+          resolve({ success: false, proposals: [], error: error.message, source: 'python' });
+          return;
+        }
+
+        try {
+          const raw = await readFile(PROPOSALS_PATH, 'utf-8');
+          const data = JSON.parse(raw);
+          const proposals = Array.isArray(data) ? data : data.proposals ?? [];
+          resolve({ success: true, proposals, source: 'python' });
+        } catch (readErr) {
+          resolve({ success: false, proposals: [], error: `proposals.json read failed: ${readErr}`, source: 'python' });
+        }
+      });
+
+      child.stdout?.on('data', (d: Buffer) => process.stdout.write(`[py] ${d}`));
+      child.stderr?.on('data', (d: Buffer) => process.stderr.write(`[py-err] ${d}`));
     });
+  };
 
-    child.stdout?.on('data', (d: Buffer) => process.stdout.write(`[py] ${d}`));
-    child.stderr?.on('data', (d: Buffer) => process.stderr.write(`[py-err] ${d}`));
-  });
+  return tryExec(0);
 }
 
 export async function writeSharedBusRequest(requestId: string, payload: Record<string, unknown>): Promise<string> {

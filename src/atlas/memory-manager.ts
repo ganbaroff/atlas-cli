@@ -8,15 +8,11 @@
 
 import { readFile, appendFile, writeFile, readdir, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { join, resolve } from 'node:path';
-
-const DEFAULT_ROOT =
-  process.platform === 'win32'
-    ? 'C:\\Projects\\VOLAURA'
-    : resolve(process.env.HOME ?? '~', 'Projects', 'VOLAURA');
+import { join } from 'node:path';
+import { getMemoryRoot } from './path-util.js';
 
 function atlasDir(): string {
-  const root = process.env.MEMORY_ROOT ?? DEFAULT_ROOT;
+  const root = getMemoryRoot();
   return join(root, 'memory', 'atlas');
 }
 
