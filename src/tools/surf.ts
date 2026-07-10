@@ -19,6 +19,7 @@
 import { createTool } from '@mastra/core/tools';
 import { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
+import { lookup } from 'node:dns/promises';
 import { routeModelWithFallback } from '../model-router.js';
 
 const FETCH_TIMEOUT_MS = 20_000;
@@ -100,6 +101,41 @@ function matchRegion(html: string, tag: string): string {
   return m ? m[1] : '';
 }
 
+/**
+ * Pure, testable SSRF classifier. True for loopback, link-local (including
+ * the 169.254.169.254 cloud-metadata endpoint), RFC1918 private, and
+ * unspecified addresses — the address ranges an injected page could point
+ * the agent at to reach internal services or cloud credentials.
+ */
+export function isBlockedHost(ip: string): boolean {
+  const v4 = ip.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+  if (v4) {
+    const a = Number(v4[1]);
+    const b = Number(v4[2]);
+    if (a === 127) return true; // loopback 127.0.0.0/8
+    if (a === 0) return true; // unspecified / "this network" 0.0.0.0/8
+    if (a === 169 && b === 254) return true; // link-local incl. cloud metadata 169.254.0.0/16
+    if (a === 10) return true; // private 10.0.0.0/8
+    if (a === 172 && b >= 16 && b <= 31) return true; // private 172.16.0.0/12
+    if (a === 192 && b === 168) return true; // private 192.168.0.0/16
+    return false;
+  }
+
+  // IPv6 — strip zone id (fe80::1%eth0) and compare the normalized form.
+  const v6 = ip.toLowerCase().split('%')[0];
+  if (v6 === '::1') return true; // loopback
+  if (v6 === '::') return true; // unspecified
+
+  // IPv4-mapped IPv6 (::ffff:a.b.c.d) — classify the embedded IPv4 address.
+  const mapped = v6.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
+  if (mapped) return isBlockedHost(mapped[1]);
+
+  if (/^fe[89ab][0-9a-f]:/.test(v6)) return true; // link-local fe80::/10
+  if (/^f[cd][0-9a-f]{2}:/.test(v6)) return true; // unique local fc00::/7
+
+  return false;
+}
+
 export const surfTool = createTool({
   id: 'surf',
   description:
@@ -133,6 +169,28 @@ export const surfTool = createTool({
     }
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
       return { url, title: '', content: '', truncated: false, error: `Unsupported scheme: ${parsed.protocol}` };
+    }
+
+    // SSRF guard: resolve the hostname and refuse to fetch if ANY resolved
+    // address is loopback/private/link-local/unspecified. Catches both
+    // literal-IP URLs (dns.lookup returns a literal IP straight back, so
+    // http://169.254.169.254/ is covered) and hostnames that resolve to an
+    // internal target — the path injected web text would use to make the
+    // agent reach cloud-metadata or an internal service.
+    try {
+      const resolved = await lookup(parsed.hostname, { all: true });
+      if (resolved.some((r) => isBlockedHost(r.address))) {
+        return {
+          url,
+          title: '',
+          content: '',
+          truncated: false,
+          error: 'blocked: private/loopback/link-local address not allowed',
+        };
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { url, title: '', content: '', truncated: false, error: `DNS resolution failed: ${msg}` };
     }
 
     let html: string;
