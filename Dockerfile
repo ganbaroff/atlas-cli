@@ -12,9 +12,10 @@ RUN npm run build
 # Remove devDependencies after build
 RUN npm prune --omit=dev --legacy-peer-deps
 
-# Memory directory (ephemeral, survives container restarts but not redeploys)
+# Memory directory — persistent storage comes from the Railway service volume
+# mounted at /app/memory (Railway's Metal builder rejects Dockerfile VOLUME:
+# "dockerfile invalid: docker VOLUME ... not supported, use Railway Volumes").
 RUN mkdir -p /app/memory/atlas/telegram-conversations /app/memory/atlas/episodes /app/memory/atlas/swarm-runs
-VOLUME ["/app/memory"]
 
 ENV NODE_ENV=production
 ENV MEMORY_ROOT=/app
