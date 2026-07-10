@@ -33,7 +33,7 @@ import { buildAtlasBrainPlan } from './atlas/brain-planner.js';
 import { runTask, isTaskRunning } from './atlas/task-spawner.js';
 import { executeDeploy, deployInProgress, getPR, listOpenPRs } from './atlas/deploy.js';
 import { appendMessage, loadConversation, compactIfNeeded, type StoredMessage } from './atlas/conversation-store.js';
-import { isSupabaseConfigured, createSession, saveMessage, loadMessages, writeHeartbeatDB, writeJournalDB, writeEpisodeDB, updateSession, getLatestSession, queueRemoteCommand, pollCompletedCommands, deleteDeliveredCommand, saveEmotionalMemory } from './atlas/supabase-memory.js';
+import { isSupabaseConfigured, createSession, saveMessage, loadMessages, writeHeartbeatDB, writeJournalDB, writeEpisodeDB, updateSession, getLatestSession, pollCompletedCommands, deleteDeliveredCommand, saveEmotionalMemory } from './atlas/supabase-memory.js';
 import { formatReceipt } from './atlas/receipt.js';
 import { startInProcWorker, inProcWorkerEnabled } from './atlas/queue-worker.js';
 import { composeMorningBriefing, scheduleMorningBriefing } from './atlas/briefing.js';
@@ -41,7 +41,7 @@ import { readOperatorState } from './atlas/control-plane.js';
 import { readLastReport } from './atlas/cron.js';
 import { listAvailableModels, routeModelWithFallback } from './model-router.js';
 import { recordSpendFromResult } from './atlas/spend-tracker.js';
-import { enforceSpendPolicy, isPaused, tryConsumeBrainQueueSlot, brainQueueCap } from './atlas/spend-policy.js';
+import { enforceSpendPolicy, isPaused } from './atlas/spend-policy.js';
 import { buildStatusReport } from './atlas/status-report.js';
 import { renderHelp } from './atlas/commands.js';
 import { analyzeWindow } from './atlas/emotion.js';
@@ -214,37 +214,10 @@ function buildMessages(chatId: number): Msg[] {
 }
 
 // ── LLM call ────────────────────────────────────────────────────────
-// Action intent detection — CEO says "проверь прод" → Atlas runs the command
-const ACTION_PATTERNS = [
-  { pattern: /проверь\s+прод|check\s+prod|prod\s+health/i, cmd: 'curl -s https://volauraapi-production.up.railway.app/health | python3 -c "import sys,json; d=json.load(sys.stdin); print(f\\"prod: {d[\'status\']} sha:{d[\'git_sha\'][:7]}\\")' },
-  { pattern: /git\s+status|статус\s+гит|что\s+в\s+гите/i, cmd: 'cd C:/Projects/VOLAURA && git log --oneline -3 && echo "---" && git status --short | head -10' },
-  { pattern: /бот\s+жив|bot\s+alive|pm2\s+status/i, cmd: 'pm2 status' },
-  { pattern: /atlas\s+status|статус\s+атлас|дашборд/i, cmd: 'cd C:/Projects/ATLAS && node scripts/status.mjs 2>&1 | head -20' },
-];
-
-function detectActionIntent(text: string): string | null {
-  for (const { pattern, cmd } of ACTION_PATTERNS) {
-    if (pattern.test(text)) return cmd;
-  }
-  return null;
-}
+// [removed 2026-07-10] ungoverned ACTION_PATTERNS->execSync path deleted (board P0); real shell goes through governed shellTool only.
 
 async function ask(chatId: number, text: string): Promise<string> {
   addMsg(chatId, 'user', text);
-
-  // Auto-action: CEO asks about prod/git/bot → Atlas runs the check and includes result
-  const autoCmd = detectActionIntent(text);
-  if (autoCmd) {
-    try {
-      const { execSync } = await import('node:child_process');
-      const output = execSync(autoCmd, { timeout: 15_000, encoding: 'utf-8', maxBuffer: 512 * 1024 }).trim();
-      console.log(`[auto-action] chat=${chatId} cmd="${autoCmd.slice(0, 50)}" output=${output.length} chars`);
-      // Feed the output into the LLM so it can respond naturally with real data
-      addMsg(chatId, 'user', `[system: auto-check result]\n${output.slice(0, 2000)}`);
-    } catch (e: any) {
-      addMsg(chatId, 'user', `[system: auto-check failed] ${e.message?.slice(0, 200)}`);
-    }
-  }
 
   const operatorAction = runOperatorActionLane(text, { source: 'telegram' });
   if (operatorAction.handled) {
@@ -500,36 +473,16 @@ bot.command('task', async (ctx) => {
 
 // ── /remote — queue command for Claude Code (runs on CEO's machine via cron) ──
 bot.command('remote', async (ctx) => {
-  const desc = ctx.message.text.replace(/^\/remote\s*/, '').trim();
-  if (!desc) {
-    await ctx.reply(
-      'Usage: /remote <команда для Claude Code>\n' +
-      'Команда попадёт в очередь Supabase → Claude Code крон подхватит (до 15 мин).\n' +
-      'Результат придёт сюда автоматически.'
-    );
-    return;
-  }
-  if (!isSupabaseConfigured()) {
-    await ctx.reply('Supabase не настроен. /remote работает только через Supabase.');
-    return;
-  }
   const chatId = ctx.chat.id;
-  addMsg(chatId, 'user', `/remote ${desc}`);
-  try {
-    const cmdId = await queueRemoteCommand(chatId, desc);
-    const queued =
-      `[remote] Команда в очереди: "${desc.slice(0, 60)}${desc.length > 60 ? '...' : ''}"\n` +
-      `ID: ${cmdId.slice(0, 8)}. Claude Code подхватит в течение 15 минут.\n` +
-      `Результат придёт автоматически.`;
-    const reply = `${queued}\n\n${formatReceipt(`/remote ${desc}`, `queued cmd=${cmdId} chat=${chatId}`)}`;
-    addMsg(chatId, 'assistant', reply);
-    await sendLong(ctx, reply);
-    console.log(`[remote] queued cmd=${cmdId.slice(0, 8)} chat=${chatId} desc="${desc.slice(0, 80)}"`);
-  } catch (e: any) {
-    const err = `Remote queue failed: ${e.message?.slice(0, 300)}`;
-    addMsg(chatId, 'assistant', err);
-    await ctx.reply(err);
-  }
+  addMsg(chatId, 'user', ctx.message.text);
+  // [removed 2026-07-10] auto-queue to ungoverned external cron deleted (board P0).
+  // Previously parsed desc, checked isSupabaseConfigured, and called
+  // queueRemoteCommand(chatId, desc) here, writing into Supabase
+  // atlas_command_queue for an off-repo CEO-machine cron to execute with zero
+  // evidence-gate, shell classifier, or audit. Ingestion closed.
+  const reply = '/remote отключён: неподконтрольный внешний исполнитель убран (board P0). Governed in-repo путь вернётся позже.';
+  addMsg(chatId, 'assistant', reply);
+  await ctx.reply(reply);
 });
 
 bot.command('test', async (ctx) => {
@@ -795,79 +748,15 @@ async function deliverRemoteResults(): Promise<void> {
 const BRAIN_LOOP_MS = 15 * 60 * 1000;
 
 async function autonomousBrainLoop(): Promise<void> {
-  if (isPaused()) {
-    console.warn('[brain-loop] paused: ATLAS_PAUSE=1 — iteration skipped');
-    return;
-  }
+  // [removed 2026-07-10] auto-queue to ungoverned external cron deleted (board P0).
+  // This loop previously polled Supabase for an empty queue, picked a rotating
+  // task (proactivity-gated), and called queueRemoteCommand(chatId, command) to
+  // feed the off-repo CEO-machine cron with zero evidence-gate, shell
+  // classifier, or audit — then told the CEO it had "autonomously" run a check,
+  // which would now be false since nothing is queued. Left inert; a governed
+  // in-repo replacement (queue-worker.ts style) can restore autonomy later.
+  if (isPaused()) return;
   if (!isSupabaseConfigured() || !CEO_CHAT_ID) return;
-  const chatId = parseInt(CEO_CHAT_ID, 10);
-
-  try {
-    // Don't seed if commands are already pending/processing
-    const pending = await pollCompletedCommands(chatId);
-    // pollCompletedCommands returns done/failed — check for ANY non-done rows
-    const queueCheck = await (async () => {
-      try {
-        // Quick check: any pending commands?
-        const res = await import('./atlas/supabase-memory.js').then(m =>
-          // Use supaFetch directly — check for pending commands
-          fetch(`${process.env['SUPABASE_URL']}/rest/v1/atlas_command_queue?status=eq.pending&limit=1`, {
-            headers: {
-              'apikey': process.env['SUPABASE_SERVICE_ROLE_KEY'] ?? '',
-              'Authorization': `Bearer ${process.env['SUPABASE_SERVICE_ROLE_KEY'] ?? ''}`,
-            },
-          }).then(r => r.json())
-        );
-        return Array.isArray(res) ? res.length : 0;
-      } catch { return 0; }
-    })();
-
-    if (queueCheck > 0 || pending.length > 0) {
-      console.log(`[brain-loop] queue not empty (pending=${queueCheck} done/failed=${pending.length}), skipping seed`);
-      return;
-    }
-
-    // Check proactivity — mood decides urgency
-    const pulse = loadPulse();
-    const proactivity = (await import('./atlas/pulse.js')).proactivityGate(pulse);
-
-    // Pick next task based on proactivity level + rotation
-    const tick = Math.floor(Date.now() / BRAIN_LOOP_MS); // monotonic tick counter
-    let command: string;
-    if (proactivity.shouldProbe) {
-      command = 'health check: curl prod + bot, verify heartbeats in Supabase, report any issues';
-    } else {
-      // Rotate between useful autonomous tasks (don't re-seed the same blocked sprint item)
-      const tasks = [
-        'health check: curl prod + bot, check heartbeat count in Supabase, check CI status on GitHub',
-        'read C:/Projects/VOLAURA/memory/atlas/CURRENT-SPRINT.md, find the first unchecked [ ] item that is NOT blocked on CEO, execute it, mark done',
-        'screenshot: take a screenshot of CEO screen, describe what you see, report anything unusual',
-        'read C:/Projects/VOLAURA/.claude/breadcrumb.md (first 10 lines), summarize current state to CEO in Telegram',
-      ];
-      command = tasks[tick % tasks.length]!;
-    }
-
-    // Daily cap on autonomous queue seeds — bound the brain-loop's spend surface.
-    if (!tryConsumeBrainQueueSlot()) {
-      console.warn(`[brain-loop] daily queue cap ${brainQueueCap()} reached — not seeding`);
-      return;
-    }
-
-    // Queue the command
-    const cmdId = await queueRemoteCommand(chatId, command);
-    console.log(`[brain-loop] seeded cmd=${cmdId.slice(0, 8)} proactivity=${proactivity.interval} command="${command.slice(0, 80)}"`);
-
-    // Notify CEO if proactivity says ping
-    if (proactivity.shouldPing) {
-      try {
-        await bot.telegram.sendMessage(chatId,
-          `[atlas] ${proactivity.reason}\nАвтономно запустил проверку.`
-        );
-      } catch { /* non-fatal */ }
-    }
-  } catch (e: any) {
-    console.error('[brain-loop]', e.message?.slice(0, 200));
-  }
 }
 
 // ── Morning briefing (08:45 Baku) ──────────────────────────────────
