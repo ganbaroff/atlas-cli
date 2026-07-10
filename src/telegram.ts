@@ -49,6 +49,12 @@ import { loadPulse, savePulse, processEvent } from './atlas/pulse.js';
 import { runOperatorActionLane } from './operator/action-lane.js';
 import { runSwarm } from './swarm.js';
 import { getMemoryRoot } from './atlas/path-util.js';
+import { isAuthorizedChat } from './atlas/telegram-auth.js';
+
+// Re-exported so telegram.ts is still the canonical place callers look for it —
+// the actual pure logic lives in atlas/telegram-auth.ts (see that file for why:
+// telegram.ts boots a live bot at import time, so it can't be unit-imported).
+export { isAuthorizedChat };
 
 // ── Env verification ────────────────────────────────────────────────
 const REQUIRED = ['TELEGRAM_BOT_TOKEN'] as const;
@@ -62,6 +68,36 @@ if (!process.env['OLLAMA_URL'] && !process.env['OLLAMA_HOST']) {
 }
 
 const bot = new Telegraf(process.env['TELEGRAM_BOT_TOKEN']!);
+
+// ── Inbound auth gate — CEO-only ────────────────────────────────────
+// TELEGRAM_CEO_CHAT_ID already gates OUTBOUND sends (see CEO_CHAT_ID ~line 729).
+// This gates INBOUND updates: without it, every bot.command()/bot.on('text')
+// handler below served anyone who found the bot — including /swarm → shellTool,
+// a direct path to secret exfil. Fail-closed: unset id or non-matching sender
+// never reaches a handler.
+const ALLOWED_CEO_ID = process.env['TELEGRAM_CEO_CHAT_ID']
+  ? Number.parseInt(process.env['TELEGRAM_CEO_CHAT_ID'], 10)
+  : NaN;
+
+bot.use(async (ctx, next) => {
+  try {
+    const senderId = ctx.chat?.id ?? ctx.from?.id;
+    if (Number.isNaN(ALLOWED_CEO_ID)) {
+      console.error('[auth] FATAL: TELEGRAM_CEO_CHAT_ID unset — refusing ALL inbound messages (owner-less tool-equipped bot)');
+      return;
+    }
+    if (isAuthorizedChat(senderId, ALLOWED_CEO_ID)) {
+      await next();
+      return;
+    }
+    console.warn('[auth] dropped message from unauthorized chat', senderId);
+    return;
+  } catch (e) {
+    console.error('[auth] middleware exception — dropping message (fail-closed):', e);
+    return;
+  }
+});
+
 const availableModels = listAvailableModels();
 if (availableModels.length === 0) {
   throw new Error('FATAL: no model provider keys configured in .env');
