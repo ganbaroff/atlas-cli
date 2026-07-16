@@ -291,6 +291,35 @@ program
   });
 
 program
+  .command('autonomy-tick')
+  .description(
+    'Run ONE tick of the local autonomy loop (READ-ONLY: repo_watch + health-check, which includes ' +
+      'a file-based heartbeat-staleness check). Local-only V0 — not wired into Railway. ' +
+      'See docs/AUTONOMY-RECOVERY-PLAN.md.',
+  )
+  .option('-n, --notify', 'Send a Telegram digest IF signals changed and the rate-limit allows')
+  .action(async (opts) => {
+    try {
+      const { runTick } = await import('./atlas/autonomy-loop.js');
+      const result = await runTick({ notify: !!opts.notify });
+      console.log(`[autonomy-tick] ${result.ts} state=${result.state} — ${result.reason}`);
+      if (result.signals) {
+        console.log(result.signals.repoDigest);
+        console.log(`Health: ${result.signals.health.summary}`);
+      }
+      if (result.state === 'notified') {
+        console.log(`[autonomy-tick] sent=${result.sent} kind=${result.kind}`);
+      }
+      if (result.state === 'notify-failed') {
+        process.exitCode = 1;
+      }
+    } catch (err) {
+      console.error(`autonomy-tick error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+  });
+
+program
   .command('repo-watch')
   .description('Check configured git repos (READ-ONLY) and optionally notify CEO. No auto-commit/push/merge.')
   .option('-n, --notify', 'Send a Telegram digest IF something changed and the rate-limit allows')
