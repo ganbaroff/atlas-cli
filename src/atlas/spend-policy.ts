@@ -10,6 +10,9 @@
  * All limits read env lazily (tests / redeploy can flip them without a rebuild).
  */
 
+import { existsSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { getDailyTokenTotal } from './spend-tracker.js';
 import { loadPolicy } from './policy.js';
 
@@ -22,10 +25,31 @@ export function isPaidProvider(provider: string): boolean {
   return PAID_PROVIDERS.has(provider);
 }
 
-/** ATLAS_PAUSE=1 kill switch — halts autonomy (brain-loop, swarm decompose). */
+/**
+ * Local desktop panic marker. The Phase-2 tray shell writes this file on Panic;
+ * any local Atlas process (CLI, /task subprocess) then sees the pause with no
+ * redeploy. Overridable via ATLAS_PAUSE_FILE. On the cloud bot this file is
+ * absent → no effect there (cloud pause = Railway ATLAS_PAUSE env or Telegram
+ * /pause). Keeps one pause semantics across env var + file.
+ */
+export function pauseFilePath(): string {
+  return process.env['ATLAS_PAUSE_FILE'] || join(homedir(), '.atlas', 'PAUSE');
+}
+
+function pauseFilePresent(): boolean {
+  try {
+    return existsSync(pauseFilePath());
+  } catch {
+    return false;
+  }
+}
+
+/** ATLAS_PAUSE kill switch — halts autonomy (brain-loop, swarm decompose,
+ *  task-spawner). True if the env var is set OR the desktop pause file exists. */
 export function isPaused(): boolean {
   const v = (process.env['ATLAS_PAUSE'] ?? '').trim().toLowerCase();
-  return v === '1' || v === 'true' || v === 'yes';
+  if (v === '1' || v === 'true' || v === 'yes') return true;
+  return pauseFilePresent();
 }
 
 /** ATLAS_ALLOW_PAID=1 — paid providers stay off unless explicitly enabled. */

@@ -1,0 +1,12 @@
+{
+  "name": "@ganbaroff/atlas-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Atlas desktop shell — minimal Windows system-tray client (thin: cloud health + local panic + Telegram link). Not a second brain.",
+  "author": "Yusif Ganbarov",
+  "license": "Apache-2.0",
+  "scripts": {
+    "start": "powershell.exe -NoProfile -ExecutionPolicy Bypass -STA -File ./atlas-tray.ps1"
+  },
+  "comment": "No dependencies on purpose — zero install, and the root bot build (npm ci at ANUS root) never installs this package, so the Railway image is unaffected."
+}

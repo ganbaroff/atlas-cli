@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { writeFileSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 describe('spend policy (caps, paid flag, pause, queue cap)', () => {
   beforeEach(() => {
@@ -53,6 +56,8 @@ describe('spend policy (caps, paid flag, pause, queue cap)', () => {
   });
 
   it('isPaused reflects ATLAS_PAUSE', async () => {
+    // Point the pause-file at a guaranteed-absent path so this asserts the env var only.
+    vi.stubEnv('ATLAS_PAUSE_FILE', join(tmpdir(), `atlas-no-pause-${process.pid}`));
     const mod = await import('../atlas/spend-policy.js');
     vi.stubEnv('ATLAS_PAUSE', '');
     expect(mod.isPaused()).toBe(false);
@@ -60,6 +65,19 @@ describe('spend policy (caps, paid flag, pause, queue cap)', () => {
     expect(mod.isPaused()).toBe(true);
     vi.stubEnv('ATLAS_PAUSE', 'true');
     expect(mod.isPaused()).toBe(true);
+  });
+
+  it('isPaused reflects the desktop pause file (Phase 2 panic)', async () => {
+    const pauseFile = join(tmpdir(), `atlas-pause-marker-${process.pid}`);
+    try { rmSync(pauseFile); } catch { /* absent */ }
+    vi.stubEnv('ATLAS_PAUSE', '');
+    vi.stubEnv('ATLAS_PAUSE_FILE', pauseFile);
+    const mod = await import('../atlas/spend-policy.js');
+    expect(mod.isPaused()).toBe(false); // no file yet
+    writeFileSync(pauseFile, 'paused', 'utf8');
+    expect(mod.isPaused()).toBe(true); // file present → paused
+    rmSync(pauseFile);
+    expect(mod.isPaused()).toBe(false); // file gone → resumed
   });
 
   it('brain queue cap consumes N slots then refuses', async () => {
