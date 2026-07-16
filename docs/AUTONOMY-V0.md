@@ -1,23 +1,32 @@
-# Local Autonomy V0 (+ V0.1 notify hardening)
+# Local Autonomy V0 (+ V0.1 notify hardening, + V1 alert semantics)
 
 Implementation of `docs/AUTONOMY-RECOVERY-PLAN.md`'s minimal first loop.
-**Status: IMPLEMENTED-LOCAL.** Not deployed, not wired into Railway, not
-auto-started anywhere. Invoked only via `atlas autonomy-tick` /
-`atlas autonomy-test-notify`.
+**Status: IMPLEMENTED-LOCAL / LOCAL-NOTIFY-VERIFIED / ALERT-SEMANTICS-TESTED /
+NOT-SCHEDULED.** Not deployed, not wired into Railway, not auto-started
+anywhere, no Task Scheduler entry currently active. Invoked only via
+`atlas autonomy-tick` / `atlas autonomy-test-notify`.
 
 Code: `src/atlas/autonomy-loop.ts`, `src/atlas/notify.ts` (canonical notify
-layer, extended) · CLI: `atlas autonomy-tick [--notify]`,
-`atlas autonomy-test-notify` · tests: `src/__tests__/autonomy-loop.test.ts`
-(18), `src/__tests__/notify.test.ts` (+5 for `notifyCeoResult`).
+layer), `src/atlas/health-check.ts` (`ageHours` field, V1) · CLI:
+`atlas autonomy-tick [--notify]`, `atlas autonomy-test-notify` · tests:
+`src/__tests__/autonomy-loop.test.ts` (27), `src/__tests__/notify.test.ts`
+(+5 for `notifyCeoResult`).
 
-## What it does
+## What it does (V1)
 
 One tick: `isPaused()` check → observe (repo_watch + health-check, read-only)
-→ compute a combined change signature → notify the CEO only if the signature
-changed AND the rate-limit interval elapsed AND still not paused. Zero LLM
+→ evaluate EACH signal (heartbeat; each of the other 6 health checks by name;
+repo-watch's own git-health) independently against its own persisted prior
+state → notify the CEO only for signals whose transition is `new-failure`,
+`escalation`, or `recovery` (never for `unchanged-failure` or `no-change`) →
+still gated by `isPaused()`, re-checked immediately before the send. Zero LLM
 calls. The only shell execution anywhere in this path is repo_watch's own
 `execFileSync('git', ...)` with a fixed subcommand set — the autonomy shell
 whitelist in `policy.yaml` isn't even exercised.
+
+See the module's own header comment in `autonomy-loop.ts` for the full
+per-signal state-machine design (this is the canonical spec — this doc
+summarizes it, not the other way around).
 
 ```
 node dist/cli.js autonomy-tick             # dry run, prints signals, sends nothing
@@ -135,9 +144,106 @@ rotation, out of scope for this sprint (no key rotation without CEO word).**
 Once a live token is in place, this is the ONLY remaining gap before a real
 SENT/SUPPRESSED duplicate-suppression proof and the Task Scheduler smoke.
 
-### Task Scheduler smoke — not started
+## V1 — alert semantics (per-signal dedupe + recovery)
 
-Gated on a live `SENT` result, which has not yet been reached (see above).
+### The bug this replaces
+
+A live 60-minute Task Scheduler smoke (2026-07-17, using the reconciled valid
+token) sent **2 real duplicate Telegram alerts for the same, unchanged, already-
+known stale-heartbeat condition** — retriggered purely by unrelated commits
+landing on ANUS/VOLAURA mid-window. Root cause: V0's `combinedSignature()`
+(`repoSig || healthVec`, one string) changed on ANY repo commit, and the tick
+notified on ANY combined-signature change — conflating "something, anything,
+changed" with "the thing CEO actually needs to know about changed." The
+External CTO red-gated and aborted the smoke on this exact finding (not an
+infra/Telegram failure — delivery worked correctly both times).
+
+### The fix
+
+`combinedSignature()`/`formatTickMessage()`/the old `LoopState{sig,
+lastNotifyMs}` file are **removed** — replaced with a per-signal model.
+Each signal (`heartbeat`, `health:<name>` for the other 6 checks,
+`repo-watch`) is tracked independently in `~/.atlas/alert-state.json`
+(override `ATLAS_ALERT_STATE_FILE`) as `HEALTHY | FAILING` (implicit
+`UNKNOWN` before any tick has observed it). Every tick, every signal's raw
+reading is compared **only to its own prior record** — never to a combined
+snapshot of everything else:
+
+| Transition | Notify? |
+|---|---|
+| `UNKNOWN\|HEALTHY` → `FAILING` (new-failure) | yes, `error` |
+| `FAILING` → `FAILING`, same severity band (unchanged-failure) | **no** |
+| `FAILING` → `FAILING`, band changed (escalation) | yes, `error` |
+| `FAILING` → `HEALTHY` (recovery) | yes, `important` |
+| `UNKNOWN\|HEALTHY` → `HEALTHY` (no-change) | no |
+
+Severity bands (`mild` 24-72h / `moderate` 72-168h / `severe` ≥168h) exist
+only for `heartbeat`, the one signal with a genuine continuous severity axis
+(`ageHours`, new field on `HealthCheck`, `health-check.ts`). The other 6
+health checks are flat booleans — no escalation axis, honestly not modeled
+rather than faked. `repo-watch`'s HEALTHY/FAILING tracks only whether `git`
+itself works for every watched repo (`RepoStatus.ok`) — the digest CONTENT
+(branch/dirty-count/latest-commit) changing on a routine commit is
+deliberately **not** a signal transition; that surface already has its own
+separate, independent notify path (`atlas repo-watch --notify`, untouched).
+Multiple genuinely-new events in one tick fold into ONE `notifyCeoResult()`
+call, not one send per event and not suppressed against each other — an
+independent new failure still notifies even while an unrelated failure
+remains active, because each signal is judged in isolation.
+
+No periodic reminders: an unchanged `FAILING` signal stays silent
+indefinitely (explicit CEO decision, recorded in `EXTERNAL-CTO-STATE.md`).
+Queue-depth (the plan's optional 4th signal type) still has no safe
+read-only producer anywhere in this codebase and remains unmodeled — flagged,
+not silently dropped, same as V0.
+
+### Real receipts (this machine, 2026-07-16/17)
+
+**Live CLI-level proof of the exact fix** (real stale heartbeat, real repo,
+zero mocking):
+```
+$ export ATLAS_ALERT_STATE_FILE=<fresh temp file>
+$ node dist/cli.js autonomy-tick
+[autonomy-tick] ... state=observed — dry-run — would notify on: heartbeat:new-failure
+Health: 1/7 checks failed: heartbeat
+
+$ echo "sim-marker $(date)" > .atlas-sim-marker.tmp   # simulates an unrelated real commit landing
+$ node dist/cli.js autonomy-tick
+[autonomy-tick] ... state=silent — no actionable signal transitions this tick
+Health: 1/7 checks failed: heartbeat   # heartbeat unchanged, correctly silent
+```
+The repo dirty-count visibly changed between the two ticks (6→7); the
+heartbeat notification did not resend. This is the precise scenario that
+double-sent during the live smoke test, now proven silent.
+
+**27 deterministic tests** (`autonomy-loop.test.ts`, fixed fixtures, no live
+git/health/Telegram calls) cover: first failure → one notify; same failure
+next tick → suppressed; same failure + unrelated repo change → suppressed
+(the storm path, explicit test); recovery → one notify; post-recovery
+re-failure → one new notify; a *different* check failing while heartbeat
+stays stale → exactly one new alert (not two, not zero); severity escalation
+(mild→severe) → one escalation; same band → suppressed; state survives a
+simulated fresh process (re-`readAlertState()` from disk); malformed/missing
+state file → safe empty bootstrap, never throws, at most one notify (not a
+storm); both pause paths; cannot-target-arbitrary-chat-ID (runtime +
+compile-time guard); no LLM/model-router import anywhere in the module
+(static zero-paid-call proof).
+
+### Adversarial review (Workflow, 2026-07-17)
+
+A dedicated Workflow review (8 lenses: alert-storm paths, state
+persistence/restart, recovery false positives, unrelated-signal coupling,
+notifier authority/secret exposure, malformed-state fail-safe, severity-band
+edge cases, test-coverage gaps) ran against this implementation before it was
+considered done. See `EXTERNAL-CTO-STATE.md` for the itemized findings and
+which were fixed vs. accepted as documented V1 scope limits.
+
+### Task Scheduler smoke — not re-attempted this pass
+
+Per the External CTO's explicit boundary for this sprint: no new scheduler
+window until this alert-semantics work was implemented, tested, and
+accepted. The task `ATLAS-Autonomy-V0-Smoke` still exists but remains
+**Disabled** (verified, not deleted) from the prior abort.
 
 ## Real receipts (this machine, 2026-07-16)
 
@@ -184,15 +290,20 @@ $ rm ~/.atlas/PAUSE && atlas autonomy-tick
 
 ## Tests
 
-**`autonomy-loop.test.ts` (18):** paused-before-observing, silent-no-change,
-silent-rate-limited, dry-run, notified + state persisted, paused-re-checked-
-before-notify (send never attempted), notify-failed vs no-CEO-chat-configured
-(must not collapse to the same reason), important vs error kind selection,
-cannot-target-arbitrary-chat-ID (runtime + compile-time guard), and
-`sendControlledTestNotification`'s own rate-limit + pause behavior. Gating-
-logic tests use hand-constructed fixtures (mirroring `repo-watch.test.ts`'s
-pattern) rather than two live `observe()` calls, since real git status of an
-OneDrive-synced repo isn't guaranteed identical moments apart — an early
+**`autonomy-loop.test.ts` (27, rewritten for V1):** the 12 required
+alert-semantics cases (first-failure, repeated-failure-silent,
+unrelated-change-silent, recovery, post-recovery-refailure,
+independent-new-failure-while-another-active, escalation, same-band-silent,
+state-survives-reload, malformed-state-safe, both-pause-paths,
+cannot-target-arbitrary-chat-ID) plus the surviving V0/V0.1 end-to-end tick
+tests (paused-before-observing, dry-run, notified+state-persisted,
+paused-re-checked-before-notify, notify-failed vs no-CEO-chat-configured,
+important vs error kind, compile-time chat-ID guard) and
+`sendControlledTestNotification`'s own rate-limit + pause behavior
+(unchanged by V1, still uses its own separate state file). Gating-logic
+tests use hand-constructed fixtures (mirroring `repo-watch.test.ts`'s
+pattern) rather than live `observe()` calls, since real git status of an
+OneDrive-synced repo isn't guaranteed identical moments apart — an early V0
 draft hit exactly this flake and was fixed by making the signal source
 injectable (`observeFn`).
 
