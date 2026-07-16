@@ -269,6 +269,43 @@ program
     }
   });
 
+program
+  .command('capture')
+  .description('Capture the primary screen (READ-ONLY). --summarize adds an optional capped vision summary.')
+  .option('-s, --summarize', 'Also produce a vision summary (opt-in, hourly-capped, free provider, secret-redacted)')
+  .action(async (opts) => {
+    try {
+      const { runScreenCapture } = await import('./atlas/screen-capture.js');
+      const { capture, summary } = await runScreenCapture({ summarize: !!opts.summarize });
+      console.log(`[capture] ${capture.path}`);
+      console.log(`[capture] ${capture.width}x${capture.height}, ${(capture.bytes / 1024).toFixed(0)} KB, ${capture.ts}`);
+      if (capture.thumbPath) console.log(`[capture] thumb: ${capture.thumbPath}`);
+      if (summary) {
+        if (summary.skipped) console.log(`[summary] skipped: ${summary.reason}`);
+        else console.log(`[summary] (${summary.provider}/${summary.model}, call ${summary.count}/hr): ${summary.summary}`);
+      }
+    } catch (err) {
+      console.error(`capture error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+  });
+
+program
+  .command('repo-watch')
+  .description('Check configured git repos (READ-ONLY) and optionally notify CEO. No auto-commit/push/merge.')
+  .option('-n, --notify', 'Send a Telegram digest IF something changed and the rate-limit allows')
+  .action(async (opts) => {
+    try {
+      const { runRepoWatch } = await import('./atlas/repo-watch.js');
+      const { digest, decision, sent } = await runRepoWatch({ notify: !!opts.notify });
+      console.log(digest);
+      console.log(`[repo-watch] notify=${decision.notify} (${decision.reason})${opts.notify ? ` sent=${sent}` : ''}`);
+    } catch (err) {
+      console.error(`repo-watch error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+  });
+
 const operatorCmd = program
   .command('operator')
   .description('Atlas operator integration controls');

@@ -83,3 +83,14 @@ panic:
   telegram_commands:
     - /pause
     - /resume
+
+skills:
+  # Phase 3 read-only / notify-only skills. Caps live here so ops sees them.
+  screen:
+    max_per_hour: 12        # hard cap on VISION-summary model calls per hour
+    vision_enabled: false   # opt-in: capture always works; summary needs this true + freellmapi env
+  repo_watch:
+    interval_min: 15        # rate limit: min minutes between repo notifications
+    roots:                  # git roots to watch (paths, not secrets)
+      - 'C:\Users\user\OneDrive\Documents\GitHub\ANUS'
+      - 'C:\Projects\VOLAURA'

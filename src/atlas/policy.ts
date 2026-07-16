@@ -39,6 +39,10 @@ export interface AtlasPolicy {
   fs: { sensitive: string[] };
   billing: { deny: string[] };
   panic: { env: string; telegram_commands: string[] };
+  skills: {
+    screen: { max_per_hour: number; vision_enabled: boolean };
+    repo_watch: { interval_min: number; roots: string[] };
+  };
 }
 
 /** Safe defaults — also the fail-closed posture (empty autonomy whitelist). */
@@ -50,6 +54,10 @@ export const DEFAULT_POLICY: AtlasPolicy = {
   fs: { sensitive: [] },
   billing: { deny: [] },
   panic: { env: 'ATLAS_PAUSE', telegram_commands: ['/pause', '/resume'] },
+  skills: {
+    screen: { max_per_hour: 12, vision_enabled: false },
+    repo_watch: { interval_min: 15, roots: [] },
+  },
 };
 
 function isProduction(): boolean {
@@ -101,6 +109,16 @@ function mergePolicy(parsed: unknown): AtlasPolicy {
     panic: {
       env: strOr(p.panic?.env, DEFAULT_POLICY.panic.env),
       telegram_commands: p.panic?.telegram_commands ? strArr(p.panic.telegram_commands) : DEFAULT_POLICY.panic.telegram_commands,
+    },
+    skills: {
+      screen: {
+        max_per_hour: numOr(p.skills?.screen?.max_per_hour, DEFAULT_POLICY.skills.screen.max_per_hour),
+        vision_enabled: boolOr(p.skills?.screen?.vision_enabled, DEFAULT_POLICY.skills.screen.vision_enabled),
+      },
+      repo_watch: {
+        interval_min: numOr(p.skills?.repo_watch?.interval_min, DEFAULT_POLICY.skills.repo_watch.interval_min),
+        roots: strArr(p.skills?.repo_watch?.roots),
+      },
     },
   };
 }
@@ -184,4 +202,41 @@ export function isAutonomyShellAllowed(command: string): boolean {
   const cmd = (command || '').trim();
   if (!cmd) return false;
   return autonomyShellWhitelist().some((re) => re.test(cmd));
+}
+
+// ── Phase 3 skill caps (ENV WINS > policy.yaml > default) ─────────────────────
+
+/** Max vision-summary model calls per hour for screen_capture. */
+export function screenMaxPerHour(): number {
+  const raw = process.env.ATLAS_SCREEN_MAX_PER_HOUR;
+  if (raw) {
+    const n = parseInt(raw, 10);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return loadPolicy().skills.screen.max_per_hour;
+}
+
+/** Is the (opt-in) vision summary enabled? Capture itself never needs this. */
+export function screenVisionEnabled(): boolean {
+  const raw = (process.env.ATLAS_SCREEN_VISION ?? '').trim().toLowerCase();
+  if (raw === '1' || raw === 'true' || raw === 'yes') return true;
+  if (raw === '0' || raw === 'false' || raw === 'no') return false;
+  return loadPolicy().skills.screen.vision_enabled;
+}
+
+/** Rate limit: minimum minutes between repo_watch notifications. */
+export function repoWatchIntervalMin(): number {
+  const raw = process.env.ATLAS_REPO_WATCH_INTERVAL_MIN;
+  if (raw) {
+    const n = parseInt(raw, 10);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return loadPolicy().skills.repo_watch.interval_min;
+}
+
+/** Git roots repo_watch monitors. ATLAS_REPO_WATCH_ROOTS is ';'-separated. */
+export function repoWatchRoots(): string[] {
+  const env = process.env.ATLAS_REPO_WATCH_ROOTS;
+  if (env && env.trim()) return env.split(';').map((s) => s.trim()).filter(Boolean);
+  return loadPolicy().skills.repo_watch.roots;
 }
