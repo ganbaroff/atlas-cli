@@ -3,7 +3,14 @@ import { writeFileSync, readFileSync, rmSync, mkdtempSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import * as spendPolicy from '../atlas/spend-policy.js';
-import { observe, combinedSignature, formatTickMessage, runTick, type TickSignals } from '../atlas/autonomy-loop.js';
+import {
+  observe,
+  combinedSignature,
+  formatTickMessage,
+  runTick,
+  sendControlledTestNotification,
+  type TickSignals,
+} from '../atlas/autonomy-loop.js';
 
 // Fixed fixtures for the state-machine tests — mirrors repo-watch.test.ts's
 // decideNotify fixtures. Real repo signals (git status of an OneDrive-synced
@@ -73,27 +80,20 @@ describe('autonomy-loop combinedSignature/formatTickMessage (fixed fixtures)', (
 describe('autonomy-loop runTick — state machine (fixed fixtures via observeFn)', () => {
   let stateDir: string;
   let stateFile: string;
-  let priorToken: string | undefined;
   let priorChatId: string | undefined;
 
   beforeEach(() => {
     vi.restoreAllMocks();
-    vi.unstubAllGlobals();
     stateDir = mkdtempSync(join(tmpdir(), 'atlas-autonomy-test-'));
     stateFile = join(stateDir, 'state.json');
     process.env.ATLAS_AUTONOMY_STATE_FILE = stateFile;
-    priorToken = process.env.TELEGRAM_BOT_TOKEN;
     priorChatId = process.env.TELEGRAM_CEO_CHAT_ID;
-    process.env.TELEGRAM_BOT_TOKEN = 'test-token';
     process.env.TELEGRAM_CEO_CHAT_ID = '12345';
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
-    vi.unstubAllGlobals();
     delete process.env.ATLAS_AUTONOMY_STATE_FILE;
-    if (priorToken === undefined) delete process.env.TELEGRAM_BOT_TOKEN;
-    else process.env.TELEGRAM_BOT_TOKEN = priorToken;
     if (priorChatId === undefined) delete process.env.TELEGRAM_CEO_CHAT_ID;
     else process.env.TELEGRAM_CEO_CHAT_ID = priorChatId;
     try {
@@ -143,18 +143,17 @@ describe('autonomy-loop runTick — state machine (fixed fixtures via observeFn)
     expect(result.reason).toMatch(/dry-run/);
   });
 
-  it('NOTIFIED: changed + interval elapsed + notify requested -> sends (via real fetch, mocked) and persists state', async () => {
+  it('NOTIFIED: changed + interval elapsed + notify requested -> sends via canonical notifyCeoResult() and persists state', async () => {
     vi.spyOn(spendPolicy, 'isPaused').mockReturnValue(false);
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
-    vi.stubGlobal('fetch', fetchMock);
+    const sendOverride = vi.fn().mockResolvedValue(undefined);
     const now = Date.now();
     writeFileSync(stateFile, JSON.stringify({ sig: combinedSignature(A), lastNotifyMs: 0 }));
 
-    const result = await runTick({ notify: true, now, intervalMin: 15, observeFn: () => B });
+    const result = await runTick({ notify: true, now, intervalMin: 15, observeFn: () => B, sendOverride });
     expect(result.state).toBe('notified');
     expect(result.sent).toBe(true);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(String(fetchMock.mock.calls[0][0])).toContain('api.telegram.org');
+    expect(sendOverride).toHaveBeenCalledTimes(1);
+    expect(sendOverride.mock.calls[0][0]).toBe(12345); // TELEGRAM_CEO_CHAT_ID resolved by notify.ts, not this module
 
     const persisted = JSON.parse(readFileSync(stateFile, 'utf8'));
     expect(persisted.lastNotifyMs).toBe(now);
@@ -164,24 +163,23 @@ describe('autonomy-loop runTick — state machine (fixed fixtures via observeFn)
   it('re-checks isPaused() immediately before notifying, not just at tick start (send never attempted)', async () => {
     // Not paused for the FIRST check (tick start), paused by the SECOND check (pre-notify).
     vi.spyOn(spendPolicy, 'isPaused').mockReturnValueOnce(false).mockReturnValueOnce(true);
-    const fetchMock = vi.fn();
-    vi.stubGlobal('fetch', fetchMock);
+    const sendOverride = vi.fn();
     const now = Date.now();
     writeFileSync(stateFile, JSON.stringify({ sig: combinedSignature(A), lastNotifyMs: 0 }));
 
-    const result = await runTick({ notify: true, now, intervalMin: 15, observeFn: () => B });
+    const result = await runTick({ notify: true, now, intervalMin: 15, observeFn: () => B, sendOverride });
     expect(result.state).toBe('paused');
     expect(result.reason).toMatch(/after observing/);
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(sendOverride).not.toHaveBeenCalled();
   });
 
-  it('NOTIFY-FAILED: a real send error (missing token) is caught, never throws, and state is not persisted', async () => {
+  it('NOTIFY-FAILED: a send error is caught, never throws, and state is not persisted', async () => {
     vi.spyOn(spendPolicy, 'isPaused').mockReturnValue(false);
-    delete process.env.TELEGRAM_BOT_TOKEN; // forces the real telegramSend() to throw synchronously, no fetch mock needed
+    const sendOverride = vi.fn().mockRejectedValue(new Error('telegram down'));
     const now = Date.now();
     writeFileSync(stateFile, JSON.stringify({ sig: combinedSignature(A), lastNotifyMs: 0 }));
 
-    const result = await runTick({ notify: true, now, intervalMin: 15, observeFn: () => B });
+    const result = await runTick({ notify: true, now, intervalMin: 15, observeFn: () => B, sendOverride });
     expect(result.state).toBe('notify-failed');
     expect(result.reason).toMatch(/send failed/);
 
@@ -189,31 +187,105 @@ describe('autonomy-loop runTick — state machine (fixed fixtures via observeFn)
     expect(persisted.lastNotifyMs).toBe(0); // unchanged — the failed send must not be recorded as delivered
   });
 
-  it('NOTIFY-FAILED is distinguishable from "no CEO chat configured" (both must not collapse to silent)', async () => {
+  it('NOTIFY-FAILED is distinguishable from "no CEO chat configured" (both must not collapse to the same reason)', async () => {
     vi.spyOn(spendPolicy, 'isPaused').mockReturnValue(false);
     delete process.env.TELEGRAM_CEO_CHAT_ID;
+    const sendOverride = vi.fn();
     const now = Date.now();
     writeFileSync(stateFile, JSON.stringify({ sig: combinedSignature(A), lastNotifyMs: 0 }));
 
-    const result = await runTick({ notify: true, now, intervalMin: 15, observeFn: () => B });
+    const result = await runTick({ notify: true, now, intervalMin: 15, observeFn: () => B, sendOverride });
     expect(result.state).toBe('silent'); // no config -> genuinely nothing to send, correctly silent
     expect(result.reason).toMatch(/no CEO chat configured/);
+    expect(sendOverride).not.toHaveBeenCalled(); // never attempted a send with no target
   });
 
   it('uses "error" kind when a health check has failed, "important" otherwise', async () => {
     vi.spyOn(spendPolicy, 'isPaused').mockReturnValue(false);
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true }) });
-    vi.stubGlobal('fetch', fetchMock);
+    const sendOverride = vi.fn().mockResolvedValue(undefined);
     const now = Date.now();
 
     writeFileSync(stateFile, JSON.stringify({ sig: combinedSignature(A), lastNotifyMs: 0 }));
-    const r1 = await runTick({ notify: true, now, intervalMin: 15, observeFn: () => B });
+    const r1 = await runTick({ notify: true, now, intervalMin: 15, observeFn: () => B, sendOverride });
     expect(r1.state).toBe('notified');
     expect(r1.kind).toBe('important');
 
     writeFileSync(stateFile, JSON.stringify({ sig: combinedSignature(A), lastNotifyMs: 0 }));
-    const r2 = await runTick({ notify: true, now: now + 1, intervalMin: 15, observeFn: () => B_FAILING });
+    const r2 = await runTick({ notify: true, now: now + 1, intervalMin: 15, observeFn: () => B_FAILING, sendOverride });
     expect(r2.state).toBe('notified');
     expect(r2.kind).toBe('error');
+  });
+
+  it('cannot be made to target an arbitrary chat ID — sendOverride only overrides the transport, not the destination', async () => {
+    // Even though sendOverride is a full mock, the FIRST argument it receives
+    // (the chat ID) always comes from notify.ts's internal resolveCeoChatId(),
+    // never from anything runTick/autonomy-loop passes explicitly. This module
+    // has no chatId field anywhere in RunTickOptions.
+    vi.spyOn(spendPolicy, 'isPaused').mockReturnValue(false);
+    process.env.TELEGRAM_CEO_CHAT_ID = '99999';
+    const sendOverride = vi.fn().mockResolvedValue(undefined);
+    const now = Date.now();
+    writeFileSync(stateFile, JSON.stringify({ sig: combinedSignature(A), lastNotifyMs: 0 }));
+
+    await runTick({ notify: true, now, intervalMin: 15, observeFn: () => B, sendOverride });
+    expect(sendOverride.mock.calls[0][0]).toBe(99999);
+  });
+
+  it('RunTickOptions has no chatId/target field — compile-time guard, not a runtime call', () => {
+    // @ts-expect-error — proves the option does not exist; if this ever stops
+    // erroring (someone added a chatId field), the build breaks here first.
+    const bad: import('../atlas/autonomy-loop.js').RunTickOptions = { chatId: 1 };
+    expect(bad).toBeDefined(); // never awaited/executed — type-check only
+  });
+});
+
+describe('sendControlledTestNotification — V0.1 Blocker 3 rate-limit + pause guard', () => {
+  let testStateDir: string;
+  let testStateFile: string;
+  let priorChatId: string | undefined;
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    testStateDir = mkdtempSync(join(tmpdir(), 'atlas-test-notify-'));
+    testStateFile = join(testStateDir, 'test-notify-state.json');
+    process.env.ATLAS_AUTONOMY_TEST_STATE_FILE = testStateFile;
+    priorChatId = process.env.TELEGRAM_CEO_CHAT_ID;
+    process.env.TELEGRAM_CEO_CHAT_ID = '12345';
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    delete process.env.ATLAS_AUTONOMY_TEST_STATE_FILE;
+    if (priorChatId === undefined) delete process.env.TELEGRAM_CEO_CHAT_ID;
+    else process.env.TELEGRAM_CEO_CHAT_ID = priorChatId;
+    try {
+      rmSync(testStateDir, { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
+  });
+
+  it('sends once, then rate-limits an immediate second call (uses its own state file, not the production one)', async () => {
+    vi.spyOn(spendPolicy, 'isPaused').mockReturnValue(false);
+    const sendOverride = vi.fn().mockResolvedValue(undefined);
+    const now = Date.now();
+
+    const first = await sendControlledTestNotification({ now, intervalMin: 15, sendOverride });
+    expect(first.attempted).toBe(true);
+    expect(first.outcomeResult).toBe('SENT');
+    expect(sendOverride).toHaveBeenCalledTimes(1);
+
+    const second = await sendControlledTestNotification({ now: now + 60_000, intervalMin: 15, sendOverride });
+    expect(second.attempted).toBe(false);
+    expect(second.reason).toMatch(/rate-limited/);
+    expect(sendOverride).toHaveBeenCalledTimes(1); // still 1 — second call never attempted a send
+  });
+
+  it('a paused Atlas does not send the test notification either', async () => {
+    vi.spyOn(spendPolicy, 'isPaused').mockReturnValue(true);
+    const sendOverride = vi.fn();
+    const result = await sendControlledTestNotification({ sendOverride });
+    expect(result.attempted).toBe(false);
+    expect(sendOverride).not.toHaveBeenCalled();
   });
 });

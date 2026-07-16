@@ -320,6 +320,26 @@ program
   });
 
 program
+  .command('autonomy-test-notify')
+  .description(
+    'Send ONE controlled, clearly-marked test notification through the canonical notify layer ' +
+      '(rate-limited via a dedicated state file, separate from the real autonomy loop). ' +
+      'V0.1 Blocker 3 verification tool — not part of normal operation.',
+  )
+  .action(async () => {
+    try {
+      const { sendControlledTestNotification } = await import('./atlas/autonomy-loop.js');
+      const result = await sendControlledTestNotification();
+      console.log(`[autonomy-test-notify] attempted=${result.attempted} — ${result.reason}`);
+      if (result.outcomeResult) console.log(`[autonomy-test-notify] outcome=${result.outcomeResult}`);
+      if (result.error) console.log(`[autonomy-test-notify] error=${result.error}`);
+    } catch (err) {
+      console.error(`autonomy-test-notify error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+  });
+
+program
   .command('repo-watch')
   .description('Check configured git repos (READ-ONLY) and optionally notify CEO. No auto-commit/push/merge.')
   .option('-n, --notify', 'Send a Telegram digest IF something changed and the rate-limit allows')

@@ -29,16 +29,19 @@
  * actually work would mean adding new cross-process persistence to a shared
  * module also used elsewhere — out of scope for a minimal first loop.
  *
- * SECOND DEVIATION, SAME REVIEW: notifyCeo() (notify.ts) internally catches
- * every send failure and returns `false` — indistinguishable from "no CEO
- * chat configured" or "kind gated." Routing a real Telegram outage through it
- * would silently mislabel a failed send as "nothing to send," which is
- * exactly the kind of false completion claim this whole recovery effort
- * exists to prevent. This module reuses notify.ts's `shouldNotify()` gate
- * directly (so the kind-gating semantics stay centralized and consistent
- * with the rest of the codebase) but performs the actual send itself, inside
- * its own try/catch, so a genuine failure reaches the 'notify-failed' state
- * instead of being swallowed.
+ * SECOND DEVIATION, SAME REVIEW, NOW UPSTREAMED (V0.1): the legacy
+ * notifyCeo() (notify.ts) internally catches every send failure and returns
+ * `false` — indistinguishable from "no CEO chat configured" or "kind gated."
+ * Routing a real Telegram outage through it would silently mislabel a failed
+ * send as "nothing to send," which is exactly the kind of false completion
+ * claim this whole recovery effort exists to prevent. Rather than have this
+ * module bypass notify.ts with its own ad-hoc token/chat-ID handling (a
+ * "parallel notification authority"), the fix now lives in notify.ts itself:
+ * notifyCeoResult() returns a typed NOT_CONFIGURED | SUPPRESSED | SENT |
+ * FAILED outcome, and its target chat ID is resolved internally — there is no
+ * parameter by which this module (or any caller) can direct a send at a chat
+ * ID other than TELEGRAM_CEO_CHAT_ID. This module calls notifyCeoResult()
+ * only; it does not read TELEGRAM_BOT_TOKEN or TELEGRAM_CEO_CHAT_ID itself.
  *
  * SCOPE (V0, matches the plan exactly):
  *   - LOCAL ONLY. Not wired into Railway's boot() — see plan §6/§8: that is a
@@ -67,7 +70,7 @@ import { join, dirname } from 'node:path';
 import { scanRepos, formatDigest, signature as repoSignature } from './repo-watch.js';
 import { repoWatchRoots, repoWatchIntervalMin } from './policy.js';
 import { runHealthCheck, formatHealthReport, type HealthReport } from './health-check.js';
-import { shouldNotify, type NotifyKind } from './notify.js';
+import { notifyCeoResult, type NotifyKind, type NotifyResult } from './notify.js';
 import { isPaused } from './spend-policy.js';
 
 export interface TickSignals {
@@ -150,20 +153,6 @@ export function formatTickMessage(signals: TickSignals): string {
   return lines.join('\n').slice(0, 4000);
 }
 
-/** Telegram sender for the notify gate — mirrors repo-watch.ts's own copy (DI pattern). */
-async function telegramSend(chatId: number, text: string): Promise<unknown> {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  if (!token) throw new Error('TELEGRAM_BOT_TOKEN missing');
-  const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text: text.slice(0, 4096) }),
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!res.ok) throw new Error(`telegram HTTP ${res.status}`); // status only, no token
-  return res.json();
-}
-
 export interface RunTickOptions {
   notify?: boolean;
   now?: number;
@@ -177,6 +166,14 @@ export interface RunTickOptions {
    * environmental reasons unrelated to the state machine's correctness.
    */
   observeFn?: () => TickSignals;
+  /**
+   * Injectable send mechanism, forwarded to notifyCeoResult(). Overrides ONLY
+   * how the message is transmitted — never the chat ID, which notify.ts
+   * resolves internally and is not a parameter anywhere on this path. Tests
+   * use this to avoid a real Telegram call; production omits it and gets
+   * notify.ts's real telegramSend.
+   */
+  sendOverride?: (chatId: number, text: string) => Promise<unknown>;
 }
 
 /**
@@ -224,33 +221,116 @@ export async function runTick(opts: RunTickOptions = {}): Promise<TickResult> {
   const failedChecks = signals.health.checks.filter((c) => !c.ok).length;
   const kind: NotifyKind = failedChecks > 0 ? 'error' : 'important';
 
-  // Reuse notify.ts's own gate (shouldNotify) for centralized kind-gating, but
-  // perform the send ourselves — notifyCeo() swallows send failures into a
-  // plain `false`, which would make a real outage indistinguishable from "no
-  // CEO chat configured." See module doc for why that matters here.
-  if (!shouldNotify(kind)) {
-    return { state: 'silent', ts, signals, sig, message, sent: false, kind, reason: `notify kind '${kind}' gated (silent by default)` };
-  }
-  const chatIdRaw = process.env.TELEGRAM_CEO_CHAT_ID;
-  const chatId = chatIdRaw ? parseInt(chatIdRaw, 10) : NaN;
-  if (!Number.isFinite(chatId)) {
-    return { state: 'silent', ts, signals, sig, message, sent: false, kind, reason: 'no CEO chat configured (TELEGRAM_CEO_CHAT_ID unset)' };
+  // Canonical send — this is the ONLY notify call in this module. No local
+  // token read, no local chat-ID resolution: both live in notify.ts.
+  const outcome = await notifyCeoResult(kind, message, opts.sendOverride);
+
+  const outcomeToState: Record<NotifyResult, TickState> = {
+    SENT: 'notified',
+    SUPPRESSED: 'silent',
+    NOT_CONFIGURED: 'silent',
+    FAILED: 'notify-failed',
+  };
+  const outcomeToReason: Record<NotifyResult, string> = {
+    SENT: 'notified CEO',
+    SUPPRESSED: `notify kind '${kind}' gated (silent by default)`,
+    NOT_CONFIGURED: 'no CEO chat configured (TELEGRAM_CEO_CHAT_ID unset)',
+    FAILED: `send failed: ${outcome.error ?? 'unknown error'}`,
+  };
+
+  if (outcome.result === 'SENT') {
+    writeLoopState({ sig, lastNotifyMs: now });
   }
 
+  return {
+    state: outcomeToState[outcome.result],
+    ts,
+    signals,
+    sig,
+    message,
+    sent: outcome.result === 'SENT',
+    kind,
+    reason: outcomeToReason[outcome.result],
+  };
+}
+
+// ── Controlled live test notification (V0.1 Blocker 3) ────────────────────────
+
+const TEST_NOTIFY_PREFIX = '[ATLAS V0 TEST — NO ACTION REQUIRED]';
+const TEST_NOTIFY_MESSAGE =
+  `${TEST_NOTIFY_PREFIX}\n` +
+  'Controlled verification of the Local Autonomy V0 notification path. ' +
+  'This is a one-time system check, not a real alert — no signals, no repo data, ' +
+  'no health internals. Safe to ignore.';
+
+function testNotifyStateFilePath(): string {
+  return process.env.ATLAS_AUTONOMY_TEST_STATE_FILE || join(homedir(), '.atlas', 'autonomy-test-notify.json');
+}
+
+interface TestNotifyState {
+  lastSentMs: number;
+}
+
+function readTestNotifyState(): TestNotifyState {
   try {
-    await telegramSend(chatId, message);
-    writeLoopState({ sig, lastNotifyMs: now });
-    return { state: 'notified', ts, signals, sig, message, sent: true, kind, reason: 'notified CEO' };
-  } catch (e) {
+    const s = JSON.parse(readFileSync(testNotifyStateFilePath(), 'utf8'));
+    return { lastSentMs: Number(s.lastSentMs ?? 0) };
+  } catch {
+    return { lastSentMs: 0 };
+  }
+}
+
+function writeTestNotifyState(s: TestNotifyState): void {
+  try {
+    mkdirSync(dirname(testNotifyStateFilePath()), { recursive: true });
+    writeFileSync(testNotifyStateFilePath(), JSON.stringify(s));
+  } catch {
+    /* best-effort */
+  }
+}
+
+export interface TestNotifyResult {
+  attempted: boolean;
+  outcomeResult?: NotifyResult;
+  error?: string;
+  reason: string;
+}
+
+/**
+ * Sends exactly ONE fixed, clearly-marked test message through the SAME
+ * canonical notifyCeoResult() the real loop uses — this is a verification of
+ * the notify path itself, not of any real observed signal, so it does NOT
+ * touch runTick's production state file (a separate state file + a
+ * dedicated interval guards repeat sends of this specific test message).
+ * isPaused() is still honored — a paused Atlas does not send this either.
+ */
+export async function sendControlledTestNotification(
+  opts: { now?: number; intervalMin?: number; sendOverride?: (chatId: number, text: string) => Promise<unknown> } = {},
+): Promise<TestNotifyResult> {
+  const now = opts.now ?? Date.now();
+  const intervalMin = opts.intervalMin ?? repoWatchIntervalMin();
+
+  if (isPaused()) {
+    return { attempted: false, reason: 'ATLAS_PAUSE active — test notification skipped' };
+  }
+
+  const st = readTestNotifyState();
+  const elapsedMin = (now - st.lastSentMs) / 60_000;
+  if (st.lastSentMs > 0 && elapsedMin < intervalMin) {
     return {
-      state: 'notify-failed',
-      ts,
-      signals,
-      sig,
-      message,
-      sent: false,
-      kind,
-      reason: `send failed: ${(e as Error)?.message?.slice(0, 150)}`,
+      attempted: false,
+      reason: `rate-limited: last test send was ${elapsedMin.toFixed(2)}min ago, interval is ${intervalMin}min`,
     };
   }
+
+  const outcome = await notifyCeoResult('important', TEST_NOTIFY_MESSAGE, opts.sendOverride);
+  if (outcome.result === 'SENT') {
+    writeTestNotifyState({ lastSentMs: now });
+  }
+  return {
+    attempted: true,
+    outcomeResult: outcome.result,
+    error: outcome.error,
+    reason: `notifyCeoResult -> ${outcome.result}`,
+  };
 }

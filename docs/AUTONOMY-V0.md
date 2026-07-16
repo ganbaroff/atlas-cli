@@ -1,11 +1,14 @@
-# Local Autonomy V0
+# Local Autonomy V0 (+ V0.1 notify hardening)
 
 Implementation of `docs/AUTONOMY-RECOVERY-PLAN.md`'s minimal first loop.
 **Status: IMPLEMENTED-LOCAL.** Not deployed, not wired into Railway, not
-auto-started anywhere. Invoked only via `atlas autonomy-tick`.
+auto-started anywhere. Invoked only via `atlas autonomy-tick` /
+`atlas autonomy-test-notify`.
 
-Code: `src/atlas/autonomy-loop.ts` · CLI: `atlas autonomy-tick [--notify]` ·
-tests: `src/__tests__/autonomy-loop.test.ts` (14 tests).
+Code: `src/atlas/autonomy-loop.ts`, `src/atlas/notify.ts` (canonical notify
+layer, extended) · CLI: `atlas autonomy-tick [--notify]`,
+`atlas autonomy-test-notify` · tests: `src/__tests__/autonomy-loop.test.ts`
+(18), `src/__tests__/notify.test.ts` (+5 for `notifyCeoResult`).
 
 ## What it does
 
@@ -46,12 +49,64 @@ correctness issues:
    failure and returns `false` either way. Routing the send through it
    blindly meant a real network/API failure would silently read as "nothing
    to send" — the same false-completion failure mode that got the original
-   `autonomousBrainLoop` killed. **Fix:** this module reuses `notify.ts`'s
-   `shouldNotify()` gate directly (keeping kind-gating centralized) but
-   performs the send itself inside its own `try/catch`, so a genuine failure
-   reaches the `'notify-failed'` state distinctly from `'silent'`.
+   `autonomousBrainLoop` killed. **Fix (V0.1, see below):** upstreamed into
+   `notify.ts` itself as a new canonical function rather than left as an
+   ad-hoc bypass in this module.
 
 Both are documented in the module's own header comment, not just here.
+
+## V0.1 hardening — canonical notify layer, controlled live test
+
+A follow-up review requested the send-failure fix above be a real extension of
+the shared notify layer, not a parallel notification authority living only in
+this module. Delivered:
+
+- **`notify.ts` gained `notifyCeoResult(kind, msg, send?)`** — returns a typed
+  `NOT_CONFIGURED | SUPPRESSED | SENT | FAILED` outcome. The CEO chat ID is
+  resolved **internally only** (`TELEGRAM_CEO_CHAT_ID`) — there is no
+  parameter on this function, or anywhere in `autonomy-loop.ts`'s
+  `RunTickOptions`, through which a caller can direct a send at a different
+  chat ID. Proven by test (`notify.test.ts`: changing the target requires
+  changing the env, not the call).
+- **The legacy `notifyCeo()` (boolean contract) is unchanged** — `repo-watch.ts`
+  and its existing tests needed zero modification.
+- **`autonomy-loop.ts` now calls `notifyCeoResult()` exclusively.** It no
+  longer reads `TELEGRAM_BOT_TOKEN` or resolves a chat ID itself — both moved
+  into `notify.ts`'s `telegramSend()` / `resolveCeoChatId()` (the latter is
+  deliberately unexported).
+- **`atlas autonomy-test-notify`** — a one-off verification command. Sends
+  exactly one fixed, clearly-prefixed message
+  (`[ATLAS V0 TEST — NO ACTION REQUIRED]`, no signals/repo-paths/health
+  internals in the body) through the canonical layer, rate-limited via its
+  *own* state file (`~/.atlas/autonomy-test-notify.json`, separate from the
+  production tick state) so it can never interfere with or be confused with a
+  real autonomy signal.
+
+### Controlled live test — outcome: BLOCKED, not bypassed
+
+Running `atlas autonomy-test-notify` on this machine returned:
+```
+[autonomy-test-notify] attempted=true — notifyCeoResult -> NOT_CONFIGURED
+[autonomy-test-notify] outcome=NOT_CONFIGURED
+```
+`TELEGRAM_CEO_CHAT_ID` is genuinely absent from the local ANUS `.env` (only
+`TELEGRAM_BOT_TOKEN` is present — verified via `awk -F= '{print $1}' .env |
+grep -i telegram`, names only, no values). The canonical layer behaved
+correctly — it did not throw, did not guess, did not fall back to any other
+value. Per the issuing instruction ("If the canonical layer cannot safely send
+this without manual CEO action: STOP and report exact reason. Do not bypass
+it."), this was **not worked around** — no value was fetched from Railway's
+live environment, guessed, or requested via chat. The rate-limit mechanism and
+the four-outcome classification (`SENT`/`FAILED`/`NOT_CONFIGURED`/`SUPPRESSED`)
+are proven by real unit tests instead (`autonomy-loop.test.ts`,
+`notify.test.ts`), stable across repeated runs. A completed live send needs a
+decision on whether `TELEGRAM_CEO_CHAT_ID` should be added to the local `.env`.
+
+### Task Scheduler smoke — not started
+
+The issuing brief scoped this explicitly to "only after all three blockers are
+closed." Blocker 3 (live receipt) did not close — it stopped per the STOP
+instruction above — so no Task Scheduler entry was created.
 
 ## Real receipts (this machine, 2026-07-16)
 
@@ -98,12 +153,18 @@ $ rm ~/.atlas/PAUSE && atlas autonomy-tick
 
 ## Tests
 
-14 tests in `src/__tests__/autonomy-loop.test.ts`: paused-before-observing,
-silent-no-change, silent-rate-limited, dry-run, notified + state persisted,
-paused-re-checked-before-notify (send never attempted), notify-failed vs
-no-CEO-chat-configured (must not collapse to the same state), important vs
-error kind selection. Gating-logic tests use hand-constructed fixtures
-(mirroring `repo-watch.test.ts`'s pattern) rather than two live `observe()`
-calls, since real git status of an OneDrive-synced repo isn't guaranteed
-identical moments apart — an early draft hit exactly this flake and was
-fixed by making the signal source injectable (`observeFn`).
+**`autonomy-loop.test.ts` (18):** paused-before-observing, silent-no-change,
+silent-rate-limited, dry-run, notified + state persisted, paused-re-checked-
+before-notify (send never attempted), notify-failed vs no-CEO-chat-configured
+(must not collapse to the same reason), important vs error kind selection,
+cannot-target-arbitrary-chat-ID (runtime + compile-time guard), and
+`sendControlledTestNotification`'s own rate-limit + pause behavior. Gating-
+logic tests use hand-constructed fixtures (mirroring `repo-watch.test.ts`'s
+pattern) rather than two live `observe()` calls, since real git status of an
+OneDrive-synced repo isn't guaranteed identical moments apart — an early
+draft hit exactly this flake and was fixed by making the signal source
+injectable (`observeFn`).
+
+**`notify.test.ts` (+5 new):** `notifyCeoResult` SENT/FAILED/NOT_CONFIGURED/
+SUPPRESSED, plus an explicit proof that only an env change (not a different
+call shape) can move the send target.
