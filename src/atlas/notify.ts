@@ -70,7 +70,7 @@ export async function notifyCeo(
   if (!Number.isFinite(chatId)) return false;
   try {
     await deps.send(chatId, msg.slice(0, 4096));
-    console.log(`[notify] sent kind=${kind} chat=${chatId}`);
+    console.log(`[notify] sent kind=${kind}`);
     return true;
   } catch (e: any) {
     console.error(`[notify] send failed kind=${kind}:`, e?.message?.slice(0, 200));
@@ -92,6 +92,10 @@ export interface NotifyOutcome {
  * for outbound CEO notifications — callers (repo-watch.ts has its own historical
  * copy; autonomy-loop.ts does not and must not) should prefer importing this
  * rather than re-reading the token themselves.
+ *
+ * Ungated raw primitive: chatId is caller-supplied here, with no shouldNotify()/
+ * resolveCeoChatId() gate. Never import this directly for a CEO-authority send —
+ * go through notifyCeoResult() instead, which is the only structurally-gated path.
  */
 export async function telegramSend(chatId: number, text: string): Promise<unknown> {
   const token = process.env.TELEGRAM_BOT_TOKEN;
@@ -103,7 +107,14 @@ export async function telegramSend(chatId: number, text: string): Promise<unknow
     signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) throw new Error(`telegram HTTP ${res.status}`); // status only, no token
-  return res.json();
+  const body: unknown = await res.json();
+  // Telegram can return HTTP 2xx with {ok:false, description:...} in the body —
+  // a 2xx status alone does not guarantee delivery.
+  if (body && typeof body === 'object' && (body as { ok?: boolean }).ok === false) {
+    const description = (body as { description?: string }).description;
+    throw new Error(`telegram rejected: ${String(description).slice(0, 200)}`);
+  }
+  return body;
 }
 
 /**
@@ -145,7 +156,7 @@ export async function notifyCeoResult(
   }
   try {
     await send(chatId, msg.slice(0, 4096));
-    console.log(`[notify] sent kind=${kind} chat=${chatId}`);
+    console.log(`[notify] sent kind=${kind}`);
     return { result: 'SENT' };
   } catch (e: any) {
     const error = e?.message?.slice(0, 200);

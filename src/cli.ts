@@ -333,6 +333,11 @@ program
       console.log(`[autonomy-test-notify] attempted=${result.attempted} — ${result.reason}`);
       if (result.outcomeResult) console.log(`[autonomy-test-notify] outcome=${result.outcomeResult}`);
       if (result.error) console.log(`[autonomy-test-notify] error=${result.error}`);
+      // Mirrors autonomy-tick's exit-code contract: a genuine send FAILED must not
+      // read as process-success at the automation boundary (adversarial review finding).
+      if (result.outcomeResult === 'FAILED') {
+        process.exitCode = 1;
+      }
     } catch (err) {
       console.error(`autonomy-test-notify error: ${err instanceof Error ? err.message : String(err)}`);
       process.exit(1);
