@@ -11,6 +11,7 @@
  */
 
 import { getDailyTokenTotal } from './spend-tracker.js';
+import { loadPolicy } from './policy.js';
 
 export const PAID_PROVIDERS = new Set(['openai', 'openrouter', 'anthropic']);
 
@@ -34,10 +35,14 @@ export function paidAllowed(): boolean {
 }
 
 export function dailyTokenCap(): number {
+  // Precedence: ATLAS_DAILY_TOKEN_CAP env > config/policy.yaml token.daily_cap >
+  // DEFAULT_DAILY_TOKEN_CAP (policy.ts falls back to the same 500k default).
   const raw = process.env['ATLAS_DAILY_TOKEN_CAP'];
-  if (!raw) return DEFAULT_DAILY_TOKEN_CAP;
-  const n = parseInt(raw, 10);
-  return Number.isFinite(n) && n > 0 ? n : DEFAULT_DAILY_TOKEN_CAP;
+  if (raw) {
+    const n = parseInt(raw, 10);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return loadPolicy().token.daily_cap;
 }
 
 export function brainQueueCap(): number {

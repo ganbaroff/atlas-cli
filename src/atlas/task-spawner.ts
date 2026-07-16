@@ -88,7 +88,10 @@ export function runTask(description: string): Promise<TaskResult> {
     ], {
       cwd: 'C:/Projects/VOLAURA',
       timeout: MAX_TIMEOUT,
-      env: { ...process.env },
+      // Tag the subprocess as an AUTONOMY actor: its shell tool then enforces the
+      // policy.yaml autonomy whitelist (Phase 1). This is unattended execution with
+      // no live CEO turn, so it must not fall through to default-allow shell.
+      env: { ...process.env, ATLAS_AGENT_ID: 'autonomy' },
       stdio: ['pipe', 'pipe', 'pipe'],
       shell: false,
     });

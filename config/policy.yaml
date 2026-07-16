@@ -1,0 +1,85 @@
+# Atlas policy — single declarative guardrail surface (Phase 1).
+#
+# This file DOES NOT replace the enforcement code. The operative source of truth
+# for the shell denylist lives in src/tools/shell.ts (BLOCKED/GATED regexes) and
+# for sensitive paths in src/tools/fs-guard.ts (isSensitivePath). This file:
+#   - documents those floors in one readable place,
+#   - declares the NEW autonomy shell whitelist (the only behaviour this file adds),
+#   - declares the spend caps / pause / billing-deny so ops can see them at a glance.
+#
+# Precedence: ENV OVERRIDES WIN over anything here (redeploy/tests flip a value
+# without a rebuild). Fail-closed: if this file is missing or unparseable in
+# production, the autonomy shell whitelist is treated as EMPTY (autonomy shell
+# fully denied) and caps fall back to safe env defaults. The bot never crashes on
+# a policy problem — cloud Atlas stays GREEN.
+
+version: 1
+
+token:
+  # Mirrors ATLAS_DAILY_TOKEN_CAP. Env wins; this is the fallback default.
+  daily_cap: 500000
+  # Paid providers (openai/openrouter/anthropic) stay OFF unless ATLAS_ALLOW_PAID=1.
+  paid_default: false
+  # Max autonomous queue seeds per UTC day (mirrors ATLAS_BRAIN_QUEUE_CAP).
+  brain_queue_cap: 20
+
+pause:
+  # The kill switch. ATLAS_PAUSE=1 halts autonomy (brain-loop, swarm decompose,
+  # task-spawner). Settable live via Telegram /pause (process-local) or the
+  # Railway env var (durable across redeploy). See docs/PANIC.md.
+  env: ATLAS_PAUSE
+
+shell:
+  # Destructive (GATED) commands require this env=1 to run, for ANY actor.
+  destructive_opt_in_env: ATLAS_SHELL_ALLOW_DESTRUCTIVE
+  # Hard floor, enforced in shell.ts::classifyShellCommand (NOT re-encoded here to
+  # avoid drift). Listed for humans only:
+  #   BLOCKED: rm -rf / | mkfs/dd-to-device | shutdown/reboot | download|shell
+  #            | fork bomb | recursive chmod/chown of / | useradd/passwd/net user
+  #   GATED  : rm -rf | git reset --hard / clean -f / force push | kill/taskkill
+  #            | npm/yarn publish | docker teardown | mv into /etc /usr /bin ...
+  denylist_source: src/tools/shell.ts::classifyShellCommand
+
+  # NEW — the ONLY additive gate. When the shell tool runs inside an AUTONOMOUS
+  # actor (task-spawner subprocess / brain-loop / swarm — tagged ATLAS_AGENT_ID=autonomy
+  # or ATLAS_AUTONOMY=1) WITHOUT a live CEO turn, a command must match one of these
+  # patterns OR it is denied — even if the denylist would have allowed it.
+  # CEO Telegram turns and the interactive CLI are NOT affected (they use the
+  # denylist path). Patterns are JS regexes tested against the trimmed command.
+  whitelist_autonomy:
+    - '^git\s+(status|log|diff|show|branch|remote|rev-parse|describe)\b'  # read-only git
+    - '^(ls|dir|pwd|whoami|date|echo|cat|head|tail|wc|find|tree|stat)\b'  # read-only inspection
+    - '^(grep|rg|ripgrep)\b'                                              # search
+    - '^node\s+(dist/)?cli\.js\b'                                         # self-invoke Atlas CLI
+    - '^atlas\s+\w'                                                       # self-invoke via bin
+    - '^npm\s+(run\s+)?(test|build|typecheck)\b'                          # safe build/test
+    - '^curl\s+-s\b'                                                      # read-only HTTP GET (health)
+    - '^railway\s+(status|logs)\b'                                        # read-only deploy state
+
+fs:
+  # Documentation mirror of src/tools/fs-guard.ts::isSensitivePath. Read/write of
+  # these is denied for the fs tools regardless of actor.
+  sensitive:
+    - '.env / .env.*'
+    - '*.pem'
+    - '*.key'
+    - 'id_rsa'
+    - 'any secrets/ or keys/ path segment'
+    - 'any .git/ path segment'
+
+billing:
+  # Explicit deny — money / publish surfaces. npm/yarn publish is already GATED in
+  # shell.ts; these are named here so a policy reader sees the money boundary.
+  deny:
+    - 'npm publish'
+    - 'yarn publish'
+    - 'pnpm publish'
+    - 'stripe * (any live payment / charge / payout call)'
+    - 'railway billing / plan changes'
+
+panic:
+  # How to stop Atlas fast. Full runbook: docs/PANIC.md.
+  env: ATLAS_PAUSE
+  telegram_commands:
+    - /pause
+    - /resume

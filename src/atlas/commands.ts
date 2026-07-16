@@ -24,6 +24,8 @@ export const COMMANDS: readonly AtlasCommand[] = [
   { cmd: 'deploy', ru: 'смержить PR и задеплоить (с подтверждением)', en: 'merge a PR and deploy (with confirmation)' },
   { cmd: 'swarm', ru: 'разобрать задачу роем перспектив', en: 'analyze a task with a swarm of perspectives' },
   { cmd: 'test', ru: 'ссылка на бесплатный AI-тест навыков', en: 'link to the free AI skills test' },
+  { cmd: 'pause', ru: 'паника: остановить автономию (ATLAS_PAUSE=1)', en: 'panic: halt autonomy (ATLAS_PAUSE=1)' },
+  { cmd: 'resume', ru: 'снять паузу автономии', en: 'lift the autonomy pause' },
 ];
 
 function isRussian(languageCode?: string): boolean {

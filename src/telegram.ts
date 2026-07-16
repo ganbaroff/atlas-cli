@@ -378,6 +378,27 @@ bot.command('models', async (ctx) => {
   await ctx.reply(reply);
 });
 
+// /pause — panic switch. Sets ATLAS_PAUSE=1 for THIS process (halts autonomy:
+// brain-loop, swarm decompose, task-spawner). Process-local + instant, no redeploy.
+// For a pause that survives a redeploy, set the Railway env var. See docs/PANIC.md.
+// Already CEO-only via the inbound-auth middleware (telegram.ts top).
+bot.command('pause', async (ctx) => {
+  process.env.ATLAS_PAUSE = '1';
+  const reply = isPaused()
+    ? '⏸ ATLAS_PAUSE=1 — автономия остановлена (этот процесс, до рестарта). Для устойчивой паузы задай переменную на Railway. /resume чтобы снять.'
+    : 'Не удалось выставить паузу — проверь логи.';
+  await ctx.reply(reply);
+});
+
+// /resume — lift the process-local pause.
+bot.command('resume', async (ctx) => {
+  process.env.ATLAS_PAUSE = '';
+  const reply = !isPaused()
+    ? '▶️ Пауза снята (этот процесс). Если на Railway стоит ATLAS_PAUSE — сними её там тоже, иначе рестарт вернёт паузу.'
+    : 'Пауза всё ещё активна — вероятно ATLAS_PAUSE задан в окружении Railway.';
+  await ctx.reply(reply);
+});
+
 // Deploy with confirmation — auditor: no instant merge on typo
 const pendingDeploys = new Map<number, { project: string; prNumber: number; prTitle: string; createdAt: number }>();
 
