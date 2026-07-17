@@ -40,6 +40,7 @@ import {
 import {
   createGoal,
   createTask,
+  importTask,
   moveTask,
   reassignOwner,
   getTask,
@@ -535,6 +536,73 @@ describe('Hand Contract V0 (isolated temp exec-graph dir per test)', () => {
       moveTask({ taskId: task.id, to: 'evidence-submitted', actor: 'atlas', evidenceRefs: ['x'] });
       const verified = moveTask({ taskId: task.id, to: 'verified', actor: 'atlas', evidenceRefs: ['x'] });
       expect(verified.status).toBe('verified');
+    });
+  });
+
+  // ── 20. HOLE 5 — createTask/importTask reject 'hand:' owner at creation ──
+  describe("20. HandAuthorityError — cold-reader review: createTask/importTask reject 'hand:' owner", () => {
+    it("20a. createTask with owner 'hand:sonnet-foreground' throws HandAuthorityError; a normal owner still succeeds", () => {
+      const goal = createGoal({ title: 'hole5a-goal', actor: 'atlas', ts: NOW });
+
+      expect(() =>
+        createTask({
+          goalId: goal.id,
+          title: 'hole5a-fake-hand-task',
+          owner: 'hand:sonnet-foreground',
+          actor: 'atlas',
+          ts: NOW,
+          idempotencyKey: 'exec-graph:hole5a-fake-hand-task',
+        }),
+      ).toThrow(HandAuthorityError);
+
+      const { task, created } = createTask({
+        goalId: goal.id,
+        title: 'hole5a-normal-task',
+        owner: 'atlas',
+        actor: 'atlas',
+        ts: NOW,
+        idempotencyKey: 'exec-graph:hole5a-normal-task',
+      });
+      expect(created).toBe(true);
+      expect(task.owner).toBe('atlas');
+    });
+
+    it("20b. importTask with owner 'hand:x' throws HandAuthorityError; a normal owner still succeeds", () => {
+      const goal = createGoal({ title: 'hole5b-goal', actor: 'atlas', ts: NOW });
+
+      expect(() =>
+        importTask({
+          goalId: goal.id,
+          title: 'hole5b-fake-hand-import',
+          sourceKind: 'volaura-work-queue',
+          sourceRef: 'wq-hole5b-evil',
+          owner: 'hand:x',
+          actor: 'atlas',
+          ts: NOW,
+        }),
+      ).toThrow(HandAuthorityError);
+
+      const { task, created } = importTask({
+        goalId: goal.id,
+        title: 'hole5b-normal-import',
+        sourceKind: 'volaura-work-queue',
+        sourceRef: 'wq-hole5b-ok',
+        owner: 'ceo',
+        actor: 'atlas',
+        ts: NOW,
+      });
+      expect(created).toBe(true);
+      expect(task.owner).toBe('ceo');
+    });
+
+    it('20c. regression — the legitimate delegation path (create normal, then assignHand) still works end-to-end', () => {
+      const taskId = planTask('hole5c-legit-delegation-task');
+      expect(getTask(taskId)?.owner).toBe('atlas');
+
+      const delegated = assignHand(taskId, 'sonnet-foreground', { actor: 'atlas' });
+      expect(delegated.owner).toBe('hand:sonnet-foreground');
+      expect(delegated.status).toBe('delegated');
+      expect(getTask(taskId)?.owner).toBe('hand:sonnet-foreground');
     });
   });
 

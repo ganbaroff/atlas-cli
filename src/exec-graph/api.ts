@@ -47,6 +47,25 @@ function newTaskId(): string {
   return `tsk_${randomUUID().replace(/-/g, '')}`;
 }
 
+const HAND_OWNER_PREFIX = 'hand:';
+
+/**
+ * Thrown when a generic caller (CLI `task move`/`task reassign`/`task add`/
+ * `task import`, or any in-process caller) attempts to do something only
+ * the Hand Contract V0 adapter (src/hands/exec-graph-adapter.ts) is allowed
+ * to do:
+ *   - create 'hand:' ownership directly at task creation/import, or
+ *     via reassignOwner(), or
+ *   - drive a hand-owned task to its FINAL state ('verified'/'rejected')
+ *     via moveTask().
+ * This is the system-wide authority boundary, enforced here rather than
+ * only inside hands/ — a generic actor can never fake-verify a delegated
+ * task, and can never create hand: ownership to begin with (which also
+ * closes the unattended-escape path: no hand: owner, no
+ * assertHandAllowedInContext bypass).
+ */
+export class HandAuthorityError extends Error {}
+
 // ── Goals ────────────────────────────────────────────────────────────────
 
 export interface CreateGoalInput {
@@ -95,6 +114,21 @@ function deriveIdempotencyKey(source: SourceRef): string {
 }
 
 export function createTask(input: CreateTaskInput): CreateTaskResult {
+  const owner = input.owner ?? 'atlas';
+  // No legitimate flow creates a hand-owned task at creation — hand:
+  // ownership is only ever reached through assignHand()'s reassignOwner
+  // path (which carries the _viaHandAdapter guard). Hard reject here, no
+  // escape hatch: this closes the residual the moveTask/reassignOwner
+  // guards below left open (a caller could otherwise plant a fake
+  // hand-owned task via `task add`/`task import`, bypassing assignHand()'s
+  // allowlist/foreground/already-active checks entirely).
+  if (owner.startsWith(HAND_OWNER_PREFIX)) {
+    throw new HandAuthorityError(
+      "exec-graph: 'hand:' ownership is assigned only via atlas hand assign, not at task creation/import "
+      + `(owner=${owner})`,
+    );
+  }
+
   const ts = input.ts ?? nowIso();
   const actor = input.actor ?? 'atlas';
   const source = input.source ?? { kind: 'exec-graph' as SourceKind, ref: 'cli' };
@@ -105,7 +139,7 @@ export function createTask(input: CreateTaskInput): CreateTaskResult {
     goalId: input.goalId,
     title: input.title,
     source,
-    owner: input.owner ?? 'atlas',
+    owner,
     status: 'proposed',
     riskClass: input.riskClass ?? 'low',
     idempotencyKey,
@@ -153,23 +187,8 @@ export function importTask(input: ImportTaskInput): CreateTaskResult {
 }
 
 // ── Tasks: move / evidence ──────────────────────────────────────────────
-
-const HAND_OWNER_PREFIX = 'hand:';
-
-/**
- * Thrown when a generic caller (CLI `task move`/`task reassign`, or any
- * in-process caller) attempts to do something only the Hand Contract V0
- * adapter (src/hands/exec-graph-adapter.ts) is allowed to do:
- *   - drive a hand-owned task to its FINAL state ('verified'/'rejected')
- *     via moveTask(), or
- *   - create 'hand:' ownership via reassignOwner().
- * This is the system-wide authority boundary, enforced here rather than
- * only inside hands/ — a generic actor can never fake-verify a delegated
- * task, and can never create hand: ownership to begin with (which also
- * closes the unattended-escape path: no hand: owner, no
- * assertHandAllowedInContext bypass).
- */
-export class HandAuthorityError extends Error {}
+// HAND_OWNER_PREFIX and HandAuthorityError are declared near the top of
+// this file (above createTask) since createTask's guard needs them too.
 
 export interface MoveTaskInput extends Omit<ApplyTransitionOptions, 'ts'> {
   taskId: string;
