@@ -350,7 +350,22 @@ bot.command('status', async (ctx) => {
   try {
     // In-process status: health checks + today's spend + brain-loop queue + heartbeat.
     // No external script, no shell-out — reads the same live meters the bot runs on.
-    const reply = buildStatusReport();
+    let reply = buildStatusReport();
+
+    // Exec-graph (EB-0) task state — the ONE task authority (src/exec-graph/README.md),
+    // not an ad-hoc list. Lazy dynamic import (repo style, see src/cli.ts's `graph status`).
+    // Own try/catch: exec-graph reads are already fail-safe (never throw — see README's
+    // "Failure behavior") but this is belt-and-suspenders so a Railway read-only image
+    // or any surprise here degrades to a one-line note instead of losing the whole /status.
+    try {
+      const { statusSummary, listTasks } = await import('./exec-graph/api.js');
+      const { formatStatusMessage } = await import('./exec-graph/brief.js');
+      reply += `\n\n${formatStatusMessage(statusSummary(), listTasks())}`;
+    } catch (execGraphErr) {
+      reply += '\n\nExec-graph: не смог прочитать состояние задач.';
+      console.error('[status error][exec-graph]', execGraphErr);
+    }
+
     addMsg(chatId, 'assistant', reply);
     await ctx.reply(reply);
   } catch (e) {
@@ -811,7 +826,22 @@ async function sendMorningBriefing(): Promise<void> {
     }
   } catch { /* non-fatal */ }
 
-  const text = composeMorningBriefing({ night, today, awaitingCeo });
+  let text = composeMorningBriefing({ night, today, awaitingCeo });
+
+  // Exec-graph (EB-0) decision-framed section — the ONE task authority
+  // (src/exec-graph/README.md), appended only when non-empty so a quiet
+  // graph doesn't add a blank trailer to the briefing. Own try/catch, same
+  // fail-safe posture as the exec-graph section in bot.command('status')
+  // above: a broken read must degrade, never block the briefing send.
+  try {
+    const { statusSummary, listTasks } = await import('./exec-graph/api.js');
+    const { formatMorningBriefSection } = await import('./exec-graph/brief.js');
+    const execGraphSection = formatMorningBriefSection(statusSummary(), listTasks(), { now: new Date() });
+    if (execGraphSection) text += `\n\n${execGraphSection}`;
+  } catch (execGraphErr) {
+    console.error('[briefing] exec-graph section failed:', execGraphErr);
+  }
+
   try {
     await bot.telegram.sendMessage(chatId, text.slice(0, 4096));
     console.log(`[briefing] sent morning briefing to CEO chat=${chatId}`);

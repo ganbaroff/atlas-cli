@@ -92,3 +92,26 @@ line / dunder-key / snapshot-write-failure handling, and the
   `node:*` builtins and `zod`.
 - **Downstream (imported by):** `src/cli.ts` (`goal`/`task`/`graph`
   commands). Nothing else in this repo writes to `state/exec-graph/`.
+
+## Consumers
+
+Everything below is a **read-only** consumer via `api.ts`'s
+`statusSummary()` / `listTasks()` — none of them writes to the graph:
+
+- **CLI** — `atlas graph status` (`src/cli.ts`).
+- **Telegram `/status`** — `src/telegram.ts`'s `bot.command('status', ...)`
+  appends a `brief.ts`-formatted exec-graph section to the existing
+  health/spend/queue status.
+- **Morning brief** — `src/telegram.ts`'s `sendMorningBriefing()` appends a
+  decision-framed exec-graph section (escalated / in-progress / closed-in-
+  last-24h) to the existing briefing text.
+
+The Telegram/brief formatting itself lives in `brief.ts` — pure functions,
+no I/O, so it's unit-testable without a ledger on disk (see
+`src/__tests__/exec-graph-brief.test.ts`). Both Telegram call sites load
+`api.ts`/`brief.ts` via a lazy dynamic import and wrap the call in its own
+try/catch: exec-graph reads are already fail-safe (see "Failure behavior"
+above) but the container these run in (Railway) ships the state dir
+read-only with the image, so a missing/empty graph must render a sane
+"no tasks tracked" message, never take down the rest of the status/briefing
+output.
