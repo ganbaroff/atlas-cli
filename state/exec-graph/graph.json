@@ -400,10 +400,23 @@
         "ref": "2026-07-17-authority-correction-t5"
       },
       "owner": "hand:cold-reader",
-      "status": "delegated",
+      "status": "closed",
       "riskClass": "low",
       "idempotencyKey": "external-cto-brief:2026-07-17-authority-correction-t5",
-      "evidence": [],
+      "evidence": [
+        {
+          "ref": "file:docs/audit/EB0-COLD-READER-REVIEW-2026-07-17.md",
+          "kind": "other"
+        },
+        {
+          "ref": "verdict:5/5 PASS",
+          "kind": "other"
+        },
+        {
+          "ref": "file:docs/audit/EB0-COLD-READER-REVIEW-2026-07-17.md",
+          "kind": "other"
+        }
+      ],
       "createdAt": "2026-07-17T12:51:34.221Z",
       "transitions": [
         {
@@ -431,6 +444,38 @@
           "ts": "2026-07-17T12:51:48.440Z",
           "actor": "atlas",
           "note": "read-only reviewer dispatched"
+        },
+        {
+          "from": "delegated",
+          "to": "in-progress",
+          "ts": "2026-07-17T15:09:31.737Z",
+          "actor": "atlas",
+          "note": "review returned"
+        },
+        {
+          "from": "in-progress",
+          "to": "evidence-submitted",
+          "ts": "2026-07-17T15:09:44.927Z",
+          "actor": "atlas",
+          "evidenceRefs": [
+            "file:docs/audit/EB0-COLD-READER-REVIEW-2026-07-17.md",
+            "verdict:5/5 PASS"
+          ]
+        },
+        {
+          "from": "evidence-submitted",
+          "to": "verified",
+          "ts": "2026-07-17T15:09:56.523Z",
+          "actor": "atlas",
+          "evidenceRefs": [
+            "file:docs/audit/EB0-COLD-READER-REVIEW-2026-07-17.md"
+          ]
+        },
+        {
+          "from": "verified",
+          "to": "closed",
+          "ts": "2026-07-17T15:10:07.682Z",
+          "actor": "atlas"
         }
       ]
     },
