@@ -146,6 +146,11 @@ mismatch: **`docs/runbooks/exec-graph-recovery.md`**. Do not hand-edit
 
 ## Links
 
+- `docs/atlas-cto/EXTERNAL-CTO-STATE-SNAPSHOT.md` — durable, pushed snapshot of
+  the Atlas-CTO status ledger. The canonical original
+  (`VOLAURA/memory/atlas/EXTERNAL-CTO-STATE.md`) is stranded on the local,
+  unpushed VOLAURA branch `fix/pr-169-rubric-repair` — this copy exists so the
+  status survives if that branch is lost (jarvis 2026-07-18 continuity fix).
 - `docs/architecture/ATLAS-ARCHITECTURE.md` — full system map.
 - `docs/adr/0001-one-task-authority-exec-graph.md`,
   `0003-append-only-ledger-plus-snapshot.md`,
