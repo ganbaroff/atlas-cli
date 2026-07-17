@@ -1,8 +1,19 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
+import * as childProcess from 'node:child_process';
+
+// node:child_process's execFileSync is a non-configurable builtin export —
+// vi.spyOn() can't redefine it directly. Wrap it via vi.mock() (module-level,
+// hoisted) instead: the real implementation still runs for every existing
+// test that needs a genuine command executed (e.g. test 7b's `ls`), but the
+// call becomes observable/assertable for test 17a's "never called" proof.
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>();
+  return { ...actual, execFileSync: vi.fn(actual.execFileSync) };
+});
 
 import {
   handSpecSchema,
@@ -14,7 +25,7 @@ import {
 import { classifyRisk, needsRefuter } from '../hands/risk.js';
 import { runRefuter } from '../hands/refuter.js';
 import { verify } from '../hands/verifier.js';
-import type { Receipt } from '../hands/contract.js';
+import { receiptSchema, type Receipt } from '../hands/contract.js';
 import {
   assertHandAllowedInContext,
   assignHand,
@@ -23,8 +34,19 @@ import {
   abortHandTask,
   HandContextError,
   HandAdapterError,
+  ReceiptSecretError,
+  ReceiptTaskMismatchError,
 } from '../hands/exec-graph-adapter.js';
-import { createGoal, createTask, moveTask, getTask, listTasks, statusSummary } from '../exec-graph/api.js';
+import {
+  createGoal,
+  createTask,
+  moveTask,
+  reassignOwner,
+  getTask,
+  listTasks,
+  statusSummary,
+  HandAuthorityError,
+} from '../exec-graph/api.js';
 import { formatStatusMessage } from '../exec-graph/brief.js';
 
 const NOW = '2026-07-18T00:00:00.000Z';
@@ -410,6 +432,224 @@ describe('Hand Contract V0 (isolated temp exec-graph dir per test)', () => {
     expect(message).toContain('hand=sonnet-foreground');
     expect(message).toContain('[rejected]');
     expect(message).toContain('receipt=narrative');
+  });
+
+  // ── 16. HOLE 1 — generic exec-graph callers cannot bypass Hand authority ──
+  describe('16. HandAuthorityError — adversarial-review Hole 1 regression', () => {
+    it('16a. generic moveTask(...,"verified") on a hand-owned task throws HandAuthorityError; the same call with _viaHandAdapter:true succeeds', () => {
+      const taskId = planTask('hole1a-fake-verify-task');
+      assignHand(taskId, 'local-readonly', { actor: 'atlas' });
+      moveTask({ taskId, to: 'in-progress', actor: 'atlas' });
+      moveTask({ taskId, to: 'evidence-submitted', actor: 'atlas', evidenceRefs: ['fake-ref'] });
+      expect(getTask(taskId)?.owner).toBe('hand:local-readonly');
+
+      // The fake-verify bypass: a generic caller tries to skip verifyAndTransition entirely.
+      expect(() => moveTask({ taskId, to: 'verified', actor: 'atlas', evidenceRefs: ['fake-ref'] }))
+        .toThrow(HandAuthorityError);
+      expect(getTask(taskId)?.status).toBe('evidence-submitted');
+
+      // The identical call, but with the internal capability flag only exec-graph-adapter.ts sets, succeeds.
+      const moved = moveTask({
+        taskId,
+        to: 'verified',
+        actor: 'atlas',
+        evidenceRefs: ['fake-ref'],
+        _viaHandAdapter: true,
+      });
+      expect(moved.status).toBe('verified');
+    });
+
+    it('16b. generic reassignOwner(taskId, "hand:sonnet-foreground", ...) throws HandAuthorityError; the same call with _viaHandAdapter:true succeeds', () => {
+      const goal = createGoal({ title: 'hole1b-goal', actor: 'atlas', ts: NOW });
+      const { task } = createTask({
+        goalId: goal.id,
+        title: 'hole1b-task',
+        actor: 'atlas',
+        ts: NOW,
+        idempotencyKey: 'exec-graph:hole1b-task',
+      });
+
+      // The unattended-escape bypass: a generic caller tries to fabricate hand: ownership,
+      // skipping assertHandAllowedInContext entirely.
+      expect(() =>
+        reassignOwner(task.id, 'hand:sonnet-foreground', { actor: 'atlas', reason: 'trying to sneak in' }),
+      ).toThrow(HandAuthorityError);
+      expect(getTask(task.id)?.owner).toBe('atlas');
+
+      const reassigned = reassignOwner(task.id, 'hand:sonnet-foreground', {
+        actor: 'atlas',
+        reason: 'legit via adapter flag',
+        _viaHandAdapter: true,
+      });
+      expect(reassigned.owner).toBe('hand:sonnet-foreground');
+    });
+
+    it('16c. a full generic-CLI-style laundering attempt (reassign->hand then move->verified, neither carrying the flag) can never produce a hand-owned verified task', () => {
+      const goal = createGoal({ title: 'hole1c-goal', actor: 'atlas', ts: NOW });
+      const { task } = createTask({
+        goalId: goal.id,
+        title: 'hole1c-task',
+        actor: 'atlas',
+        ts: NOW,
+        idempotencyKey: 'exec-graph:hole1c-task',
+      });
+
+      // Step 1 of the laundering attempt never lands — ownership stays 'atlas'.
+      expect(() =>
+        reassignOwner(task.id, 'hand:sonnet-foreground', { actor: 'atlas', reason: 'laundering attempt' }),
+      ).toThrow(HandAuthorityError);
+      expect(getTask(task.id)?.owner).toBe('atlas');
+
+      // Step 2: walk the task to 'evidence-submitted' and attempt the generic verified move.
+      // Because step 1 never created hand: ownership, this is just an ordinary atlas-owned
+      // move (not the bypass) — the point is there is no way to combine the two steps to
+      // land a hand:-owned task in 'verified' without ever touching exec-graph-adapter.ts.
+      moveTask({ taskId: task.id, to: 'accepted', actor: 'atlas' });
+      moveTask({ taskId: task.id, to: 'planned', actor: 'atlas' });
+      moveTask({ taskId: task.id, to: 'in-progress', actor: 'atlas' });
+      moveTask({ taskId: task.id, to: 'evidence-submitted', actor: 'atlas', evidenceRefs: ['x'] });
+      const verified = moveTask({ taskId: task.id, to: 'verified', actor: 'atlas', evidenceRefs: ['x'] });
+      expect(verified.owner).toBe('atlas');
+      expect(verified.owner).not.toMatch(/^hand:/);
+
+      // And directly confirming the combined attack surface: no sequence of generic calls
+      // without the flag can ever produce (owner starts with 'hand:', status 'verified').
+      expect(() =>
+        reassignOwner(task.id, 'hand:sonnet-foreground', { actor: 'atlas', reason: 'post-hoc relabel attempt' }),
+      ).toThrow(HandAuthorityError);
+      expect(getTask(task.id)?.owner).toBe('atlas');
+    });
+
+    it('non-hand-owned tasks are unaffected — a plain atlas-owned task can still move to verified/rejected via generic moveTask', () => {
+      const goal = createGoal({ title: 'unaffected-goal', actor: 'atlas', ts: NOW });
+      const { task } = createTask({
+        goalId: goal.id,
+        title: 'unaffected-task',
+        actor: 'atlas',
+        ts: NOW,
+        idempotencyKey: 'exec-graph:unaffected-task',
+      });
+      moveTask({ taskId: task.id, to: 'accepted', actor: 'atlas' });
+      moveTask({ taskId: task.id, to: 'planned', actor: 'atlas' });
+      moveTask({ taskId: task.id, to: 'in-progress', actor: 'atlas' });
+      moveTask({ taskId: task.id, to: 'evidence-submitted', actor: 'atlas', evidenceRefs: ['x'] });
+      const verified = moveTask({ taskId: task.id, to: 'verified', actor: 'atlas', evidenceRefs: ['x'] });
+      expect(verified.status).toBe('verified');
+    });
+  });
+
+  // ── 17. HOLE 2 — secret leakage guards ─────────────────────────────────────
+  describe('17. adversarial-review Hole 2 regression — secrets never reach the verifier or the ledger', () => {
+    it('17a. command-output-match with a command citing a protected path is rejected before execFileSync runs', () => {
+      const mockedExec = vi.mocked(childProcess.execFileSync);
+      mockedExec.mockClear();
+
+      const result = verify({
+        taskId: 'tsk_test0000000000000001',
+        handId: 'local-readonly',
+        submittedBy: 'local-readonly',
+        kind: 'command-output-match',
+        command: 'git show HEAD:apps/api/.env',
+        expectedSubstring: 'SECRET',
+        claimedResult: 'x',
+      });
+      expect(result.verified).toBe(false);
+      expect(result.reason).toMatch(/protected path/);
+      // Proves the guard returned BEFORE the process was ever spawned — not just that the
+      // verdict happens to be false.
+      expect(mockedExec).not.toHaveBeenCalled();
+    });
+
+    it('17b. submitReceipt rejects a receipt whose claimedResult contains secret-shaped content (obviously-fake literal)', () => {
+      const taskId = planTask('hole2b-secret-receipt-task');
+      assignHand(taskId, 'local-readonly', { actor: 'atlas' });
+      const before = getTask(taskId);
+
+      expect(() =>
+        submitReceipt(taskId, {
+          taskId,
+          handId: 'local-readonly',
+          submittedBy: 'local-readonly',
+          kind: 'narrative',
+          // Obviously-fake literal (not a real credential) — just exercises the ghp_ shape.
+          claimedResult: `confirmed ghp_${'0123456789abcdefghij'}`,
+        }),
+      ).toThrow(ReceiptSecretError);
+
+      // Ledger/task state unchanged — no evidence entry, no transition landed.
+      expect(getTask(taskId)).toEqual(before);
+    });
+
+    it('17c. extended PROTECTED_PATH_RE (via verify()) also catches service-account and id_ed25519 refs', () => {
+      expect(
+        verify({
+          taskId: 'tsk_test0000000000000001',
+          handId: 'local-readonly',
+          submittedBy: 'local-readonly',
+          kind: 'file-exists',
+          ref: join(dir, 'gcp-service-account.json'),
+          claimedResult: 'x',
+        }).reason,
+      ).toMatch(/protected path/);
+
+      expect(
+        verify({
+          taskId: 'tsk_test0000000000000001',
+          handId: 'local-readonly',
+          submittedBy: 'local-readonly',
+          kind: 'file-exists',
+          ref: join(dir, 'id_ed25519'),
+          claimedResult: 'x',
+        }).reason,
+      ).toMatch(/protected path/);
+    });
+  });
+
+  // ── 18. HOLE 3 — degenerate expectedSubstring rejected at the schema level ──
+  it('18. receiptSchema rejects a whitespace-only expectedSubstring for file-contains/command-output-match; a real >=3-char one is accepted', () => {
+    const fileContainsBase = {
+      taskId: 'tsk_test0000000000000001',
+      handId: 'local-readonly',
+      submittedBy: 'local-readonly',
+      kind: 'file-contains' as const,
+      ref: '/tmp/whatever.txt',
+      claimedResult: 'x',
+    };
+    expect(() => receiptSchema.parse({ ...fileContainsBase, expectedSubstring: '   ' })).toThrow();
+    expect(receiptSchema.parse({ ...fileContainsBase, expectedSubstring: 'abc' }).expectedSubstring).toBe('abc');
+
+    const commandBase = {
+      taskId: 'tsk_test0000000000000001',
+      handId: 'local-readonly',
+      submittedBy: 'local-readonly',
+      kind: 'command-output-match' as const,
+      command: 'git status',
+      claimedResult: 'x',
+    };
+    expect(() => receiptSchema.parse({ ...commandBase, expectedSubstring: '  ' })).toThrow();
+    expect(receiptSchema.parse({ ...commandBase, expectedSubstring: 'ok!' }).expectedSubstring).toBe('ok!');
+  });
+
+  // ── 19. HOLE 4 — cross-task receipt reuse ──────────────────────────────────
+  it('19. submitReceipt rejects a receipt whose taskId does not match the task it is being submitted to', () => {
+    const taskId = planTask('hole4-target-task');
+    const otherTaskId = planTask('hole4-other-task');
+    assignHand(taskId, 'local-readonly', { actor: 'atlas' });
+    const before = getTask(taskId);
+
+    expect(() =>
+      submitReceipt(taskId, {
+        taskId: otherTaskId, // mismatched on purpose — reused from a different task
+        handId: 'local-readonly',
+        submittedBy: 'local-readonly',
+        kind: 'narrative',
+        claimedResult: 'reused receipt from a different task',
+      }),
+    ).toThrow(ReceiptTaskMismatchError);
+
+    // Unchanged — no evidence entry, no transition landed for either task.
+    expect(getTask(taskId)).toEqual(before);
+    expect(getTask(otherTaskId)?.status).toBe('planned');
   });
 });
 

@@ -42,7 +42,60 @@ export class HandContextError extends HandsAdapterError {}
 /** Unknown task, illegal call for the task's current status, or malformed receipt evidence. */
 export class HandAdapterError extends HandsAdapterError {}
 
+/** submitReceipt() refused a receipt whose free-text fields contain secret-shaped content. */
+export class ReceiptSecretError extends HandsAdapterError {}
+
+/** submitReceipt() refused a receipt whose taskId does not match the task it was submitted to. */
+export class ReceiptTaskMismatchError extends HandsAdapterError {}
+
 const HAND_OWNER_PREFIX = 'hand:';
+
+// ── Secret-shaped content guard (receipt free-text fields never carry a secret) ──
+
+/**
+ * Small, deterministic pattern set for "this looks like a live credential",
+ * not a general secret scanner — cheap, fast, no false-negative tolerance
+ * for the common shapes (OpenAI-style sk-, GitHub PAT, AWS access key, PEM
+ * private key header, Slack token, generic key=value/bearer, Telegram bot
+ * token). A match means REJECT the receipt outright — a secret that reached
+ * a receipt means the hand already mishandled it; scrubbing would hide that.
+ */
+const SECRET_SHAPE_PATTERNS: readonly RegExp[] = [
+  /sk-[A-Za-z0-9]{16,}/,
+  /ghp_[A-Za-z0-9]{20,}/,
+  /AKIA[0-9A-Z]{16}/,
+  /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
+  /xox[baprs]-[A-Za-z0-9-]+/,
+  /(api[_-]?key|password|secret|token|bearer)\s*[:=]\s*\S{8,}/i,
+  /\d{8,10}:[A-Za-z0-9_-]{30,}/,
+];
+
+function containsSecretShape(value: string): boolean {
+  return SECRET_SHAPE_PATTERNS.some((re) => re.test(value));
+}
+
+/**
+ * Scans every free-text field a Receipt carries. Throws ReceiptSecretError
+ * on the first match — called BEFORE submitReceipt() persists anything
+ * (evidence entry or transition), so a secret-shaped receipt never touches
+ * the ledger.
+ */
+function assertReceiptHasNoSecrets(receipt: Receipt): void {
+  const fields: (string | undefined)[] = [
+    receipt.claimedResult,
+    receipt.expectedSubstring,
+    receipt.command,
+    receipt.ref,
+    ...(receipt.artifacts ?? []),
+  ];
+  for (const field of fields) {
+    if (field && containsSecretShape(field)) {
+      throw new ReceiptSecretError(
+        'receipt rejected: contains secret-shaped content; secrets must never enter the ledger',
+      );
+    }
+  }
+}
 
 // ── Context gate ─────────────────────────────────────────────────────────
 
@@ -110,6 +163,7 @@ export function assignHand(taskId: string, handId: string, opts: AssignHandOptio
   return reassignOwner(taskId, `${HAND_OWNER_PREFIX}${handId}`, {
     actor: opts.actor,
     reason: `assigned to hand ${handId}`,
+    _viaHandAdapter: true,
   });
 }
 
@@ -147,6 +201,13 @@ function parseReceiptFromEvidenceNote(evidence: Evidence): Receipt {
  */
 export function submitReceipt(taskId: string, receiptInput: unknown): Task {
   const receipt = receiptSchema.parse(receiptInput);
+
+  if (receipt.taskId !== taskId) {
+    throw new ReceiptTaskMismatchError(
+      `hands: receipt.taskId (${receipt.taskId}) does not match the task it is being submitted to (${taskId})`,
+    );
+  }
+  assertReceiptHasNoSecrets(receipt);
 
   const task = getTask(taskId);
   if (!task) {
@@ -256,7 +317,13 @@ export function verifyAndTransition(taskId: string, opts: VerifyAndTransitionOpt
 
   const receiptEvidence = findLatestReceiptEvidence(task);
   if (!receiptEvidence) {
-    const moved = moveTask({ taskId, to: 'rejected', actor: opts.actor, note: 'no receipt evidence found to verify' });
+    const moved = moveTask({
+      taskId,
+      to: 'rejected',
+      actor: opts.actor,
+      note: 'no receipt evidence found to verify',
+      _viaHandAdapter: true,
+    });
     return {
       finalStatus: moved.status,
       verdict: {
@@ -282,11 +349,18 @@ export function verifyAndTransition(taskId: string, opts: VerifyAndTransitionOpt
       actor: opts.actor,
       evidenceRefs: [receiptEvidence.ref],
       note: `verified: ${primary.reason}`,
+      _viaHandAdapter: true,
     });
     return { finalStatus: moved.status, verdict: { verified: true, reason: primary.reason, refuter: refuterResult } };
   }
 
   const rejectionReason = !primary.verified ? primary.reason : `refuter disagreement: ${refuterResult.reason}`;
-  const moved = moveTask({ taskId, to: 'rejected', actor: opts.actor, note: `rejected: ${rejectionReason}` });
+  const moved = moveTask({
+    taskId,
+    to: 'rejected',
+    actor: opts.actor,
+    note: `rejected: ${rejectionReason}`,
+    _viaHandAdapter: true,
+  });
   return { finalStatus: moved.status, verdict: { verified: false, reason: rejectionReason, refuter: refuterResult } };
 }

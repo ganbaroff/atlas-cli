@@ -154,10 +154,34 @@ export function importTask(input: ImportTaskInput): CreateTaskResult {
 
 // ── Tasks: move / evidence ──────────────────────────────────────────────
 
+const HAND_OWNER_PREFIX = 'hand:';
+
+/**
+ * Thrown when a generic caller (CLI `task move`/`task reassign`, or any
+ * in-process caller) attempts to do something only the Hand Contract V0
+ * adapter (src/hands/exec-graph-adapter.ts) is allowed to do:
+ *   - drive a hand-owned task to its FINAL state ('verified'/'rejected')
+ *     via moveTask(), or
+ *   - create 'hand:' ownership via reassignOwner().
+ * This is the system-wide authority boundary, enforced here rather than
+ * only inside hands/ — a generic actor can never fake-verify a delegated
+ * task, and can never create hand: ownership to begin with (which also
+ * closes the unattended-escape path: no hand: owner, no
+ * assertHandAllowedInContext bypass).
+ */
+export class HandAuthorityError extends Error {}
+
 export interface MoveTaskInput extends Omit<ApplyTransitionOptions, 'ts'> {
   taskId: string;
   to: TaskStatus;
   ts?: string;
+  /**
+   * Internal capability flag. Set ONLY by src/hands/exec-graph-adapter.ts's
+   * verifyAndTransition() when it resolves a hand-owned task's final state.
+   * Generic callers (including the CLI's `atlas task move`) must never set
+   * this — see HandAuthorityError.
+   */
+  _viaHandAdapter?: boolean;
 }
 
 export function moveTask(input: MoveTaskInput): Task {
@@ -166,6 +190,18 @@ export function moveTask(input: MoveTaskInput): Task {
   if (!task) {
     throw new Error(`exec-graph: unknown task ${input.taskId}`);
   }
+
+  if (
+    (input.to === 'verified' || input.to === 'rejected')
+    && task.owner.startsWith(HAND_OWNER_PREFIX)
+    && !input._viaHandAdapter
+  ) {
+    throw new HandAuthorityError(
+      `exec-graph: task ${input.taskId} is hand-owned (owner=${task.owner}) — hand-owned tasks reach `
+      + "'verified'/'rejected' only through the Hand verifier (atlas hand verify), not generic task move",
+    );
+  }
+
   const ts = input.ts ?? nowIso();
 
   // See module doc: evidenceRefs supplied on a move are also recorded as
@@ -200,6 +236,13 @@ export interface ReassignOwnerOptions {
   actor: string;
   reason: string;
   ts?: string;
+  /**
+   * Internal capability flag. Set ONLY by src/hands/exec-graph-adapter.ts's
+   * assignHand() when it creates 'hand:' ownership. Generic callers
+   * (including the CLI's `atlas task reassign`) must never set this — see
+   * HandAuthorityError.
+   */
+  _viaHandAdapter?: boolean;
 }
 
 /**
@@ -218,6 +261,12 @@ export function reassignOwner(taskId: string, newOwner: string, opts: ReassignOw
   }
   if (!reason || !reason.trim()) {
     throw new ExecGraphOwnerReassignError('reason is required and must be non-empty');
+  }
+  if (newOwner.startsWith(HAND_OWNER_PREFIX) && !opts._viaHandAdapter) {
+    throw new HandAuthorityError(
+      "exec-graph: 'hand:' ownership is assigned only via atlas hand assign, not generic task reassign "
+      + `(taskId=${taskId}, newOwner=${newOwner})`,
+    );
   }
 
   const graph = readGraph();

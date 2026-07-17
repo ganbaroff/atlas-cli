@@ -7,10 +7,15 @@
  * deterministic verifier (a plausible-sounding narrative and a real receipt
  * must be told apart by evidence, not by how convincing the text reads).
  *
- * SECRET GUARD: any `ref` matching /\.env|secret|credential|\.pem|id_rsa/i
- * is refused BEFORE any fs/git call touches it — the guard runs first in
- * every branch that would otherwise read `ref`, so a protected path is never
- * opened, only pattern-matched against its own name.
+ * SECRET GUARD: any `ref` matching PROTECTED_PATH_RE (.env/secret/credential/
+ * .pem/id_rsa/id_ed25519/id_ecdsa/.pfx/.p12/.jks/service-account, case
+ * insensitive) is refused BEFORE any fs/git call touches it — the guard runs
+ * first in every branch that would otherwise read `ref`, so a protected path
+ * is never opened, only pattern-matched against its own name. For
+ * 'command-output-match', the same guard also runs against the WHOLE
+ * `command` string before execFileSync, so a command that merely CITES a
+ * protected path (e.g. `git show HEAD:apps/api/.env`) is refused too, not
+ * just an explicit `ref`.
  *
  * COMMAND ALLOWLIST: 'command-output-match' only ever runs a command whose
  * full string matches one of a fixed set of read-only prefixes (below). No
@@ -34,7 +39,7 @@ export interface VerifyResult {
   reason: string;
 }
 
-const PROTECTED_PATH_RE = /\.env|secret|credential|\.pem|id_rsa/i;
+const PROTECTED_PATH_RE = /\.env|secret|credential|\.pem|id_rsa|id_ed25519|id_ecdsa|\.pfx|\.p12|\.jks|service-account/i;
 
 /** Anchored prefixes — a command must START with one of these to run at all. */
 const READONLY_COMMAND_ALLOWLIST: readonly RegExp[] = [
@@ -111,6 +116,12 @@ export function verify(receipt: Receipt): VerifyResult {
 
     case 'command-output-match': {
       if (!receipt.command) return { verified: false, reason: 'command-output-match receipt is missing command' };
+      // Guard the WHOLE command string against a protected-path reference (e.g.
+      // `git show HEAD:apps/api/.env`) BEFORE execFileSync ever runs — the
+      // `ref` field is optional/separate and was previously the only thing
+      // checked here, leaving a command that merely CITES a protected path
+      // unguarded.
+      if (isProtectedPath(receipt.command)) return { verified: false, reason: 'command references a protected path' };
       if (receipt.ref && isProtectedPath(receipt.ref)) return { verified: false, reason: 'cited artifact is a protected path' };
       if (!isAllowlistedCommand(receipt.command)) {
         return { verified: false, reason: 'command not in read-only verifier allowlist' };

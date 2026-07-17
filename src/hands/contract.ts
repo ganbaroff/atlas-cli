@@ -95,6 +95,21 @@ export const receiptSchema = z
         });
       }
     }
+    // A whitespace-only or near-empty expectedSubstring (e.g. ' ') passes
+    // z.string().min(1) but is a degenerate check — it would "verify" against
+    // almost any file/command output. Require >=3 meaningful (trimmed) chars
+    // for the two kinds that gate verification on this field.
+    if (
+      (r.kind === 'file-contains' || r.kind === 'command-output-match')
+      && r.expectedSubstring !== undefined
+      && r.expectedSubstring.trim().length < 3
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['expectedSubstring'],
+        message: `receipt kind '${r.kind}' requires expectedSubstring with >=3 meaningful (trimmed) characters`,
+      });
+    }
   });
 export type Receipt = z.infer<typeof receiptSchema>;
 

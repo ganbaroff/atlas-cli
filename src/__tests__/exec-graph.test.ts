@@ -409,7 +409,12 @@ describe('exec-graph ledger + api (isolated temp dir per test)', () => {
     moveTask({ taskId: task.id, to: 'delegated', actor: 'atlas', ts: NOW });
     moveTask({ taskId: task.id, to: 'escalated', actor: 'atlas', ts: NOW });
 
-    reassignOwner(task.id, 'hand:volaura', { actor: 'ceo', reason: 'delegated to hand', ts: NOW });
+    // _viaHandAdapter:true — this test exercises the ledger/rebuild mechanics for an
+    // arbitrary owner value (which happens to be hand:-prefixed); it is not simulating
+    // the Hand Contract V0 adapter's real assignHand() flow, so it legitimately needs the
+    // internal capability flag to get past api.ts's HandAuthorityError guard (see
+    // hands.test.ts's dedicated Hole 1 regression tests for the guard itself).
+    reassignOwner(task.id, 'hand:volaura', { actor: 'ceo', reason: 'delegated to hand', ts: NOW, _viaHandAdapter: true });
 
     const onDisk = readSnapshotFile();
     const rebuilt = rebuildSnapshot();
