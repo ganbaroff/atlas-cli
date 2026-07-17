@@ -20,7 +20,7 @@ export const COMMANDS: readonly AtlasCommand[] = [
   { cmd: 'status', ru: 'здоровье, спенд за день, очередь, пульс', en: 'health, daily spend, queue, heartbeat' },
   { cmd: 'models', ru: 'какие LLM-провайдеры доступны', en: 'which LLM providers are available' },
   { cmd: 'task', ru: 'запустить Claude Code на задаче', en: 'run Claude Code on a task' },
-  { cmd: 'remote', ru: 'поставить команду в очередь Claude Code', en: 'queue a command for Claude Code' },
+  { cmd: 'remote', ru: 'отключён (board P0), governed-путь вернётся', en: 'disabled (board P0), governed path will return' },
   { cmd: 'deploy', ru: 'смержить PR и задеплоить (с подтверждением)', en: 'merge a PR and deploy (with confirmation)' },
   { cmd: 'swarm', ru: 'разобрать задачу роем перспектив', en: 'analyze a task with a swarm of perspectives' },
   { cmd: 'test', ru: 'ссылка на бесплатный AI-тест навыков', en: 'link to the free AI skills test' },

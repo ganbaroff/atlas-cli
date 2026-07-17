@@ -106,7 +106,10 @@ the code and is corrected here rather than silently carried forward:
 - **Documentation debt:** `docs/QUEUE-CONTRACT.md` needs a follow-up
   correction pass (owner: cloud Telegram bot runtime / External CTO) to
   reflect the 2026-07-10 producer removal; out of this mission's scope to
-  fix directly.
+  fix directly. *Resolved 2026-07-18: the correction pass landed —
+  `QUEUE-CONTRACT.md` now carries a producer-dormant status banner and a
+  corrected Producer section, and the `/remote` entry in
+  `src/atlas/commands.ts` (`/help` copy) is marked disabled.*
 
 ## Rollback or supersession
 

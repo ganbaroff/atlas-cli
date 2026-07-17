@@ -60,3 +60,7 @@ packages/vscode-ide-companion/*.vsix
 # Operator runs and state
 operator/runs/
 operator/state/operator-state.json
+
+# Private capability notes + smoke-test scratch logs (never commit)
+memory/atlas/CAPABILITIES-PRIVATE.md
+smoke-log*.txt
