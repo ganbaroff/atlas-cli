@@ -706,6 +706,89 @@ graphCmd
     }
   });
 
+// ─── hands (Hand Contract V0) commands ─────────────────────────────────────
+// Delegation-control layer OVER exec-graph — see src/hands/exec-graph-adapter.ts
+// for the authority boundary. exec-graph stays the only task authority; the
+// Hand registry (src/hands/registry.ts) is descriptive config only.
+
+const handCmd = program
+  .command('hand')
+  .description('Hand Contract V0 — delegation-control layer over exec-graph');
+
+handCmd
+  .command('list')
+  .description('List registered Hands (descriptive config, not task state)')
+  .action(async () => {
+    try {
+      const { listHands } = await import('./hands/registry.js');
+      console.log(JSON.stringify(listHands(), null, 2));
+    } catch (err) {
+      console.error(`hand list error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
+  });
+
+handCmd
+  .command('assign <taskId> <handId>')
+  .description('Assign a Hand to an exec-graph task (moves task -> delegated, reassigns owner -> hand:<handId>)')
+  .requiredOption('--actor <actor>', 'Actor performing the assignment (required)')
+  .option('--unattended', 'Assign in an unattended context (denies foreground-only hands)')
+  .action(async (taskId: string, handId: string, opts) => {
+    try {
+      const { assignHand } = await import('./hands/exec-graph-adapter.js');
+      const task = assignHand(taskId, handId, { actor: opts.actor, unattended: !!opts.unattended });
+      console.log(JSON.stringify(task, null, 2));
+    } catch (err) {
+      console.error(`hand assign error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
+  });
+
+handCmd
+  .command('submit <taskId>')
+  .description('Submit a receipt for a delegated task (moves task -> evidence-submitted; never sets verified/rejected)')
+  .requiredOption('--by <hand>', 'Hand id submitting the receipt (required)')
+  .requiredOption('--kind <kind>', 'Receipt kind: file-exists|commit-exists|file-contains|command-output-match|narrative (required)')
+  .option('--ref <ref>', 'Artifact ref (file path / commit sha)')
+  .option('--command <command>', 'Command cited as evidence (must be in the verifier read-only allowlist)')
+  .option('--expect <substring>', 'Expected substring in file/command output')
+  .option('--claim <text>', 'Claimed result narrative (required by the receipt schema)')
+  .action(async (taskId: string, opts) => {
+    try {
+      const { submitReceipt } = await import('./hands/exec-graph-adapter.js');
+      const task = submitReceipt(taskId, {
+        taskId,
+        handId: opts.by,
+        submittedBy: opts.by,
+        kind: opts.kind,
+        ref: opts.ref,
+        command: opts.command,
+        expectedSubstring: opts.expect,
+        claimedResult: opts.claim ?? '',
+      });
+      console.log(JSON.stringify(task, null, 2));
+    } catch (err) {
+      console.error(`hand submit error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
+  });
+
+handCmd
+  .command('verify <taskId>')
+  .description('Run the deterministic verifier (+ refuter when risk warrants) and set the task to verified/rejected')
+  .requiredOption('--actor <actor>', 'Actor performing the verification (required)')
+  .action(async (taskId: string, opts) => {
+    try {
+      const { verifyAndTransition } = await import('./hands/exec-graph-adapter.js');
+      const result = verifyAndTransition(taskId, { actor: opts.actor });
+      console.log(JSON.stringify(result, null, 2));
+      if (!result.verdict.verified) process.exitCode = 1;
+    } catch (err) {
+      console.error(`hand verify error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
+  });
+
 program
   .command('skills')
   .description('List available VOLAURA skills')

@@ -96,13 +96,69 @@ function formatHandedOffSection(handedOff: Task[]): string[] {
 }
 
 /**
+ * Hand Contract V0 (src/hands/*) task lines: tasks owned by `hand:<handId>`
+ * sitting in delegated/evidence-submitted/verified/rejected. Deliberately
+ * reads ONLY task.owner/task.evidence/task.transitions — no import from
+ * src/hands/* — so this module stays pure and dependency-free per the
+ * module doc above; src/hands/exec-graph-adapter.ts is the only writer of
+ * this shape (tool-receipt evidence + verified/rejected transition notes).
+ */
+const HAND_OWNER_PREFIX = 'hand:';
+const HAND_STATUSES: readonly TaskStatus[] = ['delegated', 'evidence-submitted', 'verified', 'rejected'];
+
+function isHandOwned(task: Task): boolean {
+  return task.owner.startsWith(HAND_OWNER_PREFIX);
+}
+
+/** The receipt `kind` cited by the most recent tool-receipt evidence entry, or 'none'/'unknown'. */
+function latestReceiptKind(task: Task): string {
+  const receipt = [...task.evidence].reverse().find((e) => e.kind === 'tool-receipt');
+  if (!receipt || !receipt.note) return 'none';
+  try {
+    const parsed = JSON.parse(receipt.note) as { kind?: unknown };
+    return typeof parsed.kind === 'string' ? parsed.kind : 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
+/** The note on the most recent transition into 'verified'/'rejected' (the verifier's reason string), if any. */
+function latestVerdictNote(task: Task): string | undefined {
+  for (let i = task.transitions.length - 1; i >= 0; i--) {
+    const t = task.transitions[i];
+    if (t.to === 'verified' || t.to === 'rejected') return t.note;
+  }
+  return undefined;
+}
+
+function handTaskLine(task: Task): string {
+  const handId = task.owner.slice(HAND_OWNER_PREFIX.length);
+  const receiptKind = latestReceiptKind(task);
+  const verdict = latestVerdictNote(task);
+  const verdictPart = verdict ? ` — ${truncateTitle(verdict, 60)}` : '';
+  return `- ${task.id} ${truncateTitle(task.title)} [${task.status}] hand=${handId} receipt=${receiptKind}${verdictPart}`;
+}
+
+/** `🤝 hands (N):` + up to MAX_LIST_ITEMS hand-owned task lines (delegated/evidence-submitted/verified/rejected). */
+export function formatHandSection(tasks: readonly Task[]): string[] {
+  const handTasks = tasks.filter((t) => HAND_STATUSES.includes(t.status) && isHandOwned(t));
+  if (handTasks.length === 0) return [];
+  const shown = handTasks.slice(0, MAX_LIST_ITEMS);
+  const lines = [`🤝 hands (${handTasks.length}):`, ...shown.map(handTaskLine)];
+  const hidden = handTasks.length - shown.length;
+  if (hidden > 0) lines.push(`  …+${hidden} ещё`);
+  return lines;
+}
+
+/**
  * Compact `/status` rendering: counts line, then up to 5 escalated
  * ("⚠ ждут решения" — only tasks owned by ceo/external-cto/atlas, i.e. a
  * genuinely live decision), then handed-off escalated tasks
  * ("📤 передано" — parked with some other owner, informational only, NOT
  * re-spammed as a decision prompt), up to 5 evidence-submitted
- * ("🔍 на проверке"), up to 5 blocked ("⛔ blocked"). Empty graph
- * short-circuits to a fixed message.
+ * ("🔍 на проверке"), up to 5 blocked ("⛔ blocked"), then hand-owned tasks
+ * ("🤝 hands" — Hand Contract V0 delegation state, see formatHandSection()).
+ * Empty graph short-circuits to a fixed message.
  */
 export function formatStatusMessage(summary: StatusSummary, tasks: readonly Task[]): string {
   if (tasks.length === 0) {
@@ -118,6 +174,7 @@ export function formatStatusMessage(summary: StatusSummary, tasks: readonly Task
   lines.push(...formatHandedOffSection(handedOff));
   lines.push(...formatSection('🔍 на проверке', byStatus(tasks, 'evidence-submitted')));
   lines.push(...formatSection('⛔ blocked', byStatus(tasks, 'blocked')));
+  lines.push(...formatHandSection(tasks));
 
   return lines.join('\n');
 }
