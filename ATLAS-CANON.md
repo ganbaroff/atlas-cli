@@ -51,6 +51,32 @@ Do not treat these as the source of truth for the real agent:
 - `C:\Users\user\OneDrive\Documents\GitHub\ANUS\memory`
   - local CLI-side data only, not the full canonical Atlas vault
 
+## Execution-state authority (EB-0 amendment, 2026-07-17)
+
+The split above still governs identity/memory/swarm vs. CLI shell. It does
+**not** answer a narrower question EB-0 introduced: for a specific piece of
+Atlas-managed *work* (a task, with a status and evidence), which repo is
+the ground truth?
+
+- VOLAURA remains intent/strategy + memory canon — unchanged by this
+  amendment.
+- **Machine execution state for new Atlas-managed work is ANUS
+  `state/exec-graph`** (git-tracked, append-only ledger + derived
+  snapshot), not VOLAURA markdown. See ADR-0001
+  (`docs/adr/0001-one-task-authority-exec-graph.md`) and ADR-0002
+  (`docs/adr/0002-volaura-intent-vs-anus-execution-state.md`).
+- Why execution-critical state does not live in VOLAURA: VOLAURA has
+  historically spanned multiple long-lived branches without a single
+  reconciled state (branch fragmentation), and
+  `C:\Projects\VOLAURA\memory\shared-bus` is gitignored, so state written
+  there is not reliably durable or diffable the way `state/exec-graph/` is.
+  **Status: known issue, not fixed by this amendment — owner: VOLAURA
+  chat.** See ADR-0002 for the full reasoning and rollback conditions.
+- VOLAURA's `memory/atlas/work-queue/` markdown is a read-only import
+  source into exec-graph (provenance `volaura-work-queue:<filename>`); it
+  is not deleted or migrated, it simply stops being a task authority for
+  new work. See `docs/adr/0004-legacy-task-source-cutover.md`.
+
 ## Environment contract
 
 `ANUS` must point to `VOLAURA` explicitly:

@@ -1,3 +1,29 @@
+/**
+ * operator/dispatcher.ts — dispatch/evaluate/promote pipeline for operator
+ * tasks (operator/tasks/*.json in, operator/runs/*.result.json out).
+ *
+ * WHAT THIS IS: a separate task lifecycle from src/exec-graph — operator
+ * tasks are dispatched, evaluated (evaluator.ts), and promoted
+ * (promotion.ts) with their own evidence contract (contracts.ts's
+ * OperatorTask/OperatorResult/OperatorEvidence), independent of exec-graph's
+ * 11-state ledger.
+ *
+ * AUTHORITY BOUNDARY vs. exec-graph (ADR-0001, ADR-0004 classification #3,
+ * see docs/adr/): this module does NOT write to state/exec-graph — nothing
+ * here imports src/exec-graph. `operator/tasks/*.json` is a READ-ONLY
+ * IMPORT SOURCE for exec-graph via the CLI's `atlas task import
+ * --source-kind operator-tasks --source-ref <file>` (see
+ * docs/runbooks/legacy-task-cutover.md); that import path is a deliberate,
+ * separate, one-way bridge — dispatchOperatorTask()/writeOperatorTrace()
+ * below never call it and never close a graph task as a side effect.
+ *
+ * DEFENSIVE STATE LOAD: loadOperatorState() below tolerates a missing/
+ * unparseable operator/state/operator-state.json (e.g. a fresh checkout)
+ * by falling back to a safe `{ control: { mode: 'active' } }` default and
+ * logging loudly, rather than throwing — mirrors the same crash-guard
+ * lesson exec-graph/ledger.ts and atlas/policy.ts apply to their own reads
+ * (see those modules' header comments for the shared rationale).
+ */
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';

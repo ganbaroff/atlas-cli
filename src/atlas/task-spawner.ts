@@ -4,6 +4,16 @@
  *
  * CEO sends "/task check prod health" → spawns `claude -p "..."` →
  * collects output → sends back to Telegram.
+ *
+ * TEMPORARY ADAPTER (EB-0, ADR-0004 classification #2 — see
+ * docs/adr/0004-legacy-task-source-cutover.md): this is live CEO
+ * convenience in the deployed bot, kept running as-is during the exec-graph
+ * cutover. Spawned jobs here are ephemeral, CEO-direct executions, NOT
+ * exec-graph tasks — there is deliberately no code path from runTask()/
+ * this module into src/exec-graph (only that module's own importTask()
+ * can create a task from a legacy source, and this module is not wired to
+ * call it). Retiring or rerouting this adapter into the graph is Mission 2
+ * scope, not this file's.
  */
 
 import { spawn } from 'node:child_process';
