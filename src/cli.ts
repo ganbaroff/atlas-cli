@@ -472,6 +472,202 @@ operatorCmd
     process.exit(outcome.ledgerEntry?.verdict === 'passed' ? 0 : 2);
   });
 
+// ─── exec-graph (EB-0) commands ────────────────────────────────────────────
+// Single machine execution authority for new Atlas-managed work. See
+// src/exec-graph/README.md for the authority boundary and full contract.
+
+function collectRepeatable(value: string, previous: string[]): string[] {
+  return previous.concat([value]);
+}
+
+const goalCmd = program
+  .command('goal')
+  .description('exec-graph (EB-0) goal management');
+
+goalCmd
+  .command('add <title...>')
+  .description('Create a new exec-graph goal')
+  .option('--source-kind <kind>', 'Source kind', 'exec-graph')
+  .option('--source-ref <ref>', 'Source ref', 'cli')
+  .action(async (titleParts: string[], opts) => {
+    try {
+      const { createGoal } = await import('./exec-graph/api.js');
+      const goal = createGoal({
+        title: titleParts.join(' '),
+        source: { kind: opts.sourceKind, ref: opts.sourceRef },
+        actor: 'atlas',
+      });
+      console.log(JSON.stringify(goal, null, 2));
+    } catch (err) {
+      console.error(`goal add error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
+  });
+
+const taskCmd = program
+  .command('task')
+  .description('exec-graph (EB-0) task management');
+
+taskCmd
+  .command('add <title...>')
+  .description('Create a new exec-graph task under a goal')
+  .requiredOption('--goal <id>', 'Goal id')
+  .option('--risk <class>', 'Risk class: low|medium|high|irreversible', 'low')
+  .option('--owner <owner>', 'Task owner', 'atlas')
+  .option('--source-kind <kind>', 'Source kind', 'exec-graph')
+  .option('--source-ref <ref>', 'Source ref', 'cli')
+  .action(async (titleParts: string[], opts) => {
+    try {
+      const { createTask } = await import('./exec-graph/api.js');
+      const { task, created } = createTask({
+        goalId: opts.goal,
+        title: titleParts.join(' '),
+        riskClass: opts.risk,
+        owner: opts.owner,
+        source: { kind: opts.sourceKind, ref: opts.sourceRef },
+        actor: 'atlas',
+      });
+      console.log(JSON.stringify({ created, task }, null, 2));
+    } catch (err) {
+      console.error(`task add error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
+  });
+
+taskCmd
+  .command('move <id> <status>')
+  .description('Transition an exec-graph task to a new status')
+  .requiredOption('--actor <actor>', 'Actor performing the transition (required)')
+  .option('--evidence <ref>', 'Evidence ref (repeatable)', collectRepeatable, [] as string[])
+  .option('--note <note>', 'Transition note')
+  .action(async (id: string, status: string, opts) => {
+    try {
+      const { moveTask } = await import('./exec-graph/api.js');
+      const task = moveTask({
+        taskId: id,
+        to: status as import('./exec-graph/contracts.js').TaskStatus,
+        actor: opts.actor,
+        evidenceRefs: opts.evidence && opts.evidence.length > 0 ? opts.evidence : undefined,
+        note: opts.note,
+      });
+      console.log(JSON.stringify(task, null, 2));
+    } catch (err) {
+      console.error(`task move error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
+  });
+
+taskCmd
+  .command('show <id>')
+  .description('Show one exec-graph task')
+  .action(async (id: string) => {
+    const { getTask } = await import('./exec-graph/api.js');
+    const task = getTask(id);
+    if (!task) {
+      console.error(`task not found: ${id}`);
+      process.exitCode = 1;
+      return;
+    }
+    console.log(JSON.stringify(task, null, 2));
+  });
+
+taskCmd
+  .command('list')
+  .description('List exec-graph tasks, optionally filtered by status')
+  .option('--status <status>', 'Filter by status')
+  .action(async (opts) => {
+    try {
+      const { listTasks } = await import('./exec-graph/api.js');
+      const tasks = listTasks(opts.status ? { status: opts.status } : {});
+      console.log(JSON.stringify(tasks, null, 2));
+    } catch (err) {
+      console.error(`task list error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
+  });
+
+taskCmd
+  .command('import <title...>')
+  .description('Import a task from a legacy source (idempotent by source kind+ref — see exec-graph/README.md)')
+  .requiredOption('--goal <id>', 'Goal id')
+  .requiredOption('--source-kind <kind>', 'Source kind (required)')
+  .requiredOption('--source-ref <ref>', 'Source ref (required)')
+  .option('--owner <owner>', 'Task owner', 'atlas')
+  .option('--risk <class>', 'Risk class: low|medium|high|irreversible', 'low')
+  .action(async (titleParts: string[], opts) => {
+    try {
+      const { importTask } = await import('./exec-graph/api.js');
+      const { task, created } = importTask({
+        goalId: opts.goal,
+        title: titleParts.join(' '),
+        sourceKind: opts.sourceKind,
+        sourceRef: opts.sourceRef,
+        owner: opts.owner,
+        riskClass: opts.risk,
+        actor: 'atlas',
+      });
+      console.log(JSON.stringify({ created, task }, null, 2));
+    } catch (err) {
+      console.error(`task import error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
+  });
+
+const graphCmd = program
+  .command('graph')
+  .description('exec-graph (EB-0) ledger status/verify');
+
+graphCmd
+  .command('status')
+  .description('Show status summary: counts per status + tasks waiting on decision/verification')
+  .action(async () => {
+    try {
+      const { statusSummary } = await import('./exec-graph/api.js');
+      const summary = statusSummary();
+      console.log('Exec-graph status:');
+      for (const [status, count] of Object.entries(summary.counts)) {
+        if (count > 0) console.log(`  ${status}: ${count}`);
+      }
+      if (summary.waiting.length > 0) {
+        console.log(`\nWaiting on decision/verification (${summary.waiting.length}):`);
+        for (const t of summary.waiting) {
+          console.log(`  [${t.status}] ${t.id} — ${t.title} (owner: ${t.owner})`);
+        }
+      } else {
+        console.log('\nNothing waiting on decision/verification.');
+      }
+    } catch (err) {
+      console.error(`graph status error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
+  });
+
+graphCmd
+  .command('verify')
+  .description('Rebuild the snapshot from the ledger and compare it to the on-disk snapshot')
+  .action(async () => {
+    try {
+      const { readSnapshotFile, rebuildSnapshot, snapshotsEqual } = await import('./exec-graph/ledger.js');
+      const onDisk = readSnapshotFile() ?? { goals: {}, tasks: {} };
+      const rebuilt = rebuildSnapshot();
+      const ok = snapshotsEqual(onDisk, rebuilt);
+      console.log(JSON.stringify({
+        ok,
+        onDiskGoals: Object.keys(onDisk.goals).length,
+        onDiskTasks: Object.keys(onDisk.tasks).length,
+        rebuiltGoals: Object.keys(rebuilt.goals).length,
+        rebuiltTasks: Object.keys(rebuilt.tasks).length,
+      }, null, 2));
+      if (!ok) {
+        console.error('[graph verify] MISMATCH: on-disk snapshot does not match a fresh rebuild from the ledger.');
+        process.exitCode = 1;
+      }
+    } catch (err) {
+      console.error(`graph verify error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
+  });
+
 program
   .command('skills')
   .description('List available VOLAURA skills')

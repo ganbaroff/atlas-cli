@@ -30,7 +30,19 @@ export interface DispatchWriteOptions {
 }
 
 export function loadOperatorState(): unknown {
-  return JSON.parse(readFileSync(STATE_PATH, 'utf-8'));
+  // Crash guard (style matches ../atlas/control-plane.ts's readOperatorState(),
+  // which reads this SAME file): a fresh checkout has no operator/state/
+  // directory at all, so a bare readFileSync/JSON.parse here throws at the
+  // next dispatch. Fall back to a safe default and log loudly rather than
+  // crash — mirrors control-plane's fallback shape so downstream readers
+  // (writeOperatorTrace, dispatchManualEvaluationTask) see the same
+  // 'active'-control default either way.
+  try {
+    return JSON.parse(readFileSync(STATE_PATH, 'utf-8'));
+  } catch (err) {
+    console.error(`[dispatcher] failed to read/parse operator state at ${STATE_PATH} — using safe default: ${(err as Error)?.message ?? err}`);
+    return { control: { mode: 'active' } };
+  }
 }
 
 export function loadOperatorTask(taskPath: string): OperatorTask {
