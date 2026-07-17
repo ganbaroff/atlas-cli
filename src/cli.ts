@@ -558,6 +558,22 @@ taskCmd
   });
 
 taskCmd
+  .command('reassign <id> <newOwner>')
+  .description('Reassign an exec-graph task to a new owner (append-only audit trail; does NOT change status)')
+  .requiredOption('--actor <actor>', 'Actor performing the reassignment (required)')
+  .requiredOption('--reason <reason>', 'Reason for the reassignment (required, quote if multi-word)')
+  .action(async (id: string, newOwner: string, opts) => {
+    try {
+      const { reassignOwner } = await import('./exec-graph/api.js');
+      const task = reassignOwner(id, newOwner, { actor: opts.actor, reason: opts.reason });
+      console.log(JSON.stringify(task, null, 2));
+    } catch (err) {
+      console.error(`task reassign error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
+  });
+
+taskCmd
   .command('show <id>')
   .description('Show one exec-graph task')
   .action(async (id: string) => {
@@ -623,18 +639,40 @@ graphCmd
   .action(async () => {
     try {
       const { statusSummary } = await import('./exec-graph/api.js');
+      const { CEO_DECISION_OWNERS } = await import('./exec-graph/brief.js');
       const summary = statusSummary();
       console.log('Exec-graph status:');
       for (const [status, count] of Object.entries(summary.counts)) {
         if (count > 0) console.log(`  ${status}: ${count}`);
       }
-      if (summary.waiting.length > 0) {
-        console.log(`\nWaiting on decision/verification (${summary.waiting.length}):`);
-        for (const t of summary.waiting) {
+
+      // Escalated tasks reassigned (exec-graph/api.ts's reassignOwner()) to an
+      // owner outside CEO_DECISION_OWNERS are still status=escalated but are
+      // no longer a live decision item — split them into their own bucket so
+      // a handed-off task doesn't keep re-appearing as "waiting on decision"
+      // (same rule exec-graph/brief.ts applies to /status and the morning
+      // brief, CLI-native text per this command's documented formatting).
+      const decisionWaiting = summary.waiting.filter(
+        (t) => t.status !== 'escalated' || CEO_DECISION_OWNERS.includes(t.owner),
+      );
+      const handedOff = summary.waiting.filter(
+        (t) => t.status === 'escalated' && !CEO_DECISION_OWNERS.includes(t.owner),
+      );
+
+      if (decisionWaiting.length > 0) {
+        console.log(`\nWaiting on decision/verification (${decisionWaiting.length}):`);
+        for (const t of decisionWaiting) {
           console.log(`  [${t.status}] ${t.id} — ${t.title} (owner: ${t.owner})`);
         }
       } else {
         console.log('\nNothing waiting on decision/verification.');
+      }
+
+      if (handedOff.length > 0) {
+        console.log(`\nHanded off — not a decision item (${handedOff.length}):`);
+        for (const t of handedOff) {
+          console.log(`  [${t.status}] ${t.id} — ${t.title} (owner: ${t.owner})`);
+        }
       }
     } catch (err) {
       console.error(`graph status error: ${err instanceof Error ? err.message : String(err)}`);

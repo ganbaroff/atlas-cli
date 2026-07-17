@@ -487,7 +487,7 @@
         "kind": "volaura-work-queue",
         "ref": "2026-07-03-blocker-16.md"
       },
-      "owner": "atlas",
+      "owner": "volaura-product-chat",
       "status": "escalated",
       "riskClass": "medium",
       "idempotencyKey": "volaura-work-queue:2026-07-03-blocker-16.md",

@@ -36,6 +36,8 @@ import {
   importTask,
   moveTask,
   addEvidence,
+  reassignOwner,
+  ExecGraphOwnerReassignError,
   getTask,
   listTasks,
   statusSummary,
@@ -376,6 +378,105 @@ describe('exec-graph ledger + api (isolated temp dir per test)', () => {
     expect(summary.waiting.map((t) => t.id)).toContain(b.id);
     expect(summary.waiting.map((t) => t.id)).not.toContain(a.id);
   });
+
+  // ─── reassignOwner — owner-reassignment primitive (Deliverable 1) ────────
+
+  it('reassignOwner changes owner, NOT status (no fabricated transition)', () => {
+    const goal = createGoal({ title: 'g', actor: 'atlas', ts: NOW });
+    const { task } = createTask({ goalId: goal.id, title: 't', owner: 'atlas', actor: 'atlas', ts: NOW });
+    expect(task.status).toBe('proposed');
+
+    const reassigned = reassignOwner(task.id, 'volaura-product-chat', {
+      actor: 'ceo',
+      reason: 'OUT-OF-SCOPE FOR ATLAS — VOLAURA product decision',
+      ts: NOW,
+    });
+
+    expect(reassigned.owner).toBe('volaura-product-chat');
+    expect(reassigned.status).toBe('proposed'); // unchanged
+    expect(reassigned.transitions).toHaveLength(task.transitions.length); // no fake transition appended
+
+    const persisted = getTask(task.id);
+    expect(persisted?.owner).toBe('volaura-product-chat');
+    expect(persisted?.status).toBe('proposed');
+  });
+
+  it('ledger rebuild == on-disk snapshot after a reassign', () => {
+    const goal = createGoal({ title: 'g', actor: 'atlas', ts: NOW });
+    const { task } = createTask({ goalId: goal.id, title: 't', actor: 'atlas', ts: NOW });
+    moveTask({ taskId: task.id, to: 'accepted', actor: 'atlas', ts: NOW });
+    moveTask({ taskId: task.id, to: 'planned', actor: 'atlas', ts: NOW });
+    moveTask({ taskId: task.id, to: 'delegated', actor: 'atlas', ts: NOW });
+    moveTask({ taskId: task.id, to: 'escalated', actor: 'atlas', ts: NOW });
+
+    reassignOwner(task.id, 'hand:volaura', { actor: 'ceo', reason: 'delegated to hand', ts: NOW });
+
+    const onDisk = readSnapshotFile();
+    const rebuilt = rebuildSnapshot();
+    expect(onDisk).not.toBeNull();
+    expect(snapshotsEqual(onDisk as NonNullable<typeof onDisk>, rebuilt)).toBe(true);
+    expect(rebuilt.tasks[task.id].owner).toBe('hand:volaura');
+    expect(rebuilt.tasks[task.id].status).toBe('escalated'); // reassignment never touches status
+  });
+
+  it('reassignOwner rejects empty newOwner/actor/reason (typed error)', () => {
+    const goal = createGoal({ title: 'g', actor: 'atlas', ts: NOW });
+    const { task } = createTask({ goalId: goal.id, title: 't', actor: 'atlas', ts: NOW });
+
+    expect(() => reassignOwner(task.id, '', { actor: 'ceo', reason: 'r', ts: NOW }))
+      .toThrow(ExecGraphOwnerReassignError);
+    expect(() => reassignOwner(task.id, '   ', { actor: 'ceo', reason: 'r', ts: NOW }))
+      .toThrow(ExecGraphOwnerReassignError);
+    expect(() => reassignOwner(task.id, 'new-owner', { actor: '', reason: 'r', ts: NOW }))
+      .toThrow(ExecGraphOwnerReassignError);
+    expect(() => reassignOwner(task.id, 'new-owner', { actor: 'ceo', reason: '', ts: NOW }))
+      .toThrow(ExecGraphOwnerReassignError);
+    expect(() => reassignOwner(task.id, 'new-owner', { actor: 'ceo', reason: '   ', ts: NOW }))
+      .toThrow(ExecGraphOwnerReassignError);
+
+    // None of the rejected calls should have mutated the task.
+    expect(getTask(task.id)?.owner).toBe('atlas');
+  });
+
+  it('reassignOwner on an unknown task id throws a typed error (API boundary — never silently no-ops)', () => {
+    expect(() => reassignOwner('tsk_doesnotexist00000000', 'new-owner', { actor: 'ceo', reason: 'r', ts: NOW }))
+      .toThrow(ExecGraphOwnerReassignError);
+  });
+
+  it(
+    'ledger FOLD layer: an owner-reassigned event referencing an unknown task id is skipped safely '
+    + '(console.error, no throw, no phantom task) — mirrors the existing transition/evidence-added skip behavior',
+    () => {
+      const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        const goal = createGoal({ title: 'g', actor: 'atlas', ts: NOW });
+        const orphanEvent = {
+          eventId: 'orphan-owner-reassign-1',
+          kind: 'owner-reassigned',
+          ts: NOW,
+          actor: 'ceo',
+          payload: {
+            taskId: 'tsk_doesnotexist00000000',
+            from: 'atlas',
+            to: 'volaura-product-chat',
+            actor: 'ceo',
+            reason: 'test orphan event',
+            ts: NOW,
+          },
+        };
+        mkdirSync(resolveExecGraphDir(), { recursive: true });
+        appendFileSync(ledgerPath(), `${JSON.stringify(orphanEvent)}\n`, 'utf8');
+
+        expect(() => rebuildSnapshot()).not.toThrow();
+        const snap = rebuildSnapshot();
+        expect(errSpy).toHaveBeenCalled();
+        expect(Object.keys(snap.tasks)).toHaveLength(0);
+        expect(snap.goals[goal.id]).toBeDefined();
+      } finally {
+        errSpy.mockRestore();
+      }
+    },
+  );
 });
 
 // ─── operator/dispatcher.ts loadOperatorState() regression ────────────────

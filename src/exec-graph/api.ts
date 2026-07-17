@@ -193,6 +193,52 @@ export function moveTask(input: MoveTaskInput): Task {
 // Re-export so callers of moveTask don't need a second import for `to`'s type.
 export type { TaskStatus } from './contracts.js';
 
+/** Thrown by reassignOwner() for an unknown task id or empty newOwner/actor/reason. */
+export class ExecGraphOwnerReassignError extends Error {}
+
+export interface ReassignOwnerOptions {
+  actor: string;
+  reason: string;
+  ts?: string;
+}
+
+/**
+ * Owner-reassignment primitive (does NOT touch status — see ledger.ts's
+ * 'owner-reassigned' fold case). This is also the primitive delegation will
+ * reuse later for `owner: atlas -> owner: hand:<id>`, so it's built as a
+ * standalone, append-only, actor/reason-audited move rather than a one-off.
+ */
+export function reassignOwner(taskId: string, newOwner: string, opts: ReassignOwnerOptions): Task {
+  const { actor, reason } = opts;
+  if (!newOwner || !newOwner.trim()) {
+    throw new ExecGraphOwnerReassignError('newOwner is required and must be non-empty');
+  }
+  if (!actor || !actor.trim()) {
+    throw new ExecGraphOwnerReassignError('actor is required and must be non-empty');
+  }
+  if (!reason || !reason.trim()) {
+    throw new ExecGraphOwnerReassignError('reason is required and must be non-empty');
+  }
+
+  const graph = readGraph();
+  const task = graph.tasks[taskId];
+  if (!task) {
+    throw new ExecGraphOwnerReassignError(`exec-graph: unknown task ${taskId}`);
+  }
+
+  const ts = opts.ts ?? nowIso();
+  const from = task.owner;
+
+  appendEvent({
+    kind: 'owner-reassigned',
+    ts,
+    actor,
+    payload: { taskId, from, to: newOwner, actor, reason, ts },
+  });
+
+  return { ...task, owner: newOwner };
+}
+
 export interface AddEvidenceInput {
   taskId: string;
   evidence: Evidence;

@@ -160,6 +160,24 @@ export function applyEventToSnapshot(snapshot: GraphSnapshot, event: LedgerEvent
       const nextTask: Task = { ...existing, evidence: [...existing.evidence, evidence] };
       return { ...snapshot, tasks: { ...snapshot.tasks, [taskId]: nextTask } };
     }
+    case 'owner-reassigned': {
+      // Owner-only mutation — deliberately does NOT touch status or push a
+      // fake Transition (see contracts.ts's ownerReassignedPayloadSchema doc):
+      // the audit trail for a reassignment lives in the ledger event itself,
+      // not in task.transitions (which is reserved for real status moves).
+      const { taskId, to } = event.payload;
+      if (!isSafeKey(taskId)) {
+        console.error(`[exec-graph] refusing unsafe task id '${taskId}' in event ${event.eventId}`);
+        return snapshot;
+      }
+      const existing = snapshot.tasks[taskId];
+      if (!existing) {
+        console.error(`[exec-graph] owner-reassigned event ${event.eventId} references unknown task ${taskId} — skipping`);
+        return snapshot;
+      }
+      const nextTask: Task = { ...existing, owner: to };
+      return { ...snapshot, tasks: { ...snapshot.tasks, [taskId]: nextTask } };
+    }
     default: {
       // Exhaustiveness guard — a new LedgerEvent kind added to contracts.ts
       // without a fold case here is a build-time error, not a silent no-op.

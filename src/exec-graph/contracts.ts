@@ -174,6 +174,22 @@ export const goalCreatedPayloadSchema = z.object({ goal: goalSchema });
 export const taskCreatedPayloadSchema = z.object({ task: taskSchema });
 export const transitionPayloadSchema = z.object({ taskId: taskIdSchema, transition: transitionSchema });
 export const evidenceAddedPayloadSchema = z.object({ taskId: taskIdSchema, evidence: evidenceSchema });
+/**
+ * 'owner-reassigned' — the owner-reassignment primitive. Append-only audit
+ * trail entry; does NOT carry/imply a status change (see ledger.ts's fold —
+ * it updates task.owner only, never task.status/transitions). `from` mirrors
+ * whatever the task's owner was at reassignment time (in practice always
+ * non-empty, since taskSchema requires owner min(1)); `to`/`actor`/`reason`
+ * are required non-empty per exec-graph/api.ts's reassignOwner().
+ */
+export const ownerReassignedPayloadSchema = z.object({
+  taskId: taskIdSchema,
+  from: z.string(),
+  to: z.string().min(1),
+  actor: z.string().min(1),
+  reason: z.string().min(1),
+  ts: z.string().datetime(),
+});
 
 export const ledgerEventSchema = z.discriminatedUnion('kind', [
   z.object({
@@ -204,6 +220,13 @@ export const ledgerEventSchema = z.discriminatedUnion('kind', [
     actor: z.string().min(1),
     payload: evidenceAddedPayloadSchema,
   }),
+  z.object({
+    eventId: z.string().min(1),
+    kind: z.literal('owner-reassigned'),
+    ts: z.string().datetime(),
+    actor: z.string().min(1),
+    payload: ownerReassignedPayloadSchema,
+  }),
 ]);
 export type LedgerEvent = z.infer<typeof ledgerEventSchema>;
 export type LedgerEventKind = LedgerEvent['kind'];
@@ -213,7 +236,8 @@ export type NewLedgerEvent =
   | { kind: 'goal-created'; ts: string; actor: string; payload: z.infer<typeof goalCreatedPayloadSchema> }
   | { kind: 'task-created'; ts: string; actor: string; payload: z.infer<typeof taskCreatedPayloadSchema> }
   | { kind: 'transition'; ts: string; actor: string; payload: z.infer<typeof transitionPayloadSchema> }
-  | { kind: 'evidence-added'; ts: string; actor: string; payload: z.infer<typeof evidenceAddedPayloadSchema> };
+  | { kind: 'evidence-added'; ts: string; actor: string; payload: z.infer<typeof evidenceAddedPayloadSchema> }
+  | { kind: 'owner-reassigned'; ts: string; actor: string; payload: z.infer<typeof ownerReassignedPayloadSchema> };
 
 export function parseLedgerEvent(input: unknown): LedgerEvent {
   return ledgerEventSchema.parse(input);

@@ -192,3 +192,61 @@ describe('formatMorningBriefSection', () => {
     expect(a).toBe(b);
   });
 });
+
+// ─── owner-aware escalated split (anti-spam — CEO decision 2026-07-17: an ──
+// ─── escalated task reassigned away from ceo/external-cto/atlas must NOT ──
+// ─── keep re-rendering as "your decision") ─────────────────────────────────
+
+describe('owner-aware escalated split — formatStatusMessage', () => {
+  it('escalated task owned by atlas renders under "⚠ ждут решения", not under "📤 передано"', () => {
+    const tasks = [makeTask('tsk_esc_atlas', 'escalated', { owner: 'atlas' })];
+    const msg = formatStatusMessage(buildSummary(tasks), tasks);
+
+    expect(msg).toContain('⚠ ждут решения (1):');
+    expect(msg).toContain('- tsk_esc_atlas test task');
+    expect(msg).not.toContain('📤 передано');
+  });
+
+  it('escalated task owned by volaura-product-chat renders under "📤 передано", not under "⚠ ждут решения" (anti-spam)', () => {
+    const tasks = [makeTask('tsk_esc_handed', 'escalated', { owner: 'volaura-product-chat' })];
+    const msg = formatStatusMessage(buildSummary(tasks), tasks);
+
+    expect(msg).toContain('📤 передано (1):');
+    expect(msg).toContain('- tsk_esc_handed test task (ждёт: volaura-product-chat)');
+    expect(msg).not.toContain('⚠ ждут решения');
+  });
+
+  it('splits mixed-owner escalated tasks into both sections in one message', () => {
+    const tasks = [
+      makeTask('tsk_esc_ceo', 'escalated', { owner: 'ceo' }),
+      makeTask('tsk_esc_ext', 'escalated', { owner: 'external-cto' }),
+      makeTask('tsk_esc_hand', 'escalated', { owner: 'hand:volaura' }),
+    ];
+    const msg = formatStatusMessage(buildSummary(tasks), tasks);
+
+    expect(msg).toContain('⚠ ждут решения (2):');
+    expect(msg).toContain('- tsk_esc_ceo test task');
+    expect(msg).toContain('- tsk_esc_ext test task');
+    expect(msg).toContain('📤 передано (1):');
+    expect(msg).toContain('- tsk_esc_hand test task (ждёт: hand:volaura)');
+  });
+});
+
+describe('owner-aware escalated split — formatMorningBriefSection', () => {
+  it('escalated task owned by atlas renders under "Ждут твоего решения", not under "Передано владельцу"', () => {
+    const tasks = [makeTask('tsk_esc_atlas', 'escalated', { owner: 'atlas' })];
+    const section = formatMorningBriefSection(buildSummary(tasks), tasks, { now: NOW });
+
+    expect(section).toContain('Ждут твоего решения (1):');
+    expect(section).not.toContain('Передано владельцу');
+  });
+
+  it('escalated task owned by volaura-product-chat renders under "Передано владельцу", NOT under "Ждут твоего решения" (anti-spam)', () => {
+    const tasks = [makeTask('tsk_esc_handed', 'escalated', { owner: 'volaura-product-chat' })];
+    const section = formatMorningBriefSection(buildSummary(tasks), tasks, { now: NOW });
+
+    expect(section).toContain('Передано владельцу (1):');
+    expect(section).toContain('- tsk_esc_handed test task → volaura-product-chat');
+    expect(section).not.toContain('Ждут твоего решения');
+  });
+});

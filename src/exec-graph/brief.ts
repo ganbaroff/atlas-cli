@@ -26,6 +26,21 @@ const CLOSED_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 const EMPTY_GRAPH_MESSAGE = 'Exec-graph: задач нет. Новая работа заводится через atlas task add.';
 
+/**
+ * Owners for whom an escalated task is a genuine, live CEO/Atlas decision
+ * item. An escalated task owned by anything else (a product chat, `hand:*`,
+ * ...) has been handed off via exec-graph/api.ts's reassignOwner() — it's
+ * still status=escalated (reassignment never touches status), but it must
+ * NOT keep re-spamming as "waiting on your decision". Exported so
+ * src/cli.ts's `graph status` can apply the identical split in its own
+ * CLI-native formatting without duplicating the owner list.
+ */
+export const CEO_DECISION_OWNERS: readonly string[] = ['ceo', 'external-cto', 'atlas'];
+
+function isCeoDecisionOwner(owner: string): boolean {
+  return CEO_DECISION_OWNERS.includes(owner);
+}
+
 function truncateTitle(title: string, max = MAX_TITLE_LEN): string {
   if (title.length <= max) return title;
   return `${title.slice(0, max - 1)}…`;
@@ -37,6 +52,15 @@ function taskLine(task: Task): string {
 
 function byStatus(tasks: readonly Task[], status: TaskStatus): Task[] {
   return tasks.filter((t) => t.status === status);
+}
+
+/** Escalated tasks split into "genuinely awaits a CEO/Atlas decision" vs "handed off to some other owner". */
+function splitEscalatedByOwner(tasks: readonly Task[]): { forDecision: Task[]; handedOff: Task[] } {
+  const escalated = byStatus(tasks, 'escalated');
+  return {
+    forDecision: escalated.filter((t) => isCeoDecisionOwner(t.owner)),
+    handedOff: escalated.filter((t) => !isCeoDecisionOwner(t.owner)),
+  };
 }
 
 /** `label (N):` + up to MAX_LIST_ITEMS `- id title` lines + an overflow marker. Empty input -> no lines at all. */
@@ -58,10 +82,27 @@ function formatCounts(counts: Record<TaskStatus, number>): string | undefined {
   return `Статусы — ${parts.join(', ')}.`;
 }
 
+/** Handed-off escalated tasks: `📤 передано (N):` + up to MAX_LIST_ITEMS `- id title (ждёт: owner)` lines. */
+function formatHandedOffSection(handedOff: Task[]): string[] {
+  if (handedOff.length === 0) return [];
+  const shown = handedOff.slice(0, MAX_LIST_ITEMS);
+  const lines = [
+    `📤 передано (${handedOff.length}):`,
+    ...shown.map((t) => `- ${t.id} ${truncateTitle(t.title)} (ждёт: ${t.owner})`),
+  ];
+  const hidden = handedOff.length - shown.length;
+  if (hidden > 0) lines.push(`  …+${hidden} ещё`);
+  return lines;
+}
+
 /**
  * Compact `/status` rendering: counts line, then up to 5 escalated
- * ("⚠ ждут решения"), up to 5 evidence-submitted ("🔍 на проверке"), up to 5
- * blocked ("⛔ blocked"). Empty graph short-circuits to a fixed message.
+ * ("⚠ ждут решения" — only tasks owned by ceo/external-cto/atlas, i.e. a
+ * genuinely live decision), then handed-off escalated tasks
+ * ("📤 передано" — parked with some other owner, informational only, NOT
+ * re-spammed as a decision prompt), up to 5 evidence-submitted
+ * ("🔍 на проверке"), up to 5 blocked ("⛔ blocked"). Empty graph
+ * short-circuits to a fixed message.
  */
 export function formatStatusMessage(summary: StatusSummary, tasks: readonly Task[]): string {
   if (tasks.length === 0) {
@@ -72,7 +113,9 @@ export function formatStatusMessage(summary: StatusSummary, tasks: readonly Task
   const countsLine = formatCounts(summary.counts);
   if (countsLine) lines.push(countsLine);
 
-  lines.push(...formatSection('⚠ ждут решения', byStatus(tasks, 'escalated')));
+  const { forDecision, handedOff } = splitEscalatedByOwner(tasks);
+  lines.push(...formatSection('⚠ ждут решения', forDecision));
+  lines.push(...formatHandedOffSection(handedOff));
   lines.push(...formatSection('🔍 на проверке', byStatus(tasks, 'evidence-submitted')));
   lines.push(...formatSection('⛔ blocked', byStatus(tasks, 'blocked')));
 
@@ -108,9 +151,25 @@ export interface MorningBriefOpts {
   now: Date;
 }
 
+/** Handed-off escalated tasks for the morning brief: «Передано владельцу (N):» + up to MAX_LIST_ITEMS `- id title → owner` lines. */
+function formatHandedOffMorningSection(handedOff: Task[]): string {
+  if (handedOff.length === 0) return '';
+  const shown = handedOff.slice(0, MAX_LIST_ITEMS);
+  const lines = [
+    `Передано владельцу (${handedOff.length}):`,
+    ...shown.map((t) => `- ${t.id} ${truncateTitle(t.title)} → ${t.owner}`),
+  ];
+  const hidden = handedOff.length - shown.length;
+  if (hidden > 0) lines.push(`  …+${hidden} ещё`);
+  return lines.join('\n');
+}
+
 /**
  * Decision-framed section appended to the morning brief: «Ждут твоего
- * решения» (escalated, up to 5), «В работе» (in-progress + delegated count),
+ * решения» (escalated AND owned by ceo/external-cto/atlas, up to 5),
+ * «Передано владельцу» (escalated but owned by anyone else — informational,
+ * NOT framed as a CEO decision, so a parked/deferred item stops re-spamming
+ * the brief every morning), «В работе» (in-progress + delegated count),
  * «Закрыто за 24ч» (tasks last transitioned to 'closed' within 24h of
  * opts.now, each with its evidence count). Sections with nothing to show are
  * omitted entirely — an all-empty graph yields an empty string, so callers
@@ -123,9 +182,13 @@ export function formatMorningBriefSection(
 ): string {
   const sections: string[] = [];
 
-  const escalated = byStatus(tasks, 'escalated');
-  if (escalated.length > 0) {
-    sections.push(formatSection('Ждут твоего решения', escalated).join('\n'));
+  const { forDecision, handedOff } = splitEscalatedByOwner(tasks);
+  if (forDecision.length > 0) {
+    sections.push(formatSection('Ждут твоего решения', forDecision).join('\n'));
+  }
+  const handedOffSection = formatHandedOffMorningSection(handedOff);
+  if (handedOffSection) {
+    sections.push(handedOffSection);
   }
 
   const inProgressCount = (summary.counts['in-progress'] ?? 0) + (summary.counts['delegated'] ?? 0);
