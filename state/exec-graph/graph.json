@@ -686,6 +686,85 @@
           "actor": "atlas"
         }
       ]
+    },
+    {
+      "id": "tsk_f7b3c555850c44d289f5f1ecd63b6756",
+      "goalId": "gol_d1f4213c91984ca192065c98bc73405f",
+      "title": "Confirm ADR-0002 names VOLAURA the execution-state authority",
+      "source": {
+        "kind": "external-cto-brief",
+        "ref": "2026-07-17-mission2-neg2"
+      },
+      "owner": "hand:local-readonly",
+      "status": "rejected",
+      "riskClass": "low",
+      "idempotencyKey": "external-cto-brief:2026-07-17-mission2-neg2",
+      "evidence": [
+        {
+          "ref": "e2fc178c26e1eb88f73d40f092bb876323f6847a713981496e19d2b09ce94975",
+          "kind": "tool-receipt",
+          "note": "{\"taskId\":\"tsk_f7b3c555850c44d289f5f1ecd63b6756\",\"handId\":\"local-readonly\",\"submittedBy\":\"local-readonly\",\"kind\":\"file-contains\",\"ref\":\"docs/adr/0002-volaura-intent-vs-anus-execution-state.md\",\"expectedSubstring\":\"VOLAURA is the execution-state authority\",\"claimedResult\":\"ADR-0002 names VOLAURA as the execution-state authority\"}"
+        },
+        {
+          "ref": "e2fc178c26e1eb88f73d40f092bb876323f6847a713981496e19d2b09ce94975",
+          "kind": "other"
+        }
+      ],
+      "createdAt": "2026-07-17T21:38:30.233Z",
+      "transitions": [
+        {
+          "from": null,
+          "to": "proposed",
+          "ts": "2026-07-17T21:38:30.233Z",
+          "actor": "atlas",
+          "note": "created"
+        },
+        {
+          "from": "proposed",
+          "to": "accepted",
+          "ts": "2026-07-17T21:38:37.950Z",
+          "actor": "atlas",
+          "note": "mission2 neg2 demonstration"
+        },
+        {
+          "from": "accepted",
+          "to": "planned",
+          "ts": "2026-07-17T21:38:44.943Z",
+          "actor": "atlas",
+          "note": "mission2 neg2 demonstration"
+        },
+        {
+          "from": "planned",
+          "to": "delegated",
+          "ts": "2026-07-17T21:38:52.539Z",
+          "actor": "atlas",
+          "note": "assigned to hand:local-readonly"
+        },
+        {
+          "from": "delegated",
+          "to": "in-progress",
+          "ts": "2026-07-17T21:39:08.151Z",
+          "actor": "local-readonly",
+          "note": "receipt submission requires in-progress"
+        },
+        {
+          "from": "in-progress",
+          "to": "evidence-submitted",
+          "ts": "2026-07-17T21:39:08.161Z",
+          "actor": "local-readonly",
+          "evidenceRefs": [
+            "e2fc178c26e1eb88f73d40f092bb876323f6847a713981496e19d2b09ce94975"
+          ],
+          "note": "receipt kind=file-contains"
+        },
+        {
+          "from": "evidence-submitted",
+          "to": "rejected",
+          "ts": "2026-07-17T21:39:15.465Z",
+          "actor": "atlas",
+          "note": "rejected: file docs/adr/0002-volaura-intent-vs-anus-execution-state.md does not contain expected substring"
+        }
+      ]
     }
   ]
 }

@@ -1,13 +1,33 @@
 /**
  * hands/registry.ts — Hand Contract V0: the static Hand registry.
  *
- * WHAT THIS IS: descriptive CONFIG only — like ../atlas/policy.ts's
- * policy.yaml read-model, but static-in-code for V0 rather than file-loaded.
- * A HandSpec describes what a delegation target IS ALLOWED to do; it is
- * NEVER task state. exec-graph (src/exec-graph/*) remains the ONLY task
- * authority — nothing here reads or writes state/exec-graph/.
+ * Purpose: descriptive CONFIG only — like ../atlas/policy.ts's policy.yaml
+ * read-model, but static-in-code for V0 rather than file-loaded. A HandSpec
+ * describes what a delegation target IS ALLOWED to do; it is NEVER task
+ * state.
  *
- * EXACTLY TWO HANDS in V0, both deliberately narrow:
+ * Authority boundary: exec-graph (src/exec-graph/*) remains the ONLY task
+ * authority — nothing in this file reads or writes state/exec-graph/. This
+ * registry is consulted (read-only) by ./exec-graph-adapter.ts, the one
+ * module allowed to cross into exec-graph; registry.ts itself has zero
+ * authority over task state.
+ *
+ * Inputs/outputs: `getHand(handId: string) -> HandSpec` (throws
+ * HandNotFoundError if unknown/unsafe); `listHands() -> HandSpec[]`;
+ * `validateRegistry(entries? = REGISTRY values) -> HandSpec[]` (schema
+ * self-check, throws zod ZodError on a malformed entry). No other inputs.
+ *
+ * State read/written: none. `REGISTRY` is a frozen in-memory literal built
+ * once at module load via `handSpecSchema.parse()` — no filesystem, no
+ * network, no `state/` directory access anywhere in this file.
+ *
+ * Failure behavior: `getHand()` throws `HandNotFoundError` for an unknown
+ * id OR an unsafe dunder key (`__proto__`/`constructor`/`prototype`) —
+ * never returns `undefined`, so callers can't accidentally treat a missing
+ * hand as a falsy-but-present value. `parseHandSpec()`/`validateRegistry()`
+ * throw on schema violation; this module never silently coerces a bad spec.
+ *
+ * Security: EXACTLY TWO HANDS in V0, both deliberately narrow:
  *   - 'sonnet-foreground'  — CEO-supervised, foreground-only, can write
  *     scoped code. Because 'write-scoped-code' is in its allowedActions,
  *     ./risk.ts's classifyRisk() (fed hand.allowedActions as the
@@ -20,10 +40,16 @@
  *   - 'local-readonly'     — FREE, read-only, unattended-capable. No write
  *     action anywhere in its allowlist, so it classifies 'low' risk by
  *     default and the refuter is suppressed for it (see ./risk.ts).
+ *   No openmanus/browser/voice/cloud/paid providers are registered here — V0
+ *   is deliberately narrow; widening the registry is a follow-up mission,
+ *   not this one. `isSafeKey()` rejects dunder-key lookups defense-in-depth
+ *   against prototype pollution, mirroring `exec-graph/ledger.ts`'s
+ *   `isSafeKey()`.
  *
- * No openmanus/browser/voice/cloud/paid providers are registered here — V0
- * is deliberately narrow; widening the registry is a follow-up mission, not
- * this one.
+ * Tests: src/__tests__/hands.test.ts — schema validation (handSpecSchema /
+ * validateRegistry), dunder-key rejection, getHand()/listHands() behavior,
+ * and (describe block 6) the structural test asserting this file's source
+ * never cites the exec-graph API module's import path.
  */
 
 import { z } from 'zod';

@@ -1,33 +1,58 @@
 /**
  * hands/verifier.ts — Hand Contract V0: the deterministic receipt verifier.
  *
- * WHAT THIS IS: verify(receipt) -> {verified, reason}. NO LLM, NO network. If
- * a claim can't be independently checked by a fixed rule against the real
+ * Purpose: `verify(receipt) -> {verified, reason}`. NO LLM, NO network. If a
+ * claim can't be independently checked by a fixed rule against the real
  * filesystem/git state, it is REJECTED — that is the entire point of a
  * deterministic verifier (a plausible-sounding narrative and a real receipt
  * must be told apart by evidence, not by how convincing the text reads).
  *
- * SECRET GUARD: any `ref` matching PROTECTED_PATH_RE (.env/secret/credential/
- * .pem/id_rsa/id_ed25519/id_ecdsa/.pfx/.p12/.jks/service-account, case
- * insensitive) is refused BEFORE any fs/git call touches it — the guard runs
- * first in every branch that would otherwise read `ref`, so a protected path
- * is never opened, only pattern-matched against its own name. For
- * 'command-output-match', the same guard also runs against the WHOLE
- * `command` string before execFileSync, so a command that merely CITES a
- * protected path (e.g. `git show HEAD:apps/api/.env`) is refused too, not
- * just an explicit `ref`.
+ * Authority boundary: this module has NO authority over task state — it is
+ * a pure judgment function called by ./exec-graph-adapter.ts's
+ * `verifyAndTransition()`, the only place a verdict from here is turned
+ * into an actual `verified`/`rejected` transition. verifier.ts itself never
+ * imports the exec-graph API module and never writes anywhere.
  *
- * COMMAND ALLOWLIST: 'command-output-match' only ever runs a command whose
- * full string matches one of a fixed set of read-only prefixes (below). No
- * shell is invoked (execFileSync, not exec) — the command string is split on
- * whitespace and run as `argv[0]` + args directly, so there is no shell
- * metacharacter interpretation surface even for an allowlisted command.
+ * Inputs/outputs: one `Receipt` (./contract.ts) in, one `VerifyResult`
+ * (`{verified: boolean, reason: string}`) out — always, for every kind,
+ * every failure path. No side effects, no return-value ambiguity.
  *
- * FAILURE BEHAVIOR: every fs/git/process failure is caught and turned into
- * `{verified: false, reason: <precise message>}` — this module NEVER throws.
- * That mirrors exec-graph/ledger.ts's "reads never throw" rule, extended to
- * verification: a verifier that can crash the caller on a missing file is a
- * verifier that can be used to hang/DoS the delegation-control layer.
+ * State read/written: none written. Reads only: `existsSync`/`readFileSync`
+ * against `receipt.ref` (file-exists / file-contains), `git cat-file -t`
+ * against `receipt.ref` (commit-exists), or an allowlisted read-only
+ * command (command-output-match, see below) — never `state/exec-graph/` or
+ * any other Atlas-managed state directory.
+ *
+ * Failure behavior: every fs/git/process failure is caught and turned into
+ * `{verified: false, reason: <precise message>}` — this module NEVER
+ * throws. That mirrors exec-graph/ledger.ts's "reads never throw" rule,
+ * extended to verification: a verifier that can crash the caller on a
+ * missing file is a verifier that can be used to hang/DoS the
+ * delegation-control layer.
+ *
+ * Security:
+ *   - SECRET GUARD: any `ref` matching PROTECTED_PATH_RE (.env/secret/
+ *     credential/.pem/id_rsa/id_ed25519/id_ecdsa/.pfx/.p12/.jks/
+ *     service-account, case insensitive) is refused BEFORE any fs/git call
+ *     touches it — the guard runs first in every branch that would
+ *     otherwise read `ref`, so a protected path is never opened, only
+ *     pattern-matched against its own name. For 'command-output-match', the
+ *     same guard also runs against the WHOLE `command` string before
+ *     execFileSync, so a command that merely CITES a protected path (e.g.
+ *     `git show HEAD:apps/api/.env`) is refused too, not just an explicit
+ *     `ref`.
+ *   - COMMAND ALLOWLIST: 'command-output-match' only ever runs a command
+ *     whose full string matches one of a fixed set of read-only prefixes
+ *     (below). No shell is invoked (execFileSync, not exec) — the command
+ *     string is split on whitespace and run as `argv[0]` + args directly,
+ *     so there is no shell metacharacter interpretation surface even for an
+ *     allowlisted command.
+ *
+ * Tests: src/__tests__/hands.test.ts — every receipt kind's verified/
+ * rejected paths, the protected-path guard (both `ref` and whole-`command`
+ * forms), the command allowlist, and (describe block 6) the structural
+ * test asserting this file's source never cites the exec-graph API
+ * module's import path.
  */
 
 import { existsSync, readFileSync } from 'node:fs';

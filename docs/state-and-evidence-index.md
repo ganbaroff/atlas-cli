@@ -85,6 +85,29 @@ Integrity check — confirms `graph.json` matches a fresh fold of
 `ledger.jsonl`. Not itself an evidence inspector, but the precondition for
 trusting any of the reads above (see "Recovery pointer").
 
+## Hand Contract V0 delegation evidence (Mission 2)
+
+A hand-owned task's receipt (`kind: 'tool-receipt'`) is just another
+`Evidence` entry on the same task, added via `src/hands/exec-graph-adapter.ts`'s
+`submitReceipt()` (which itself calls `exec-graph/api.ts`'s `addEvidence()`
+— no separate evidence store). Two things specific to this evidence path,
+not covered above:
+
+- **Secret-scanned before persistence, not after.** `submitReceipt()`
+  refuses (`ReceiptSecretError`) any receipt whose free-text fields match a
+  secret-shape pattern BEFORE the evidence entry is written — required
+  because `ledger.jsonl` is append-only (ADR-0003); a secret that reached
+  it would be permanent. See `src/hands/exec-graph-adapter.ts`'s
+  `assertReceiptHasNoSecrets()` and ADR-0006.
+- **Hand-owned final transitions are verifier-only.** A hand-owned task
+  (`owner` starting `hand:`) can reach `verified`/`rejected` only through
+  `src/hands/exec-graph-adapter.ts`'s `verifyAndTransition()` — enforced in
+  `exec-graph/api.ts`'s `moveTask()` itself (`HandAuthorityError` if the
+  generic `task move`/`task reassign` CLI is used on a hand-owned task
+  without the internal `_viaHandAdapter` flag). See
+  `docs/adr/0006-hand-contract-authority.md` and
+  `docs/runbooks/hand-delegation.md`.
+
 ## Recovery pointer
 
 If any of the reads above look wrong, stale, or `graph verify` reports a
@@ -125,7 +148,9 @@ mismatch: **`docs/runbooks/exec-graph-recovery.md`**. Do not hand-edit
 
 - `docs/architecture/ATLAS-ARCHITECTURE.md` — full system map.
 - `docs/adr/0001-one-task-authority-exec-graph.md`,
-  `0003-append-only-ledger-plus-snapshot.md`
-- `docs/runbooks/exec-graph-recovery.md`
+  `0003-append-only-ledger-plus-snapshot.md`,
+  `0006-hand-contract-authority.md`
+- `docs/runbooks/exec-graph-recovery.md`, `hand-delegation.md`
 - `src/exec-graph/README.md`, `contracts.ts`, `ledger.ts`, `api.ts`
-- `src/__tests__/exec-graph.test.ts`
+- `src/hands/README.md`, `exec-graph-adapter.ts`, `contract.ts`
+- `src/__tests__/exec-graph.test.ts`, `hands.test.ts`

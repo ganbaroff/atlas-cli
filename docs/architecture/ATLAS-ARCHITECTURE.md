@@ -1,9 +1,11 @@
-# Atlas / ANUS architecture map (EB-0)
+# Atlas / ANUS architecture map (EB-0 + Mission 2)
 
-Canonical system map as of EB-0 (branch `feat/arsenal-wiring`, HEAD
-`ac6d384`). This is the entry point for "what talks to what" — component
-docs and ADRs go deeper on any one piece; this file's job is to keep the
-whole shape visible in one place and stay current.
+Canonical system map, originally EB-0 (branch `feat/arsenal-wiring`, HEAD
+`ac6d384`), updated for Mission 2 (Hand Contract V0 — controlled
+delegation over exec-graph, `src/hands/*`). This is the entry point for
+"what talks to what" — component docs and ADRs go deeper on any one piece;
+this file's job is to keep the whole shape visible in one place and stay
+current.
 
 **Status of this document:** the diagram and tables below describe code
 that exists and is tested (IMPLEMENTED-LOCAL throughout unless marked
@@ -35,6 +37,8 @@ flowchart TD
         SWARM["swarm.ts / swarm-deep<br/>(TS fork-parallel + Python bridge)"]
     end
 
+    HANDSCTL["Hand Contract V0<br/>src/hands/*<br/>delegation-control over exec-graph"]
+
     subgraph VOLAURA["VOLAURA (separate repo)"]
         VMEM["memory/atlas/*<br/>intent + strategy canon"]
         VPY["Python swarm (packages/swarm)"]
@@ -55,6 +59,8 @@ flowchart TD
     OPDISP --> RUNS[("operator/runs/*.result.json<br/>evidence traces")]
 
     CLI -->|"atlas goal/task/graph ..."| EXECG
+    CLI -->|"atlas hand assign/submit/verify"| HANDSCTL
+    HANDSCTL -->|"moveTask/addEvidence/reassignOwner<br/>(_viaHandAdapter capability flag)"| EXECG
     TG -->|"/status, 08:45 brief<br/>(read-only)"| EXECG
 
     AUTO -->|"read-only: repo_watch + health-check"| REPOS[("watched git repos<br/>ANUS, VOLAURA")]
@@ -68,6 +74,7 @@ flowchart TD
     SWARM -.->|python-bridge subprocess| VPY
 
     style EXECG fill:#1a3,color:#fff
+    style HANDSCTL fill:#1a3,color:#fff
     style SUPA fill:#666,color:#fff
     style VBUS fill:#a33,color:#fff
 ```
@@ -75,7 +82,18 @@ flowchart TD
 Legend: solid arrows are the primary, currently-live data paths; dotted
 arrows are secondary/optional paths (VOLAURA memory access, Supabase
 session mirroring, the dormant legacy queue). Green = the machine execution
-authority (ADR-0001). Red = a known-issue node (ADR-0002).
+authority (ADR-0001) — `HANDSCTL` is green too because it is the sole
+enforced *path into* that authority for hand-owned tasks (ADR-0006), not a
+second authority itself. Red = a known-issue node (ADR-0002).
+
+**Naming note (avoid confusion):** the pre-existing `HANDS["Hands (execution
+surfaces)"]` subgraph (`task-spawner.ts`, `operator/dispatcher.ts`,
+`swarm.ts`) predates Mission 2 and means "places work actually executes."
+`HANDSCTL` (Mission 2, `src/hands/*`) is a different, newer concept — a
+**delegation-control layer over exec-graph task state**, named "Hand
+Contract" in ADR-0006 and the mission brief. The two are unrelated in code
+and are drawn as separate nodes deliberately; a future rename of the older
+subgraph is out of this mission's scope.
 
 ## Component map
 
@@ -87,6 +105,7 @@ authority (ADR-0001). Red = a known-issue node (ADR-0002).
 | **Notifier** | `src/atlas/notify.ts` | The one gate every proactive CEO-facing send passes through (ADR-0005). Silent by default; `briefing`/`error`/`important`/`remote-result` only. |
 | **Policy** | `src/atlas/policy.ts` + `config/policy.yaml` | Declarative read-model over spend caps, pause, autonomy shell whitelist, fs-sensitive paths. Fail-closed on load failure. |
 | **exec-graph** | `src/exec-graph/*` | The one machine execution authority for new Atlas-managed work (ADR-0001). Goal/task ledger, 11-state lifecycle, evidence-gated transitions. |
+| **Hand Contract V0** | `src/hands/*` | Delegation-control layer over exec-graph (ADR-0006, Mission 2). Assigns a descriptive `HandSpec` (`registry.ts`) to a task, accepts a falsifiable `Receipt`, and resolves it via a deterministic no-LLM verifier (`verifier.ts`) + risk-gated refuter (`risk.ts`/`refuter.ts`). `exec-graph-adapter.ts` is the only module that calls into `exec-graph/api.ts`; the Hand registry itself is descriptive config, never task-state authority. |
 | **Operator contracts** | `src/operator/*` (`dispatcher.ts`, `contracts.ts`, `evaluator.ts`, `promotion.ts`, `lifecycle.ts`, `action-lane.ts`) | Task dispatch/evaluate/promote pipeline with its own evidence contract, distinct from exec-graph's task lifecycle. Reads `operator/tasks/*.json`, writes `operator/runs/*.result.json`. |
 | **Task spawner** | `src/atlas/task-spawner.ts` | Telegram `/task` — spawns an Atlas CLI subprocess (cwd=VOLAURA) as a CEO-direct, ephemeral execution. TEMPORARY ADAPTER (ADR-0004 #2). |
 | **Model swarm** | `src/swarm.ts`, `src/swarm-worker.ts`, `src/atlas/python-bridge.ts` | Fork-based parallel-agent decomposition (TS) or subprocess call into VOLAURA's Python swarm (13 perspectives, 4 DAG waves). |
@@ -99,6 +118,7 @@ authority (ADR-0001). Red = a known-issue node (ADR-0002).
 | Concern | Authority | Notes |
 |---|---|---|
 | Goals/tasks/execution state (new work) | `src/exec-graph` | ADR-0001. Evidence-gated, append-only ledger. |
+| Delegation / verification of hand-owned tasks | `src/hands/exec-graph-adapter.ts`'s `verifyAndTransition()` — enforced jointly with `src/exec-graph/api.ts`'s `moveTask()`/`reassignOwner()` via an internal `_viaHandAdapter` capability flag | ADR-0006. Final state (`verified`/`rejected`) for a hand-owned task can be set ONLY through this path; the generic `atlas task move`/`task reassign` CLI throws `HandAuthorityError` on a hand-owned task. The Hand registry (`src/hands/registry.ts`) is descriptive config, NOT authority — it never reads/writes exec-graph state. |
 | Decisions / intent / strategy | VOLAURA canon + CEO | ADR-0002. `ATLAS-CANON.md` remains the repo-split source of truth for where to edit. |
 | CEO notifications (proactive) | `src/atlas/notify.ts` | ADR-0005. The only gate for unprompted sends. `/status`/brief are CEO-pulled or pre-existing scheduled reads, not a second authority. |
 | Credentials / secrets | `.env` (local) / Railway env vars (cloud) — **names only**, never values in code, logs, or docs | See `SECURITY.md`, `docs/POLICY.md`. |
@@ -207,15 +227,68 @@ these as "obviously missing":
 - **No cloud exec-graph writer.** Deliberate, not an oversight — see "Local
   / cloud boundary" above. Extending write access to the cloud process is a
   future ADR's decision, not an assumed next step.
+- **No second delegation store.** Hand Contract V0 (`src/hands/*`) does not
+  persist a `DelegationBrief` or a delegation-state record anywhere of its
+  own — a hand-owned task's status IS an exec-graph `Task` status (owner
+  `hand:<id>`), and riskClass is re-derived at verify time from the task's
+  own title + the hand's registry entry, not cached in a parallel table
+  (ADR-0006). A second store would reintroduce exactly the "which place do
+  I check for the real status" fragmentation ADR-0001 exists to eliminate.
+
+## LEARN — Mission 2 lessons (Hand Contract V0)
+
+Concrete lessons from building the delegation-control layer, kept here
+rather than as generic advice because each one changed a specific line of
+code or a specific test:
+
+1. **A specialized safe wrapper is not enough on its own.** The first cut
+   of `src/hands/exec-graph-adapter.ts` correctly refused to let
+   `verifyAndTransition()` be bypassed — but the *underlying generic
+   primitive* it wraps (`exec-graph/api.ts`'s `moveTask()`/
+   `reassignOwner()`) was still willing to drive a hand-owned task straight
+   to `verified` or create `hand:` ownership if called directly through the
+   plain `atlas task move`/`task reassign` CLI path — an adversarial review
+   found this sibling-CLI bypass. The fix had to live in the generic
+   primitive itself (the `_viaHandAdapter` capability flag +
+   `HandAuthorityError` in `exec-graph/api.ts`), not just in the adapter
+   that was supposed to be the only caller. A guard that only exists in the
+   "nice" entry point is trivially bypassable via any other entry point
+   into the same underlying state.
+2. **Receipts must be secret-scanned *before* ledger persistence, not
+   after.** `state/exec-graph/ledger.jsonl` is append-only by design
+   (ADR-0003) — that guarantee is exactly what makes a leaked secret
+   written into it permanent, unlike a mutable store where a bad write can
+   be corrected in place. `assertReceiptHasNoSecrets()` therefore has to
+   run before `submitReceipt()`'s first write, not as a cleanup pass after.
+3. **A deterministic verifier needs a minimum-meaningful-evidence guard,
+   or it degenerates into theater.** Re-checking falsifiable evidence
+   (file/command output actually contains a claimed substring) is what
+   separates a receipt from a narrative — but an `expectedSubstring` of
+   `' '` (a single space) technically satisfies `z.string().min(1)` and
+   would then "verify" against almost any non-empty file or command
+   output. `contract.ts`'s `receiptSchema` needed an explicit
+   `expectedSubstring.trim().length >= 3` check to close that degenerate
+   case; length-1 validation alone was not a real evidence bar.
+4. **Accepted V0 limit, not fixed here:** `risk.ts`'s `classifyRisk()` is a
+   fixed keyword rule over the task's title + the hand's `allowedActions`
+   — an objective worded to avoid the `write|mutat|delete|deploy|migrat`,
+   `secret|credential|token|\.env|auth|rls`, and `prod|production|live|
+   cloud` keyword groups classifies as `'low'` and skips the refuter
+   entirely (`risk.ts`'s `needsRefuter()`), regardless of what the task
+   actually does once delegated. Documented as an accepted V0 gap, not
+   fixed in this mission — a future risk classifier would need semantic
+   (not just lexical) evaluation of the objective, which reintroduces the
+   "no LLM in the verification path" tension this V0 deliberately avoided.
 
 ## Links
 
-- `docs/adr/0001-one-task-authority-exec-graph.md` through `0005-*.md`
+- `docs/adr/0001-one-task-authority-exec-graph.md` through `0006-*.md`
 - `docs/runbooks/exec-graph-recovery.md`,
   `atlas-pause-and-resume.md`, `morning-brief-and-status.md`,
-  `legacy-task-cutover.md`
+  `legacy-task-cutover.md`, `hand-delegation.md`
 - `docs/state-and-evidence-index.md`
 - `ATLAS-CANON.md` — the pre-existing repo-split canon
-- `src/exec-graph/README.md`, `docs/QUEUE-CONTRACT.md`, `docs/POLICY.md`,
-  `docs/PANIC.md`, `docs/AUTONOMY-V0.md`, `docs/DESKTOP-SHELL.md`
+- `src/exec-graph/README.md`, `src/hands/README.md`,
+  `docs/QUEUE-CONTRACT.md`, `docs/POLICY.md`, `docs/PANIC.md`,
+  `docs/AUTONOMY-V0.md`, `docs/DESKTOP-SHELL.md`
 - `README.md` — component entry points + commands

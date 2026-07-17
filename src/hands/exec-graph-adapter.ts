@@ -1,29 +1,71 @@
 /**
  * hands/exec-graph-adapter.ts — Hand Contract V0: the ONLY bridge into exec-graph.
  *
- * AUTHORITY BOUNDARY (this is the whole point of this file): exec-graph
- * (src/exec-graph/*) stays the ONE machine execution authority. A Hand never
- * writes exec-graph state directly — every write path here goes through
- * exec-graph/api.js's existing moveTask() / addEvidence() / reassignOwner(),
- * the same primitives the CLI's `goal`/`task`/`graph` commands already use.
- * Nothing in ./registry.ts, ./contract.ts, ./risk.ts, ./verifier.ts, or
- * ./refuter.ts imports exec-graph/api.js — this module is the only one that
- * does (see src/__tests__/hands.test.ts's structural test, which asserts
- * exactly that by reading the source of each file).
+ * Purpose: the delegation-control layer over exec-graph — assign a Hand to
+ * a task, accept a submitted receipt, and (the one load-bearing function)
+ * verify that receipt and set the task's final state. Everything else in
+ * src/hands/ (registry, contract, risk, verifier, refuter) is a pure
+ * function or static config this module orchestrates; none of them touch
+ * exec-graph state directly.
  *
- * verifyAndTransition() is THE ONLY place a delegated task's FINAL state
- * (verified/rejected) is set. assignHand()/submitReceipt() move a task
- * forward (delegated, evidence-submitted) but never resolve it; abortHandTask
- * moves a stuck task sideways to 'blocked', also never resolving it.
+ * Authority boundary (this is the whole point of this file): exec-graph
+ * (src/exec-graph/*) stays the ONE machine execution authority. A Hand
+ * never writes exec-graph state directly — every write path here goes
+ * through exec-graph/api.js's existing `moveTask()` / `addEvidence()` /
+ * `reassignOwner()`, the same primitives the CLI's `goal`/`task`/`graph`
+ * commands already use. Nothing in ./registry.ts, ./contract.ts, ./risk.ts,
+ * ./verifier.ts, or ./refuter.ts imports exec-graph/api.js — this module is
+ * the only one that does (see src/__tests__/hands.test.ts's structural
+ * test, which asserts exactly that by reading the source of each file).
+ * `verifyAndTransition()` is THE ONLY place a delegated task's FINAL state
+ * (verified/rejected) is set — enforced not just here but in
+ * exec-graph/api.ts's `moveTask()` itself via an internal
+ * `_viaHandAdapter` capability flag (see ADR-0006): a hand-owned task
+ * cannot reach verified/rejected through the plain `task move` CLI/API path
+ * at all, closing the sibling-CLI bypass an adversarial review found in V0's
+ * first cut.
  *
- * RISK CLASSIFICATION AT VERIFY TIME: V0 does not persist a DelegationBrief
- * as new exec-graph state (that would be a second queue — forbidden). A
- * task's riskClass for refuter-triggering purposes is instead RE-DERIVED at
- * verifyAndTransition() time from the task's own title (as `objective`) and
- * the assigned hand's registry allowedActions (as `allowedActions`) — both
- * already-canonical, already-durable data (exec-graph's Task + hands'
- * static REGISTRY). See ./registry.ts's module doc for why this makes
- * 'sonnet-foreground' delegations always at least 'data-mutation' risk.
+ * Inputs/outputs: `assignHand(taskId, handId, opts) -> Task` (throws
+ * HandContextError/HandAdapterError); `submitReceipt(taskId, receiptInput)
+ * -> Task` (throws ReceiptSecretError/ReceiptTaskMismatchError/
+ * HandAdapterError; idempotent by receiptHash — a duplicate submission is a
+ * no-op); `abortHandTask(taskId, opts) -> Task`; `verifyAndTransition(taskId,
+ * opts) -> VerifyAndTransitionResult`. All four operate on exec-graph task
+ * ids and return the resulting `Task` (or verdict) — no other shape.
+ *
+ * State read/written: reads/writes `state/exec-graph/` exclusively through
+ * exec-graph/api.js's exported functions (`getTask`, `moveTask`,
+ * `addEvidence`, `reassignOwner`) — never touches `ledger.jsonl` /
+ * `graph.json` directly. Writes no other state anywhere.
+ *
+ * Failure behavior: every public function throws a typed `HandsAdapterError`
+ * subclass on an illegal call (unknown task, wrong status for the
+ * operation, unknown/disallowed hand, secret-shaped receipt, taskId
+ * mismatch) — never silently no-ops except the documented
+ * receiptHash-idempotency case in `submitReceipt()`. `abortHandTask()` only
+ * ever moves a task to 'blocked', never to 'verified' — a hand that stops
+ * responding must never be read as having succeeded.
+ *
+ * Security: receipts are secret-scanned (`assertReceiptHasNoSecrets()`,
+ * SECRET_SHAPE_PATTERNS) BEFORE `submitReceipt()` persists anything —
+ * append-only means a leaked secret in the ledger is permanent, so the
+ * guard must run pre-write, not post-hoc. RISK CLASSIFICATION AT VERIFY
+ * TIME: V0 does not persist a DelegationBrief as new exec-graph state (that
+ * would be a second queue — forbidden). A task's riskClass for
+ * refuter-triggering purposes is instead RE-DERIVED at
+ * `verifyAndTransition()` time from the task's own title (as `objective`)
+ * and the assigned hand's registry `allowedActions` (as `allowedActions`)
+ * — both already-canonical, already-durable data (exec-graph's Task +
+ * hands' static REGISTRY). See ./registry.ts's module doc for why this
+ * makes 'sonnet-foreground' delegations always at least 'data-mutation'
+ * risk.
+ *
+ * Tests: src/__tests__/hands.test.ts — full assign/submit/verify/abort
+ * lifecycle, idempotent resubmission, describe block 6 (structural
+ * exec-graph-import boundary), block 10 (refuter triggering per
+ * riskClass), block 16 (HandAuthorityError — the sibling-CLI-bypass
+ * regression), block 17 (secret-guard regression, receipts never reach the
+ * verifier or ledger with secret-shaped content).
  */
 
 import type { Task, Evidence, TaskStatus } from '../exec-graph/contracts.js';
