@@ -9,6 +9,16 @@
       },
       "status": "open",
       "createdAt": "2026-07-17T12:46:02.195Z"
+    },
+    {
+      "id": "gol_d1f4213c91984ca192065c98bc73405f",
+      "title": "Mission 2 — Hand Contract V0 controlled delegations",
+      "source": {
+        "kind": "external-cto-brief",
+        "ref": "2026-07-17-mission2"
+      },
+      "status": "open",
+      "createdAt": "2026-07-17T21:02:51.861Z"
     }
   ],
   "tasks": [
@@ -507,6 +517,173 @@
           "ts": "2026-07-17T12:52:41.594Z",
           "actor": "atlas",
           "note": "imported from VOLAURA work-queue; stale 2 weeks; needs owner decision CEO/External-CTO"
+        }
+      ]
+    },
+    {
+      "id": "tsk_42291918c0d540dcaacdcba16ddc8bbe",
+      "goalId": "gol_d1f4213c91984ca192065c98bc73405f",
+      "title": "Confirm exec-graph integrity via graph verify",
+      "source": {
+        "kind": "external-cto-brief",
+        "ref": "2026-07-17-mission2-pos"
+      },
+      "owner": "hand:local-readonly",
+      "status": "verified",
+      "riskClass": "low",
+      "idempotencyKey": "external-cto-brief:2026-07-17-mission2-pos",
+      "evidence": [
+        {
+          "ref": "03ad456e063e116fc512fd022c33496a5de183a52baf1ced97ab76fa1dde3e86",
+          "kind": "tool-receipt",
+          "note": "{\"taskId\":\"tsk_42291918c0d540dcaacdcba16ddc8bbe\",\"handId\":\"local-readonly\",\"submittedBy\":\"local-readonly\",\"kind\":\"command-output-match\",\"command\":\"node dist/cli.js graph verify\",\"expectedSubstring\":\"\\\"ok\\\": true\",\"claimedResult\":\"graph verifies ok\"}"
+        },
+        {
+          "ref": "03ad456e063e116fc512fd022c33496a5de183a52baf1ced97ab76fa1dde3e86",
+          "kind": "other"
+        },
+        {
+          "ref": "03ad456e063e116fc512fd022c33496a5de183a52baf1ced97ab76fa1dde3e86",
+          "kind": "other"
+        }
+      ],
+      "createdAt": "2026-07-17T21:03:00.252Z",
+      "transitions": [
+        {
+          "from": null,
+          "to": "proposed",
+          "ts": "2026-07-17T21:03:00.252Z",
+          "actor": "atlas",
+          "note": "created"
+        },
+        {
+          "from": "proposed",
+          "to": "accepted",
+          "ts": "2026-07-17T21:03:07.683Z",
+          "actor": "atlas"
+        },
+        {
+          "from": "accepted",
+          "to": "planned",
+          "ts": "2026-07-17T21:03:14.779Z",
+          "actor": "atlas"
+        },
+        {
+          "from": "planned",
+          "to": "delegated",
+          "ts": "2026-07-17T21:03:22.175Z",
+          "actor": "atlas",
+          "note": "assigned to hand:local-readonly"
+        },
+        {
+          "from": "delegated",
+          "to": "in-progress",
+          "ts": "2026-07-17T21:03:30.478Z",
+          "actor": "local-readonly",
+          "note": "receipt submission requires in-progress"
+        },
+        {
+          "from": "in-progress",
+          "to": "evidence-submitted",
+          "ts": "2026-07-17T21:03:30.490Z",
+          "actor": "local-readonly",
+          "evidenceRefs": [
+            "03ad456e063e116fc512fd022c33496a5de183a52baf1ced97ab76fa1dde3e86"
+          ],
+          "note": "receipt kind=command-output-match"
+        },
+        {
+          "from": "evidence-submitted",
+          "to": "verified",
+          "ts": "2026-07-17T21:03:41.245Z",
+          "actor": "atlas",
+          "evidenceRefs": [
+            "03ad456e063e116fc512fd022c33496a5de183a52baf1ced97ab76fa1dde3e86"
+          ],
+          "note": "verified: command output matched expected substring '\"ok\": true'"
+        }
+      ]
+    },
+    {
+      "id": "tsk_ae7ea7e1a47041429773385c41305b2f",
+      "goalId": "gol_d1f4213c91984ca192065c98bc73405f",
+      "title": "Confirm ADR-0001 declares exec-graph the single authority",
+      "source": {
+        "kind": "external-cto-brief",
+        "ref": "2026-07-17-mission2-neg"
+      },
+      "owner": "hand:local-readonly",
+      "status": "closed",
+      "riskClass": "low",
+      "idempotencyKey": "external-cto-brief:2026-07-17-mission2-neg",
+      "evidence": [
+        {
+          "ref": "846d8782b3308efc0703efef2acdbe080215becf1069375eb134b309eb1951ae",
+          "kind": "tool-receipt",
+          "note": "{\"taskId\":\"tsk_ae7ea7e1a47041429773385c41305b2f\",\"handId\":\"local-readonly\",\"submittedBy\":\"local-readonly\",\"kind\":\"file-contains\",\"ref\":\"docs/adr/0001-one-task-authority-exec-graph.md\",\"expectedSubstring\":\"exec-graph is the SECONDARY task authority\",\"claimedResult\":\"ADR-0001 confirms authority\"}"
+        },
+        {
+          "ref": "846d8782b3308efc0703efef2acdbe080215becf1069375eb134b309eb1951ae",
+          "kind": "other"
+        }
+      ],
+      "createdAt": "2026-07-17T21:04:00.940Z",
+      "transitions": [
+        {
+          "from": null,
+          "to": "proposed",
+          "ts": "2026-07-17T21:04:00.940Z",
+          "actor": "atlas",
+          "note": "created"
+        },
+        {
+          "from": "proposed",
+          "to": "accepted",
+          "ts": "2026-07-17T21:04:09.535Z",
+          "actor": "atlas"
+        },
+        {
+          "from": "accepted",
+          "to": "planned",
+          "ts": "2026-07-17T21:04:10.932Z",
+          "actor": "atlas"
+        },
+        {
+          "from": "planned",
+          "to": "delegated",
+          "ts": "2026-07-17T21:04:19.199Z",
+          "actor": "atlas",
+          "note": "assigned to hand:local-readonly"
+        },
+        {
+          "from": "delegated",
+          "to": "in-progress",
+          "ts": "2026-07-17T21:04:27.922Z",
+          "actor": "local-readonly",
+          "note": "receipt submission requires in-progress"
+        },
+        {
+          "from": "in-progress",
+          "to": "evidence-submitted",
+          "ts": "2026-07-17T21:04:27.935Z",
+          "actor": "local-readonly",
+          "evidenceRefs": [
+            "846d8782b3308efc0703efef2acdbe080215becf1069375eb134b309eb1951ae"
+          ],
+          "note": "receipt kind=file-contains"
+        },
+        {
+          "from": "evidence-submitted",
+          "to": "rejected",
+          "ts": "2026-07-17T21:04:36.627Z",
+          "actor": "atlas",
+          "note": "rejected: file docs/adr/0001-one-task-authority-exec-graph.md does not contain expected substring"
+        },
+        {
+          "from": "rejected",
+          "to": "closed",
+          "ts": "2026-07-17T21:04:57.258Z",
+          "actor": "atlas"
         }
       ]
     }
