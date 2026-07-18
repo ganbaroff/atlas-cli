@@ -55,12 +55,68 @@ Task: ${task}`,
   return JSON.parse(match[0]) as Subtask[];
 }
 
+/** Default per-worker wall-clock bound; override via ATLAS_SWARM_WORKER_TIMEOUT_MS. */
+function workerTimeoutMs(): number {
+  const raw = process.env.ATLAS_SWARM_WORKER_TIMEOUT_MS;
+  if (raw) { const n = parseInt(raw, 10); if (Number.isFinite(n) && n > 0) return n; }
+  return 60_000;
+}
+
+type RaceOutcome<T> =
+  | { kind: 'resolved'; value: T }
+  | { kind: 'timeout' }
+  | { kind: 'rejected'; error: unknown };
+
+/**
+ * Race a promise against a wall-clock bound without leaking the timer.
+ * The pending timer is always cleared once the promise settles (resolved or
+ * rejected); a rejection is surfaced as its own outcome (not swallowed) so
+ * the caller can still route real provider errors through its own catch.
+ */
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<RaceOutcome<T>> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      resolve({ kind: 'timeout' });
+    }, ms);
+    p.then(
+      (value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve({ kind: 'resolved', value });
+      },
+      (error) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve({ kind: 'rejected', error });
+      },
+    );
+  });
+}
+
 /** Run a single perspective in-process (no fork — API calls are I/O-bound, not CPU). */
 async function runWorker(subtask: Subtask): Promise<WorkerResult> {
   const t0 = Date.now();
   try {
     const { agent, route } = await createAtlasAgentWithRoute('WORKER', 'operator');
-    const res = await agent.generate(subtask.description);
+    const ms = workerTimeoutMs();
+    const outcome = await withTimeout(agent.generate(subtask.description), ms);
+    if (outcome.kind === 'timeout') {
+      // Bounded hang: never counts as ok — same shape as a provider error, empty output.
+      return {
+        id: subtask.id, output: '', provider: subtask.provider ?? 'auto',
+        durationMs: Date.now() - t0, error: `worker_timeout_${ms}ms`,
+      };
+    }
+    if (outcome.kind === 'rejected') {
+      // Genuine provider error — hand off to the existing catch-block handling below.
+      throw outcome.error;
+    }
+    const res = outcome.value;
     recordAgentSpend(res, route, 'swarm');
     const jidoka = validateCompletion(res.text);
     const output = jidoka.passed ? res.text : `${res.text}\n\n[WORKER JIDOKA: ${jidoka.violation}]`;
