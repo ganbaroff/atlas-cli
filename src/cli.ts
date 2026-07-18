@@ -789,6 +789,70 @@ handCmd
     }
   });
 
+// ─── swarm-exec (operator CLI surface) ─────────────────────────────────────
+// Compile freeform intent -> draft -> exec-graph task -> delegated swarm run,
+// verified through the same deterministic Hand Contract verifier as every
+// other Hand (see src/swarm-exec/commands.ts). Named 'swarm-exec' rather
+// than 'swarm' to avoid colliding with the pre-existing top-level
+// `atlas swarm <task>` command below (src/swarm.ts's ad-hoc parallel-worker
+// runner) — commander throws on a duplicate top-level command name.
+
+const swarmExecCmd = program
+  .command('swarm-exec')
+  .description('swarm-exec: honest swarm runs verified through exec-graph');
+
+swarmExecCmd
+  .command('intake <intent...>')
+  .description('Compile freeform intent into a swarm-exec draft (does NOT create a task)')
+  .action(async (intentParts: string[]) => {
+    try {
+      const { intakeCommand } = await import('./swarm-exec/commands.js');
+      const result = intakeCommand(intentParts.join(' '));
+      console.log(JSON.stringify(result, null, 2));
+      console.log(`\nnext: atlas swarm-exec commit ${result.draftId}`);
+    } catch (err) {
+      console.error(`swarm-exec intake error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
+  });
+
+swarmExecCmd
+  .command('commit <draftId>')
+  .description('Commit a swarm-exec draft into an exec-graph task')
+  .option('--goal <goalId>', 'existing goal id (else a new goal is created)')
+  .option('--actor <actor>')
+  .action(async (draftId: string, opts) => {
+    try {
+      const { commitCommand } = await import('./swarm-exec/commands.js');
+      const result = commitCommand(draftId, { goalId: opts.goal, actor: opts.actor });
+      console.log(JSON.stringify(result, null, 2));
+      console.log(`\nnext: atlas swarm-exec run ${result.taskId}`);
+    } catch (err) {
+      console.error(`swarm-exec commit error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
+  });
+
+swarmExecCmd
+  .command('run <taskId>')
+  .description('Assign swarm-local + run the swarm, verify through the deterministic verifier')
+  .option('--actor <actor>')
+  .action(async (taskId: string, opts) => {
+    try {
+      const { runCommand } = await import('./swarm-exec/commands.js');
+      const result = await runCommand(taskId, { actor: opts.actor });
+      console.log(JSON.stringify(result, null, 2));
+      // An honest rejection/block is still a successful CLI invocation — exit 0,
+      // just make the status impossible to miss.
+      if (result.status !== 'verified') {
+        console.error(`swarm-exec run: ${result.status} — ${result.reason}`);
+      }
+    } catch (err) {
+      console.error(`swarm-exec run error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
+  });
+
 program
   .command('skills')
   .description('List available VOLAURA skills')
