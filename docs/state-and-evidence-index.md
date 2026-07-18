@@ -146,6 +146,8 @@ mismatch: **`docs/runbooks/exec-graph-recovery.md`**. Do not hand-edit
 
 ## Links
 
+- `docs/atlas-cto/ATLAS-STATE-NOW.md` — post-compaction orientation doc: read this FIRST on
+  resume after a context compaction.
 - `docs/atlas-cto/EXTERNAL-CTO-STATE-SNAPSHOT.md` — durable, pushed snapshot of
   the Atlas-CTO status ledger. The canonical original
   (`VOLAURA/memory/atlas/EXTERNAL-CTO-STATE.md`) is stranded on the local,
