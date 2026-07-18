@@ -851,6 +851,11 @@ swarmExecCmd
       console.error(`swarm-exec run error: ${err instanceof Error ? err.message : String(err)}`);
       process.exitCode = 1;
     }
+    // The verdict + bundle + graph transition are already persisted above; abandoned
+    // provider sockets from timed-out workers can otherwise keep the event loop alive
+    // for minutes. Force a clean exit once output is flushed.
+    await new Promise<void>((r) => process.stdout.write('', () => r()));
+    process.exit(process.exitCode ?? 0);
   });
 
 program
