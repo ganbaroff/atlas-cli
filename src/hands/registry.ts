@@ -27,7 +27,7 @@
  * hand as a falsy-but-present value. `parseHandSpec()`/`validateRegistry()`
  * throw on schema violation; this module never silently coerces a bad spec.
  *
- * Security: EXACTLY TWO HANDS in V0, both deliberately narrow:
+ * Security: THREE HANDS in V0, all deliberately narrow:
  *   - 'sonnet-foreground'  — CEO-supervised, foreground-only, can write
  *     scoped code. Because 'write-scoped-code' is in its allowedActions,
  *     ./risk.ts's classifyRisk() (fed hand.allowedActions as the
@@ -40,6 +40,10 @@
  *   - 'local-readonly'     — FREE, read-only, unattended-capable. No write
  *     action anywhere in its allowlist, so it classifies 'low' risk by
  *     default and the refuter is suppressed for it (see ./risk.ts).
+ *   - 'swarm-local'        — CEO-supervised, foreground-only, multi-agent
+ *     swarm analysis (see ../swarm.ts). Makes real model calls, so it is
+ *     never unattended, but its allowedActions carry no write/mutation verb
+ *     — it only produces analysis text, never file writes.
  *   No openmanus/browser/voice/cloud/paid providers are registered here — V0
  *   is deliberately narrow; widening the registry is a follow-up mission,
  *   not this one. `isSafeKey()` rejects dunder-key lookups defense-in-depth
@@ -141,6 +145,33 @@ export const REGISTRY: Readonly<Record<string, HandSpec>> = Object.freeze({
     escalationCondition:
       'Objective implies any write/mutating/credential action -> escalate to ceo; this hand '
       + 'must never be asked to do more than read.',
+  }),
+  'swarm-local': handSpecSchema.parse({
+    handId: 'swarm-local',
+    purpose:
+      'Foreground, CEO-supervised multi-perspective swarm analysis (see ../swarm.ts) — '
+      + 'decomposes a task into perspectives, runs parallel LLM workers, synthesizes findings '
+      + 'into one report. Produces analysis text only; never writes files, never runs unattended.',
+    capabilities: ['swarm-run', 'analyze', 'read-file'],
+    trustLevel: 'medium',
+    allowedEnvironments: ['local-foreground'],
+    allowedActions: ['swarm-run', 'analyze', 'read-file'],
+    disallowedActions: ['scheduler', 'daemon', 'unattended', 'write-scoped-code', 'deploy', 'credential-access'],
+    costClass: 'FOREGROUND-CEO-SUPERVISED',
+    autonomy: 'foreground-only',
+    inputContract:
+      'A DelegationBrief (see ./contract.ts): objective, allowedActions subset of this '
+      + "hand's allowedActions, a falsifiable expectedResult, timeoutMs, riskClass.",
+    timeoutMs: 300_000,
+    retryPolicy: 'none',
+    abortPolicy:
+      "On timeout or CEO-interrupt, the delegating adapter call (abortHandTask) moves the "
+      + "task to 'blocked' — never silently 'verified'. Swarm runs are billable model calls, "
+      + 'so there is no automatic retry; a CEO reviews blocked state by hand.',
+    escalationCondition:
+      'Objective is ambiguous, expectedResult cannot be independently falsified, or the work '
+      + "would require an action outside this hand's allowedActions (e.g. a file write) -> "
+      + "escalate to ceo, don't silently widen scope.",
   }),
 });
 

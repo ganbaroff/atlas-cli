@@ -86,8 +86,16 @@ async function synthesize(task: string, results: WorkerResult[]): Promise<string
   return res.text;
 }
 
-/** Main entry: perspectives analyze in parallel → synthesize. */
-export async function runSwarm(task: string, useCustomDecompose = false): Promise<string> {
+export interface SwarmRunDetail {
+  subtasks: Subtask[];
+  results: WorkerResult[];
+  synthesis: string;
+  durationMs: number;
+  jidokaViolation: string | null;
+}
+
+/** Main entry: perspectives analyze in parallel → synthesize. Returns the full run detail. */
+export async function runSwarmDetailed(task: string, useCustomDecompose = false): Promise<SwarmRunDetail> {
   if (isPaused()) {
     console.warn('[swarm] refused: ATLAS_PAUSE=1 (kill switch active)');
     throw new Error('Swarm refused: ATLAS_PAUSE=1 is set. Unset ATLAS_PAUSE to resume autonomy.');
@@ -150,5 +158,10 @@ export async function runSwarm(task: string, useCustomDecompose = false): Promis
     console.warn(`[swarm] Failed to persist run log: ${err instanceof Error ? err.message : err}`);
   }
 
-  return final;
+  return { subtasks, results, synthesis: final, durationMs: elapsed, jidokaViolation };
+}
+
+/** Main entry: perspectives analyze in parallel → synthesize. Returns just the synthesis text. */
+export async function runSwarm(task: string, useCustomDecompose = false): Promise<string> {
+  return (await runSwarmDetailed(task, useCustomDecompose)).synthesis;
 }

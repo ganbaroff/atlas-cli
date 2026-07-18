@@ -100,7 +100,21 @@ describe('Hand Contract V0 (isolated temp exec-graph dir per test)', () => {
     expect(() => getHand('__proto__')).toThrow(HandNotFoundError);
     expect(() => getHand('toString')).toThrow(HandNotFoundError);
     expect(getHand('sonnet-foreground').handId).toBe('sonnet-foreground');
-    expect(listHands().map((h) => h.handId).sort()).toEqual(['local-readonly', 'sonnet-foreground']);
+    expect(listHands().map((h) => h.handId).sort()).toEqual(['local-readonly', 'sonnet-foreground', 'swarm-local']);
+  });
+
+  // ── 2b. swarm-local hand: foreground-only, no write/mutation action ──────
+  it('2b. swarm-local is registered as foreground-only with no write/mutation allowedAction', () => {
+    const hand = getHand('swarm-local');
+    expect(hand.handId).toBe('swarm-local');
+    expect(hand.autonomy).toBe('foreground-only');
+    const WRITE_MUTATION_RE = /write|mutat|delete|deploy|migrat/i;
+    for (const action of hand.allowedActions) {
+      expect(action).not.toMatch(WRITE_MUTATION_RE);
+    }
+    // Consistent with risk.ts: a swarm-local delegation must never auto-classify as data-mutation
+    // purely from its own allowedActions (the objective text is a separate concern).
+    expect(classifyRisk({ objective: 'run swarm analysis', allowedActions: hand.allowedActions })).not.toBe('data-mutation');
   });
 
   // ── 3. sonnet-foreground denied when unattended:true ─────────────────────
