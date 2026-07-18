@@ -57,4 +57,28 @@ describe('swarm — runSwarmDetailed / runSwarm (fully mocked, no network)', () 
     expect(typeof synthesis).toBe('string');
     expect(synthesis).toBe(detail.synthesis);
   });
+
+  it("WorkerResult.provider reports the real routed provider (route.provider from the mock), not the perspective's declared provider label", async () => {
+    const { runSwarmDetailed } = await import('../swarm.js');
+    const detail = await runSwarmDetailed('mock task — honest provider check');
+
+    // The mocked createAtlasAgentWithRoute always resolves route.provider = 'nvidia',
+    // regardless of what each perspective declares in its own `provider` field. Every
+    // WorkerResult must report that real routed provider — never the perspective's
+    // declared label, which can name a provider that was never actually called (e.g.
+    // "anthropic", since anthropic is excluded from the model router before routing).
+    for (const r of detail.results) {
+      expect(r.provider).toBe('nvidia');
+    }
+
+    // Strongest proof: if the loaded perspectives declare a provider other than the
+    // mocked route's provider for at least one subtask, confirm the corresponding
+    // result did NOT inherit that dishonest declared label.
+    const mismatched = detail.subtasks.find((s) => s.provider && s.provider !== 'nvidia');
+    if (mismatched) {
+      const result = detail.results.find((r) => r.id === mismatched.id);
+      expect(result?.provider).toBe('nvidia');
+      expect(result?.provider).not.toBe(mismatched.provider);
+    }
+  });
 });

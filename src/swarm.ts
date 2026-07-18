@@ -107,8 +107,10 @@ async function runWorker(subtask: Subtask): Promise<WorkerResult> {
     const outcome = await withTimeout(agent.generate(subtask.description), ms);
     if (outcome.kind === 'timeout') {
       // Bounded hang: never counts as ok — same shape as a provider error, empty output.
+      // route already resolved (createAtlasAgentWithRoute returned above) — report the
+      // real provider that hung, not the perspective's declared label.
       return {
-        id: subtask.id, output: '', provider: subtask.provider ?? 'auto',
+        id: subtask.id, output: '', provider: route.provider,
         durationMs: Date.now() - t0, error: `worker_timeout_${ms}ms`,
       };
     }
@@ -120,8 +122,15 @@ async function runWorker(subtask: Subtask): Promise<WorkerResult> {
     recordAgentSpend(res, route, 'swarm');
     const jidoka = validateCompletion(res.text);
     const output = jidoka.passed ? res.text : `${res.text}\n\n[WORKER JIDOKA: ${jidoka.violation}]`;
-    return { id: subtask.id, output, provider: subtask.provider ?? 'auto', durationMs: Date.now() - t0 };
+    // Report the real routed provider (route.provider), not subtask.provider — the
+    // latter is only the perspective's declared label from perspectives.json and can
+    // lie (e.g. say "anthropic" when the router actually ran nvidia).
+    return { id: subtask.id, output, provider: route.provider, durationMs: Date.now() - t0 };
   } catch (err) {
+    // `route` is NOT in scope here — createAtlasAgentWithRoute may have thrown before
+    // ever returning a route, so there is no real routed provider to report. Fall back
+    // to the perspective's declared label as a best-effort guess (may be dishonest,
+    // but it's the only information available when routing itself failed).
     return {
       id: subtask.id, output: '', provider: subtask.provider ?? 'auto',
       durationMs: Date.now() - t0, error: err instanceof Error ? err.message.slice(0, 200) : String(err),
