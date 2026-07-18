@@ -53,6 +53,18 @@ supplied on a CLI `task move` call are promoted into real `Evidence` entries
 on the task before the transition is attempted, so a single command can
 satisfy both invariants at once.
 
+## swarm-exec run evidence (2026-07-18)
+
+A `swarm-exec` run (see `docs/runbooks/swarm-exec.md`, ADR-0007) produces a durable, correlated bundle that a `file-contains` receipt cites as the task's evidence. Only `hands/verifier.ts`, re-reading `bundle.json` for the `SWARM-VERIFIED:<runId>` token, sets the task's final state — the swarm never self-declares.
+
+| Path | Role | Tracked? |
+|---|---|---|
+| `state/swarm-runs/<runId>/bundle.json` | **Run verdict of record.** Correlated: parentTaskId, normalized policy, honest completion verdict, provider-health, evidence tokens, `proof` = `SWARM-VERIFIED:<runId>` (iff `done`) else `SWARM-REJECTED:<runId>`, provenance. Written LAST + atomically, so a partial/crashed run is visibly incomplete (`complete !== true` ⇒ `readBundle` returns null). | gitignored (durable on disk) |
+| `state/swarm-runs/<runId>/{result,trace,provider-health,evidence-manifest,responder-summary}.*` | Sub-artifacts backing the bundle. | gitignored |
+| `state/intake-drafts/<draftId>.json` | The compiled intent draft that became the task (`source.ref = intake:<draftId>`). | gitignored |
+
+Run artifacts are gitignored — durable on disk and reproducible from the ledger + a re-run, not committed.
+
 ## How to inspect a task safely
 
 All reads below are non-mutating (`src/exec-graph/README.md`'s "Consumers"

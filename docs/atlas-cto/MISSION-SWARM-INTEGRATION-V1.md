@@ -47,3 +47,10 @@ RED (stop + CEO): deploy, credentials/paid, second authority, VOLAURA product ed
 
 ## DoD
 typecheck green · full suite green (baseline 455/3-skip) · `node dist/cli.js graph verify` ok:true · one live smoke with a real bundle + VERIFIED-or-honest-REJECTED · docs updated · cold-reader pass.
+
+## FINAL STATUS — 2026-07-18 (all waves shipped)
+- W1 completion-policy (`6b1f405`) · W2 run-bundle (`a042913`) · W3 swarm-local hand + runSwarmDetailed (`a31e84e`) · W4 executor core — 1 VERIFIED + 1 REJECTED + 1 BLOCKED proven (`b3a00f7`) · W5 intake compiler (`477003b`) · W6 CLI `swarm-exec intake|commit|run` (`477ad67`) · W7a bounded per-worker timeout (`961a0a2`) · W8 docs (this commit). All pushed to `feat/arsenal-wiring`.
+- **W7 live smoke: HONEST REJECTED.** `atlas swarm-exec intake→commit→run` on an isolated graph — 5 workers timed out at 30s (providers unavailable), `completion: failed / no_responders_ok / 0-of-5`, bundle `proof: SWARM-REJECTED`, the deterministic verifier read the bundle and transitioned the task to `rejected`. Canonical 10-task graph untouched; $0 spend; token cap set before the run. Thesis proven live: honest failure recorded, not fabricated success.
+- Tests: full suite **505 pass / 0 fail / 2 skip**; typecheck + build green; `graph verify` ok:true. (Baseline note: the "455/3-skip" above was the directive's stale prior-evidence; real pre-mission baseline ≈456, post-mission 505/0/2.)
+- Decision + design of record: `docs/adr/0007-swarm-exec-runtime-and-honest-verification.md`. Operator runbook: `docs/runbooks/swarm-exec.md`.
+- Known limitation: after an all-workers-timeout run the CLI process may not exit promptly (abandoned provider sockets); the verdict + bundle are already persisted. Follow-up: `process.exit` guard in the `swarm-exec run` action. Pre-existing (out of scope): the model-router routes some WORKER-role calls to `anthropic`/`cerebras` instead of free-tier only.

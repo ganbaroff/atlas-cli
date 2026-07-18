@@ -7,6 +7,17 @@ delegation over exec-graph, `src/hands/*`). This is the entry point for
 this file's job is to keep the whole shape visible in one place and stay
 current.
 
+**swarm-exec V1 (2026-07-18, see ADR-0007):** `src/swarm-exec/*` delegates a
+bounded run on the in-process TS swarm (`swarm.ts`) FROM an exec-graph task and
+verifies it through the SAME Hand Contract deterministic verifier as every other
+hand — intent → `intake` draft → `commit` task → `swarm-local` hand → honest
+fail-closed completion policy → durable run bundle
+(`state/swarm-runs/<runId>/bundle.json`, `SWARM-VERIFIED|SWARM-REJECTED` proof
+token) → `verifyAndTransition` → VERIFIED/REJECTED. Only the deterministic
+verifier closes the task; the swarm never self-declares success. Single control
+path via `atlas/control-plane.ts` (paused/stopped ⇒ the run is `blocked`, never
+verified). CLI: `atlas swarm-exec intake|commit|run`.
+
 **Status of this document:** the diagram and tables below describe code
 that exists and is tested (IMPLEMENTED-LOCAL throughout unless marked
 otherwise); they are not a claim that every path shown has been exercised
