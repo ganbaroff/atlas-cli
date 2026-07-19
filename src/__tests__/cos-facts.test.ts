@@ -124,6 +124,17 @@ describe('gatherCosFacts', () => {
     ]);
   });
 
+  it('rejected tasks are surfaced (not silently dropped)', () => {
+    const rejectedTask = makeTask({ id: 'tsk_r', title: 'rejected one', status: 'rejected' });
+    const providers = baseProviders({
+      listTasks: (filter) => (filter?.status === 'rejected' ? [rejectedTask] : []),
+    });
+
+    const facts = gatherCosFacts(providers);
+
+    expect(facts.rejected).toEqual([{ taskId: 'tsk_r', title: 'rejected one', status: 'rejected' }]);
+  });
+
   it('counts are passed through from statusSummary', () => {
     const counts = { proposed: 3, accepted: 1 } as unknown as Record<TaskStatus, number>;
     const providers = baseProviders({

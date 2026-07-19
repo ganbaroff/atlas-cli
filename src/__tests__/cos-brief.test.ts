@@ -6,7 +6,7 @@ import {
   NO_CEO_DECISION_LINE,
   type BriefItem,
 } from '../atlas/cos/brief.js';
-import type { CosFacts, WaitingItem, ShippedItem } from '../atlas/cos/facts.js';
+import type { CosFacts, WaitingItem, ShippedItem, RejectedItem } from '../atlas/cos/facts.js';
 import type { DriftFinding } from '../atlas/cos/drift.js';
 import type { TaskStatus } from '../exec-graph/contracts.js';
 
@@ -16,6 +16,7 @@ function makeFacts(overrides: Partial<CosFacts> = {}): CosFacts {
   return {
     waiting: [],
     shipped: [],
+    rejected: [],
     counts: {} as Record<TaskStatus, number>,
     controlMode: 'active',
     spend: { costUsd: 0, calls: 0, tokens: 0 },
@@ -39,6 +40,14 @@ function makeShipped(overrides: Partial<ShippedItem> & { taskId: string; status:
     taskId: overrides.taskId,
     title: overrides.title ?? `title-${overrides.taskId}`,
     status: overrides.status,
+  };
+}
+
+function makeRejected(overrides: Partial<RejectedItem> & { taskId: string }): RejectedItem {
+  return {
+    taskId: overrides.taskId,
+    title: overrides.title ?? `title-${overrides.taskId}`,
+    status: 'rejected',
   };
 }
 
@@ -135,6 +144,24 @@ describe('composeCosBriefItems', () => {
     expect(items[0]).toMatchObject({ category: 'NO ACTION REQUIRED', sourceRef: 'tsk_c', status: 'closed', evidenceFreshness: 'UNKNOWN' });
   });
 
+  it("rejected task -> NO ACTION REQUIRED (not silently dropped, not framed as a decision)", () => {
+    const facts = makeFacts({ rejected: [makeRejected({ taskId: 'tsk_r', title: 'bad attempt' })] });
+    const items = composeCosBriefItems(facts, []);
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({ category: 'NO ACTION REQUIRED', sourceAuthority: 'exec-graph', sourceRef: 'tsk_r', status: 'rejected', evidenceFreshness: 'UNKNOWN' });
+    expect(items[0]?.why).toContain('rejected');
+  });
+
+  it('rejected sits alongside closed under NO ACTION REQUIRED, closed-then-rejected order preserved', () => {
+    const facts = makeFacts({
+      shipped: [makeShipped({ taskId: 'tsk_c', status: 'closed' })],
+      rejected: [makeRejected({ taskId: 'tsk_r' })],
+    });
+    const items = composeCosBriefItems(facts, []);
+    expect(items.map((i) => i.sourceRef)).toEqual(['tsk_c', 'tsk_r']);
+    expect(items.every((i) => i.category === 'NO ACTION REQUIRED')).toBe(true);
+  });
+
   it('groups strictly by fixed category order regardless of input interleaving', () => {
     const facts = makeFacts({
       waiting: [
@@ -142,6 +169,7 @@ describe('composeCosBriefItems', () => {
         makeWaiting({ taskId: 'tsk_ceo', status: 'escalated', owner: 'ceo' }),
       ],
       shipped: [makeShipped({ taskId: 'tsk_v', status: 'verified' }), makeShipped({ taskId: 'tsk_c', status: 'closed' })],
+      rejected: [makeRejected({ taskId: 'tsk_r' })],
     });
     const items = composeCosBriefItems(facts, [makeDrift()]);
     expect(items.map((i) => i.category)).toEqual([
@@ -150,7 +178,9 @@ describe('composeCosBriefItems', () => {
       'DRIFT / STALE SIGNAL',
       'RECENTLY VERIFIED',
       'NO ACTION REQUIRED',
+      'NO ACTION REQUIRED',
     ]);
+    expect(items.map((i) => i.sourceRef).slice(-2)).toEqual(['tsk_c', 'tsk_r']);
   });
 
   it('empty facts + empty drift -> empty array', () => {

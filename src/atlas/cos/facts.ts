@@ -23,11 +23,19 @@ export interface ShippedItem {
   status: 'verified' | 'closed';
 }
 
+export interface RejectedItem {
+  taskId: string;
+  title: string;
+  status: 'rejected';
+}
+
 export interface CosFacts {
   /** escalated/blocked/evidence-submitted — waiting on decision/verification. */
   waiting: WaitingItem[];
   /** verified + closed. */
   shipped: ShippedItem[];
+  /** rejected — terminal, no further transition possible on this task id; history, not a live decision. */
+  rejected: RejectedItem[];
   counts: Record<TaskStatus, number>;
   controlMode: 'active' | 'paused' | 'stopped';
   spend: { costUsd: number; calls: number; tokens: number };
@@ -84,6 +92,10 @@ function toShippedItem(task: Task, status: 'verified' | 'closed'): ShippedItem {
   return { taskId: task.id, title: task.title, status };
 }
 
+function toRejectedItem(task: Task): RejectedItem {
+  return { taskId: task.id, title: task.title, status: 'rejected' };
+}
+
 /**
  * Gather the current Chief-of-Staff facts snapshot. Pure projection: reads
  * from the injected (or live default) providers and returns a plain data
@@ -100,11 +112,13 @@ export function gatherCosFacts(providers?: Partial<CosFactProviders>): CosFacts 
     ...p.listTasks({ status: 'verified' }).map((t) => toShippedItem(t, 'verified')),
     ...p.listTasks({ status: 'closed' }).map((t) => toShippedItem(t, 'closed')),
   ];
+  const rejected = p.listTasks({ status: 'rejected' }).map(toRejectedItem);
   const spend = p.spend();
 
   return {
     waiting,
     shipped,
+    rejected,
     counts: summary.counts,
     controlMode: p.controlMode(),
     spend: { costUsd: spend.costUsd, calls: spend.calls, tokens: spend.tokensIn + spend.tokensOut },

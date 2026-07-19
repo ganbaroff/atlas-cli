@@ -13,7 +13,7 @@
  */
 
 import { CEO_DECISION_OWNERS } from '../../exec-graph/brief.js';
-import type { CosFacts, WaitingItem, ShippedItem } from './facts.js';
+import type { CosFacts, WaitingItem, ShippedItem, RejectedItem } from './facts.js';
 import type { DriftFinding } from './drift.js';
 
 export type BriefCategory =
@@ -138,11 +138,29 @@ function shippedItemsToBriefItems(shipped: readonly ShippedItem[]): BriefItem[] 
 }
 
 /**
+ * Rejected tasks are terminal (no further transition possible on this task
+ * id) -> NO ACTION REQUIRED. Commitment-capture / "what happens next" is
+ * explicitly cut from this release (CEO rule 7) — this only states the fact
+ * that it was rejected, it does not manufacture a follow-up obligation.
+ */
+function rejectedItemsToBriefItems(rejected: readonly RejectedItem[]): BriefItem[] {
+  return rejected.map((r): BriefItem => ({
+    category: 'NO ACTION REQUIRED',
+    sourceAuthority: 'exec-graph',
+    sourceRef: r.taskId,
+    status: r.status,
+    evidenceFreshness: 'UNKNOWN',
+    why: `task '${r.title}' was rejected — filed, no further action from this projection`,
+  }));
+}
+
+/**
  * Compose brief items from already-gathered facts + drift. PURE: deterministic
  * given its inputs, never mutates them, writes nothing. Output is grouped by
  * the fixed CATEGORY_ORDER; within a category, source order is preserved
  * (waiting items in facts.waiting order, then drift findings in drift.ts's
- * own fixed emission order, then shipped items in facts.shipped order).
+ * own fixed emission order, then shipped items in facts.shipped order, then
+ * rejected items in facts.rejected order).
  */
 export function composeCosBriefItems(facts: CosFacts, drift: readonly DriftFinding[]): BriefItem[] {
   const byCategory = new Map<BriefCategory, BriefItem[]>(CATEGORY_ORDER.map((c) => [c, []]));
@@ -150,6 +168,7 @@ export function composeCosBriefItems(facts: CosFacts, drift: readonly DriftFindi
     ...waitingItemsToBriefItems(facts.waiting),
     ...driftFindingsToBriefItems(drift),
     ...shippedItemsToBriefItems(facts.shipped),
+    ...rejectedItemsToBriefItems(facts.rejected),
   ];
   for (const item of all) {
     byCategory.get(item.category)?.push(item);
