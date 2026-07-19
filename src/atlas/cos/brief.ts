@@ -6,10 +6,11 @@
  * writes, never mutates its inputs — a projection over already-gathered
  * inputs, same discipline as facts.ts/drift.ts.
  *
- * Reuses exec-graph/brief.ts's CEO_DECISION_OWNERS so the escalated /
- * evidence-submitted "is this genuinely your call, or handed off" split
- * stays identical to what /status already shows — one classification, not a
- * second one invented here.
+ * Reuses exec-graph/brief.ts's CEO_DECISION_OWNERS so escalated's "is this
+ * genuinely your call, or handed off" owner-split stays identical to what
+ * /status already shows — one classification, not a second one invented
+ * here. evidence-submitted is NOT owner-split (see waitingItemsToBriefItems)
+ * — that also matches /status, which never owner-splits it either.
  */
 
 import { CEO_DECISION_OWNERS } from '../../exec-graph/brief.js';
@@ -71,12 +72,24 @@ function fmtAge(ageHours: number): string {
 }
 
 /**
- * `waiting` (escalated/blocked/evidence-submitted) items split three ways:
- * blocked -> BLOCKED regardless of owner; escalated/evidence-submitted ->
- * CEO DECISION REQUIRED when owned by ceo/external-cto/atlas (a live call),
- * else WAITING ON EXTERNAL OWNER (handed off, informational — mirrors
- * exec-graph/brief.ts's splitEscalatedByOwner so a parked item doesn't
- * re-spam as a decision prompt).
+ * `waiting` (escalated/blocked/evidence-submitted) items split by status:
+ *
+ * - blocked -> BLOCKED regardless of owner.
+ * - escalated -> owner-split (mirrors exec-graph/brief.ts's
+ *   splitEscalatedByOwner): CEO DECISION REQUIRED when owned by
+ *   ceo/external-cto/atlas (a live call), else WAITING ON EXTERNAL OWNER
+ *   (handed off, informational — a parked item shouldn't re-spam as a
+ *   decision prompt).
+ * - evidence-submitted -> ALWAYS CEO DECISION REQUIRED, unconditionally, NOT
+ *   owner-split. Submitting a receipt (hands/exec-graph-adapter.ts's
+ *   submitReceipt()) never reassigns task.owner — a hand-owned task still
+ *   reads owner='hand:x' even though the hand's part is done. The only
+ *   remaining action is Atlas's own `atlas hand verify`, which is never
+ *   genuinely external — owner-splitting this the same way as escalated
+ *   would (and did, before an adversarial review caught it) mislabel "your
+ *   own outstanding verify step" as "handed off to someone else". Matches
+ *   exec-graph/brief.ts's own convention of never owner-splitting
+ *   evidence-submitted (it always buckets under "🔍 на проверке").
  */
 function waitingItemsToBriefItems(waiting: readonly WaitingItem[]): BriefItem[] {
   return waiting.map((w): BriefItem => {
@@ -88,6 +101,16 @@ function waitingItemsToBriefItems(waiting: readonly WaitingItem[]): BriefItem[] 
         status: w.status,
         evidenceFreshness: fmtAge(w.ageHours),
         why: `task '${w.title}' has sat blocked for ${fmtAge(w.ageHours)}`,
+      };
+    }
+    if (w.status === 'evidence-submitted') {
+      return {
+        category: 'CEO DECISION REQUIRED',
+        sourceAuthority: 'exec-graph',
+        sourceRef: w.taskId,
+        status: w.status,
+        evidenceFreshness: fmtAge(w.ageHours),
+        why: `task '${w.title}' has evidence submitted (by '${w.owner}') — awaiting verification via atlas hand verify`,
       };
     }
     const decision = isCeoDecisionOwner(w.owner);
@@ -182,6 +205,23 @@ function briefItemLine(item: BriefItem): string {
 }
 
 /**
+ * A section header showing just "(8)" hides a pass/fail mix — NO ACTION
+ * REQUIRED lumps 'closed' (success) with 'rejected' (a failed attempt) under
+ * one count and one neutral label; a skim-only read (headers/counts only,
+ * not every line) came away thinking "8 closed" when 2 were rejections
+ * (adversarial review + cold-reader both independently flagged this on the
+ * same live output). When a section mixes more than one distinct `status`,
+ * spell out the breakdown right in the header so the count itself can't be
+ * misread as uniform.
+ */
+function countLabel(matched: readonly BriefItem[]): string {
+  const counts = new Map<string, number>();
+  for (const item of matched) counts.set(item.status, (counts.get(item.status) ?? 0) + 1);
+  if (counts.size <= 1) return `${matched.length}`;
+  return `${matched.length}: ${[...counts.entries()].map(([status, n]) => `${status} ${n}`).join(', ')}`;
+}
+
+/**
  * Render the brief as a Russian voice-brief string, one section per non-empty
  * category (plain `- ` lines, no bold headers, no tables — see voice.md /
  * status-report.ts). CEO DECISION REQUIRED is the one exception: when empty
@@ -198,7 +238,7 @@ export function formatCosBrief(items: readonly BriefItem[]): string {
       continue;
     }
     if (matched.length === 0) continue;
-    sections.push([`${CATEGORY_LABEL_RU[category]} (${matched.length}):`, ...matched.map(briefItemLine)].join('\n'));
+    sections.push([`${CATEGORY_LABEL_RU[category]} (${countLabel(matched)}):`, ...matched.map(briefItemLine)].join('\n'));
   }
   return sections.join('\n\n');
 }

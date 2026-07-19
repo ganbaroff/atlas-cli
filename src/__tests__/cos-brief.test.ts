@@ -95,7 +95,7 @@ describe('composeCosBriefItems', () => {
     expect(items[0]?.category).toBe('WAITING ON EXTERNAL OWNER');
   });
 
-  it('evidence-submitted follows the same owner split as escalated', () => {
+  it('evidence-submitted is ALWAYS CEO DECISION REQUIRED, never owner-split (adversarial-review fix: submitReceipt never reassigns owner, so a hand-owned task in evidence-submitted must not read as "handed off")', () => {
     const facts = makeFacts({
       waiting: [
         makeWaiting({ taskId: 'tsk_5', status: 'evidence-submitted', owner: 'ceo' }),
@@ -104,7 +104,10 @@ describe('composeCosBriefItems', () => {
     });
     const items = composeCosBriefItems(facts, []);
     expect(items.find((i) => i.sourceRef === 'tsk_5')?.category).toBe('CEO DECISION REQUIRED');
-    expect(items.find((i) => i.sourceRef === 'tsk_6')?.category).toBe('WAITING ON EXTERNAL OWNER');
+    const handOwned = items.find((i) => i.sourceRef === 'tsk_6');
+    expect(handOwned?.category).toBe('CEO DECISION REQUIRED');
+    expect(handOwned?.why).not.toContain('handed off');
+    expect(handOwned?.why).toContain('atlas hand verify');
   });
 
   it('blocked task -> BLOCKED regardless of owner', () => {
@@ -239,6 +242,25 @@ describe('formatCosBrief', () => {
     const items: BriefItem[] = [{ category: 'DRIFT / STALE SIGNAL', sourceAuthority: 'heartbeat-file', status: 'stale-heartbeat', evidenceFreshness: 'UNKNOWN', why: 'could not read heartbeat freshness' }];
     const text = formatCosBrief(items);
     expect(text).toContain('- [heartbeat-file] stale-heartbeat (UNKNOWN) — could not read heartbeat freshness');
+  });
+
+  it('single-status section keeps a plain count — no breakdown noise when everything in it agrees', () => {
+    const items: BriefItem[] = [
+      { category: 'NO ACTION REQUIRED', sourceAuthority: 'exec-graph', sourceRef: 'tsk_c1', status: 'closed', evidenceFreshness: 'UNKNOWN', why: 'x' },
+      { category: 'NO ACTION REQUIRED', sourceAuthority: 'exec-graph', sourceRef: 'tsk_c2', status: 'closed', evidenceFreshness: 'UNKNOWN', why: 'x' },
+    ];
+    const text = formatCosBrief(items);
+    expect(text).toContain('Закрыто — без действий (2):');
+  });
+
+  it("mixed closed+rejected under NO ACTION REQUIRED breaks down the count in the header — a skim-only read of headers can't miss the rejection (adversarial + cold-reader finding)", () => {
+    const items: BriefItem[] = [
+      { category: 'NO ACTION REQUIRED', sourceAuthority: 'exec-graph', sourceRef: 'tsk_c1', status: 'closed', evidenceFreshness: 'UNKNOWN', why: 'x' },
+      { category: 'NO ACTION REQUIRED', sourceAuthority: 'exec-graph', sourceRef: 'tsk_c2', status: 'closed', evidenceFreshness: 'UNKNOWN', why: 'x' },
+      { category: 'NO ACTION REQUIRED', sourceAuthority: 'exec-graph', sourceRef: 'tsk_r1', status: 'rejected', evidenceFreshness: 'UNKNOWN', why: 'y' },
+    ];
+    const text = formatCosBrief(items);
+    expect(text).toContain('Закрыто — без действий (3: closed 2, rejected 1):');
   });
 });
 
