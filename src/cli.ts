@@ -789,6 +789,53 @@ handCmd
     }
   });
 
+// ─── Chief-of-Staff (CoS) surface ───────────────────────────────────────────
+// Read-only projection over exec-graph + control-plane + spend + git/
+// heartbeat — NOT an authority, writes nothing (see src/atlas/cos/{facts,
+// drift,brief,gather}.ts + docs/atlas-cto/SPRINT-CHIEF-OF-STAFF-V1.md).
+
+const cosCmd = program
+  .command('cos')
+  .description('Chief-of-Staff surface — read-only brief/drift projection (writes nothing)');
+
+cosCmd
+  .command('brief')
+  .description('Compose the six-category CEO brief from the live graph + drift signals')
+  .option('--json', 'Output structured items instead of the Russian voice text')
+  .action(async (opts) => {
+    try {
+      const { gatherCosFacts } = await import('./atlas/cos/facts.js');
+      const { detectDrift } = await import('./atlas/cos/drift.js');
+      const { composeCosBrief } = await import('./atlas/cos/brief.js');
+      const { gatherLiveDriftInputs } = await import('./atlas/cos/gather.js');
+
+      const facts = gatherCosFacts();
+      const drift = detectDrift(gatherLiveDriftInputs());
+      const brief = composeCosBrief(facts, drift);
+
+      console.log(opts.json ? JSON.stringify(brief, null, 2) : brief.text);
+    } catch (err) {
+      console.error(`cos brief error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
+  });
+
+cosCmd
+  .command('drift')
+  .description('Show drift/stale-signal findings only (git ahead, heartbeat stale, graph-verify, stuck tasks)')
+  .action(async () => {
+    try {
+      const { detectDrift } = await import('./atlas/cos/drift.js');
+      const { gatherLiveDriftInputs } = await import('./atlas/cos/gather.js');
+
+      const findings = detectDrift(gatherLiveDriftInputs());
+      console.log(findings.length === 0 ? 'No drift detected.' : JSON.stringify(findings, null, 2));
+    } catch (err) {
+      console.error(`cos drift error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
+  });
+
 // ─── swarm-exec (operator CLI surface) ─────────────────────────────────────
 // Compile freeform intent -> draft -> exec-graph task -> delegated swarm run,
 // verified through the same deterministic Hand Contract verifier as every

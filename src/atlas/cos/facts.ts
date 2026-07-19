@@ -57,9 +57,10 @@ const MS_PER_HOUR = 3_600_000;
  * Hours since the task's last transition (falls back to createdAt when
  * transitions is empty). Rounded to 1 decimal; clamped to 0 on a
  * NaN/negative parse (clock skew or malformed timestamps never produce a
- * negative or garbage age).
+ * negative or garbage age). Exported so ./gather.ts's stuck-task candidate
+ * reader uses the identical age computation instead of a second copy.
  */
-function ageHoursSince(task: Task, nowIso: string): number {
+export function ageHoursSince(task: Task, nowIso: string): number {
   const lastTs = task.transitions.length > 0
     ? task.transitions[task.transitions.length - 1].ts
     : task.createdAt;
