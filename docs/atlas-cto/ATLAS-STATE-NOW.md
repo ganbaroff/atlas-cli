@@ -1,5 +1,7 @@
 # ATLAS — STATE NOW (post-compaction orientation)
-_Last written: 2026-07-19 (handoff, mid-sprint). Committed, NOT YET PUSHED — see "WHERE" below. Read this FIRST on resume._
+_Last written: 2026-07-19 (Chief-of-Staff Surface V1 sprint COMPLETE, W1-W6
+all done). Committed, NOT YET PUSHED — see "WHERE" below. Read this FIRST
+on resume._
 
 ## PURPOSE (current sprint)
 Compound sprint **Chief-of-Staff Surface V1** (self-approved by Atlas per CEO's
@@ -22,44 +24,62 @@ plan + brief contract: `docs/atlas-cto/SPRINT-CHIEF-OF-STAFF-V1.md`.
   Committed `5c0a81b`.
 - Plan refinement (CEO rule 7: cut commitment-capture from this release; encoded
   the 6-category brief contract) committed `14c255e`.
-- **Verified this session** (receipts, same turn): `npx tsc --noEmit` → "No errors
-  found"; `npx vitest run` → `PASS (536) FAIL (0) skipped (2)`; `git status
-  --porcelain state/` → 0 lines (zero graph/state mutation from the new modules).
+- **W3 — brief composer** `src/atlas/cos/brief.ts`: composes facts+drift into the
+  six fixed categories, per-item source authority/ref/status/freshness/why, CEO-
+  verbatim `No CEO decision required.` fallback when empty. Committed `0b07c53`.
+- **W4 — CLI + impure gatherers** `src/atlas/cos/gather.ts` (read-only git ahead/
+  behind, heartbeat age, graph-verify-ok, stuck-task candidates) + `atlas cos
+  brief [--json]` / `atlas cos drift` (`src/cli.ts`). Real run against the live
+  10-task graph proved truthful (correct MIRT handoff classification, correct
+  unpushed-commit count, correct ~553h stale heartbeat). Committed `f8be853`.
+- **W5 fix 1** — rejected tasks were invisible in the brief (facts.ts never
+  tracked them); the live run against the real graph (2 rejected tasks) is what
+  caught it, not inspection. Added `CosFacts.rejected` → NO ACTION REQUIRED.
+  Committed `df948c1`.
+- **W5 fix 2** — independent adversarial review + cold-reader (two fresh-context
+  agents, given only the live brief text, told to actively hunt for false
+  urgency/stale evidence/duplicate authority/misleading language) found and
+  fixed two real issues: (a) evidence-submitted tasks were owner-split like
+  escalated, mislabeling a hand-owned task awaiting Atlas's own `atlas hand
+  verify` as "handed off" — now unconditionally CEO DECISION REQUIRED; (b)
+  `NO ACTION REQUIRED`'s count blended closed successes with rejections (a real
+  live collision: ADR-0001-closed next to ADR-0002-rejected under one "no
+  action" header) — section headers now break down mixed statuses inline.
+  Committed `93f8f3f`.
+- **W6 — docs**: `src/atlas/cos/README.md` (module contract, authority boundary,
+  documented known limitations), `docs/adr/0008-cos-surface-read-only-projection.md`,
+  `docs/runbooks/morning-brief-and-status.md` updated (new surface, explicitly
+  marked NOT yet wired into Telegram), `docs/architecture/ATLAS-ARCHITECTURE.md`
+  updated, full report at `docs/atlas-cto/CHIEF-OF-STAFF-V1-REPORT.md`
+  (PLAN/DO/ACT/CHECK/COMPARE/LEARN/RESULT).
+- **Verified this session** (receipts, same turn, after every wave): `npx tsc
+  --noEmit` → "No errors found"; `npx vitest run` → `PASS (569) FAIL (0) skipped
+  (2)` (baseline was 536 at sprint start); `git status --porcelain state/` → 0
+  lines every single time (zero graph/state mutation from any wave or any real
+  run); `npm run build` clean.
 
 ## IN PROGRESS
-Nothing mid-edit — tree is clean, last two waves (W1, W2) are committed and
-verified. The sprint is paused between waves for this handoff, not stuck.
+Nothing. Tree is clean, all six waves (W1-W6) are committed and verified. The
+sprint is DONE, not paused — the only remaining step is the push (see NEXT).
 
 ## NEXT (priority order)
-1. **W3 — brief composer** `src/atlas/cos/brief.ts`: compose `gatherCosFacts()` +
-   `detectDrift()` into the CEO-facing brief with the six mandatory categories
-   (CEO DECISION REQUIRED / WAITING ON EXTERNAL OWNER / BLOCKED / DRIFT-STALE
-   SIGNAL / RECENTLY VERIFIED / NO ACTION REQUIRED). Every item must carry:
-   source authority, source ref/task ID, status, evidence freshness or
-   `UNKNOWN`, why it's shown. If nothing needs a decision, say plainly `No CEO
-   decision required.` — no manufactured urgency. Full contract is in
-   `SPRINT-CHIEF-OF-STAFF-V1.md`'s "BRIEF CONTRACT" section — read it before
-   writing this module, it's CEO-verbatim and binding.
-2. **W4 — CLI + wire-in**: `atlas cos brief` / `atlas cos drift` commands; impure
-   gatherers for git ahead/behind, heartbeat file, `graph verify` exit; a REAL
-   local run against the live graph (runtime proof, not fixtures-only).
-3. **W5 — hardening + adversarial**: negative scenarios (empty graph, stale
-   signal, rejected task, escalated external owner, malformed/unknown source);
-   prove zero graph/state mutation; independent adversarial pass for false
-   urgency / stale evidence / duplicate authority / misleading CEO language;
-   cold-reader.
-4. **W6 — docs**: ADR-0008 (CoS = read-only projection, NOT an authority),
-   update `docs/runbooks/morning-brief-and-status.md`, architecture map,
-   module contracts, then the final compound-sprint report (PLAN/DO/ACT/CHECK/
-   COMPARE/LEARN/RESULT) — that report is what closes this sprint out to the CEO.
-5. Push `feat/arsenal-wiring` to origin once W6 lands (currently 4 commits
-   ahead, unpushed — see WHERE).
-
-Per CEO's standing order: no checkpoint needed between W3→W4→W5→W6 as long as
-each wave stays GREEN (typecheck+suite clean, no state mutation, docs updated).
-Stop and escalate only on a real RED gate (deploy/prod mutation, credentials,
-paid budget, irreversible change, security incident, VOLAURA product intrusion,
-authority duplication, genuine strategic contradiction).
+1. **Push `feat/arsenal-wiring` to origin** — 9 commits ahead, all local, none
+   pushed yet. This session's standing instruction explicitly names `git push`
+   as a stop-and-ask action regardless of the sprint's own "push after W6"
+   default — so this is a pending explicit CEO/user go-ahead, not a dropped
+   step. If you're a fresh instance resuming and were told to push: verify with
+   `git rev-list --left-right --count origin/feat/arsenal-wiring...HEAD` first
+   (should read `0	9` before you push), then push, then re-verify with
+   `git rev-parse HEAD` vs `git rev-parse origin/feat/arsenal-wiring`.
+2. **Future, separate work (not part of this sprint, don't start without a new
+   go-ahead):** wire `cos/*` into the live Telegram `/status` and the 08:45
+   morning brief (`telegram.ts`, `briefing.ts`'s hand-typed `awaitingCeo`) —
+   this sprint proved the surface locally; making it what the CEO actually
+   reads on his phone needs its own live-Telegram verification pass. Also
+   flagged, out of scope: a pre-existing exec-graph data-quality issue (one
+   rejected task's title contains a leaked filesystem path fragment) surfaced
+   by this sprint's live runs but not fixed (would require a graph-state
+   write, which this read-only surface may never do).
 
 ## DECISIONS & DEAD-ENDS (don't redo this thinking)
 - **Commitment-capture is explicitly CUT from this release** (CEO rule 7,
@@ -77,44 +97,45 @@ authority duplication, genuine strategic contradiction).
   stays BLOCKED BY FREE-PROVIDER AVAILABILITY (env/quota, not code); CEO said
   explicitly do not chase that further, no provider/key changes authorized.
 
-## IMPORTANT FILES FOR THE NEXT STEP
-- `docs/atlas-cto/SPRINT-CHIEF-OF-STAFF-V1.md` — the sprint plan + the binding
-  BRIEF CONTRACT section W3 must implement exactly.
-- `src/atlas/cos/facts.ts`, `src/atlas/cos/drift.ts` — the two inputs W3 composes.
-- `src/atlas/status-report.ts` — existing `/status` composer; shows the
-  established voice-brief pattern (plain lines, no bullet walls) to match.
-- `src/atlas/briefing.ts` — existing 08:45 brief composer (`composeMorningBriefing`)
-  that W3/W4 are meant to make graph-derived instead of hand-typed.
-- `docs/runbooks/morning-brief-and-status.md` — the runbook W6 must update once
-  `atlas cos brief` exists as a new surface.
+## IMPORTANT FILES (sprint reference, now complete)
+- `docs/atlas-cto/SPRINT-CHIEF-OF-STAFF-V1.md` — the sprint plan + the binding BRIEF CONTRACT.
+- `docs/atlas-cto/CHIEF-OF-STAFF-V1-REPORT.md` — the closing sprint report (PLAN/DO/ACT/CHECK/COMPARE/LEARN/RESULT).
+- `src/atlas/cos/README.md` — module contracts, authority boundary, documented known limitations.
+- `docs/adr/0008-cos-surface-read-only-projection.md` — the ADR.
+- `src/atlas/status-report.ts`, `src/atlas/briefing.ts` — the pre-existing Telegram
+  surfaces `cos/*` is NOT yet wired into (future work, not this sprint).
 - `src/exec-graph/contracts.ts` — Task/Goal/Transition schemas `facts.ts`/`drift.ts` depend on.
 
 ## VERIFY COMMANDS (what "works" means)
 ```
 cd "C:\Users\user\OneDrive\Documents\GitHub\ANUS"
 npx tsc --noEmit                 # must say "No errors found"
-npx vitest run                   # must say PASS (>=536) FAIL (0)
+npx vitest run                   # must say PASS (>=569) FAIL (0)
 git status --porcelain state/    # must be EMPTY — proves no module wrote graph/state
-node dist/cli.js graph status    # live exec-graph snapshot (build first: npm run build)
+node dist/cli.js cos brief       # live Chief-of-Staff brief (build first: npm run build)
+node dist/cli.js cos drift       # live drift findings only
+node dist/cli.js graph status    # live exec-graph snapshot
 ```
-A wave is GREEN only when typecheck is clean, the suite is 0 failures with no
-regressions from the 536 baseline, `state/` is untouched, and (from W4 onward)
-the CLI command runs against the real graph, not just fixtures.
+A wave was GREEN only when typecheck was clean, the suite was 0 failures with
+no regressions from the 536 baseline (now 569), `state/` was untouched, and
+(from W4 onward) the CLI command ran against the real graph, not just fixtures.
 
 ## OPEN RISKS
-- Sprint work is **committed but unpushed** (4 commits ahead of origin) — if
+- Sprint work is **committed but unpushed** (9 commits ahead of origin) — if
   this machine/checkout is lost before the next push, the work is only as safe
-  as this local clone. Push after W6, or sooner if asked.
-- W3 is the highest-risk wave: it's the one CEO explicitly hand-wrote hard
-  rules for (six categories, per-item metadata, "no manufactured urgency").
-  Easiest way to fail review is a plausible-but-generic brief that doesn't
-  actually trace every line back to a source authority + freshness — read the
-  BRIEF CONTRACT section literally, don't paraphrase from memory.
+  as this local clone. This session's standing instruction requires an explicit
+  go-ahead before `git push` — see NEXT §1.
 - `heartbeat` has been stale since 2026-06-26 with no assigned writer (known
-  problem #7 below) — W4's real-graph run will likely surface a genuine
-  stale-heartbeat drift finding; that's expected/correct behavior, not a bug.
+  problem #7 below) — `atlas cos drift`/`atlas cos brief` correctly surfaces
+  this as a live stale-heartbeat finding every run; that's expected/correct
+  behavior, not a bug in this sprint's code.
+- A pre-existing exec-graph data-quality issue (one rejected task's title
+  contains a leaked filesystem path fragment) is now visible in the brief
+  output (it wasn't before, since rejected tasks were invisible) — flagged,
+  not fixed, since fixing it would require a graph-state write this read-only
+  surface is architecturally forbidden from making.
 - The 12 known structural problems below are unrelated pre-existing debt, not
-  blockers for this sprint, but W4's real-graph run may surface more of them.
+  touched by this sprint.
 
 ## WHO / SCOPE (locked)
 This chat = ATLAS / ANUS / Jarvis control-plane work ONLY. VOLAURA PRODUCT (assessment, auth,
@@ -141,7 +162,10 @@ without an explicit CEO gate; never print secrets/tokens/chat-IDs.
   volaura-product-chat = handed to product owner, do NOT reopen/execute).
 
 ## WHERE / DURABLE COPIES
-- ANUS remote==local (verify with git rev-parse HEAD vs origin/feat/arsenal-wiring). Latest ~09424ba.
+- ANUS remote != local: local HEAD is 9 commits ahead of
+  `origin/feat/arsenal-wiring` (Chief-of-Staff Surface V1, W1-W6, unpushed —
+  verify with `git rev-list --left-right --count
+  origin/feat/arsenal-wiring...HEAD`, should read `0	9` until pushed).
 - Atlas-CTO status ledger DURABLE MIRROR (pushed): docs/atlas-cto/EXTERNAL-CTO-STATE-SNAPSHOT.md.
 - Canonical ORIGINAL of that ledger: VOLAURA memory/atlas/EXTERNAL-CTO-STATE.md — STRANDED on local
   UNPUSHED branch fix/pr-169-rubric-repair (@~460821ec), NOT on origin/main. Continuity risk;
@@ -170,11 +194,13 @@ live agents write the same repos concurrently, collisions already seen (dup Clas
 security debt (leaked keys, CEO-deferred).
 
 ## HOW TO RESUME
-1. Read this file top to bottom — the NEXT section above has the concrete next
-   step (W3, brief composer). This supersedes the generic guidance below.
-2. `node dist/cli.js graph status` for live task state.
-3. Continue the Chief-of-Staff Surface V1 sprint wave-by-wave (Sonnet hands,
-   Opus/Fable verify per wave) with no CEO checkpoint between GREEN waves, per
-   the CEO's standing order — do NOT return to CEO until W6 is done unless a
-   genuinely-new strategic question or a real RED gate appears.
-4. Do NOT re-audit VOLAURA product; do NOT deploy without a CEO gate.
+1. Read this file top to bottom — the Chief-of-Staff Surface V1 sprint (W1-W6)
+   is DONE. The only remaining step is the push (NEXT §1) — pending explicit
+   go-ahead, not a dropped task.
+2. `node dist/cli.js graph status` and `node dist/cli.js cos brief` for live state.
+3. If asked to push: verify ahead-count first, push, re-verify HEAD==origin.
+4. If asked to keep going without a specific target: the next real work is
+   wiring `cos/*` into the live Telegram surfaces (NEXT §2) — confirm that's
+   actually wanted before starting, since it touches `telegram.ts`, a file
+   that's part of the always-on production bot.
+5. Do NOT re-audit VOLAURA product; do NOT deploy without a CEO gate.

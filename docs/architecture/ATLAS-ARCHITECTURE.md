@@ -18,6 +18,17 @@ verifier closes the task; the swarm never self-declares success. Single control
 path via `atlas/control-plane.ts` (paused/stopped ⇒ the run is `blocked`, never
 verified). CLI: `atlas swarm-exec intake|commit|run`.
 
+**Chief-of-Staff Surface V1 (2026-07-19, see ADR-0008):** `src/atlas/cos/*`
+is a read-only projection over exec-graph + control-plane + spend + git/
+heartbeat — never an authority, writes nothing (verified every run via
+`git status --porcelain state/`). `facts.ts`/`drift.ts`/`brief.ts` are pure;
+`gather.ts` is the sole impure module (read-only git/filesystem/ledger
+reads). Composes into six fixed categories (CEO DECISION REQUIRED / WAITING
+ON EXTERNAL OWNER / BLOCKED / DRIFT-STALE SIGNAL / RECENTLY VERIFIED / NO
+ACTION REQUIRED) via `atlas cos brief|drift`. NOT yet wired into the
+Telegram `/status` or 08:45 morning brief below (`briefing.ts`'s
+`awaitingCeo` is still hand-typed) — that remains future work.
+
 **Status of this document:** the diagram and tables below describe code
 that exists and is tested (IMPLEMENTED-LOCAL throughout unless marked
 otherwise); they are not a claim that every path shown has been exercised

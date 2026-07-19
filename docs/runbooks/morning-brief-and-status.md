@@ -80,6 +80,33 @@ run (IMPLEMENTED-LOCAL, not LIVE-VERIFIED).
    nothing, not a blank trailer).
 6. Sent via `bot.telegram.sendMessage(chatId, text.slice(0, 4096))`.
 
+## Related but separate: the Chief-of-Staff (`cos`) surface (2026-07-19)
+
+`src/atlas/cos/*` (ADR-0008) is a **newer, separate, read-only projection**
+— NOT yet wired into either surface above. It answers the same underlying
+question ("what needs the CEO's decision, what shipped, what's drifting")
+but derives it into six fixed categories (CEO DECISION REQUIRED / WAITING
+ON EXTERNAL OWNER / BLOCKED / DRIFT-STALE SIGNAL / RECENTLY VERIFIED / NO
+ACTION REQUIRED) instead of the free-form `awaitingCeo` string
+`briefing.ts`'s `composeMorningBriefing()` still takes today.
+
+- **On demand (CLI, local machine only):**
+  ```
+  node dist/cli.js cos brief
+  node dist/cli.js cos brief --json
+  node dist/cli.js cos drift
+  ```
+- This is **local-only, IMPLEMENTED-LOCAL** — it has not been wired into
+  `telegram.ts`'s `/status` or the 08:45 scheduled brief, and has no live
+  Telegram verification receipt. Do not assume it appears on the deployed
+  bot; it currently only runs where you invoke `atlas cos ...` directly.
+- Full module contract, authority boundary, and known limitations:
+  `src/atlas/cos/README.md`.
+- Wiring this into `telegram.ts` (replacing `briefing.ts`'s hand-typed
+  `awaitingCeo` with `composeCosBrief()`'s output) is explicitly future
+  work, not done as part of the sprint that shipped this surface — see
+  ADR-0008's Consequences.
+
 ## Degradation behavior (by design, not a bug)
 
 - **Exec-graph read fails** (either surface): own try/catch around the
