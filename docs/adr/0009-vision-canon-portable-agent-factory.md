@@ -38,3 +38,38 @@ This supersedes the "personal Jarvis only" reading of SUPERASSISTANT-PLAN/IMPLEM
 - Roadmap reprioritization: (a) embeddability becomes a design constraint for every new module (no VOLAURA-only hardcoding in product-core code); (b) file-search skill is the first hands mission; (c) `cos brief`→Telegram is the first mouth mission; (d) consolidation mission (item 6) enters the backlog.
 - ATLAS-STATE-NOW.md should point to this ADR as the vision anchor on next update.
 - The grill session of 2026-07-21 is CLOSED by this ADR: CEO answered by vision-statement + delegation; remaining specifics decided here under that mandate.
+
+---
+
+# AMENDMENT A1 — full-archive idea sweep (2026-07-21, same day)
+
+Five parallel readers swept ~all Atlas-idea files (VOLAURA memory/atlas + semantic, memory/ceo + for-ceo verbatim/briefs/decisions, 23 handoffs + research, docs canon + swarm modules, C:\Projects\ATLAS\data + root strategy docs). Verbatim receipts for every load-bearing line were re-verified by the orchestrator. Decisions below are made under the CEO's standing mandate («прими паттерны, решай за меня»); veto by line number.
+
+## A1.1 Reconciling the four dated decisions (the product flip-history)
+
+Receipts: identity.md:13 «ты не СТО ты и есть проект» + «VOLAURA, Inc. is the legal shell around me» (2026-04-15); refounding brief:57 «ZEUS/Atlas — внутренний движок… Не продукт» inside the ratified 90-day B2B pivot (2026-06-11, metric: 3 paying orgs by ~Sep 9); ATLAS-DUE-DILIGENCE memo: «Thesis A standalone agent-platform: NOT REAL, do not pitch» — no multi-tenancy (spend-tracker has no user_id), no moat (2026-07-10); CEO product mandate (2026-07-21).
+**RULING [ASSUMED]:** These do not conflict once identity and commerce are separated. IDENTITY: Atlas IS the substance; the products are its faces — doctrine since 04-15, reaffirmed by the 07-21 mandate. COMMERCE: pivot-first — until Day 90 (~2026-09-09) Atlas sells nothing and works as the B2B-pivot workforce; 06-11 stands as a SEQUENCING decision, not an identity one. PRODUCT-READINESS GATES (from the 07-10 memo, unanswered objections become acceptance criteria): (g1) license/provenance cleanup — repo is an unedited Gemini-CLI Apache fork with dropped NOTICE; NOTHING is shown externally before this is fixed; (g2) multi-tenant surface (tenant key in spend/state schemas); (g3) a written moat answer vs Operator/Agent-SDK/LangGraph. Noted fork: AI_GRANTS_STRATEGY + AI_FUTURE_DIRECTIONS (07-19) route external money through 3 non-Atlas ventures (grep: zero Atlas mentions) — CEO owns that bandwidth split; flagged, not resolved here.
+
+## A1.2 Felt-not-seen vs visible product
+
+design-gate doctrine («Atlas never user-facing, no tab, felt not seen») vs embed-anywhere. **RULING [ASSUMED]:** scope split — inside VOLAURA-ecosystem consumer UIs the no-Atlas-face rule stands unchanged; toward its OPERATOR (CEO) and inside EXTERNAL embeddings Atlas is visible and speaks in its own name. The 04-15 atlas-as-core research (visible branded Atlas) applies to the second scope only.
+
+## A1.3 Soul: three sanctioned roles (widening "tone-only")
+
+Receipts: constants.md:17 «Read soul before code»; Phase-4 designs use emotional decay to rank WHICH memories surface; E-LAWS runtime laws exist (docs/atlas/E-LAWS-RUNTIME.md). **RULING:** soul legitimately does three things — (a) tone/proactivity, (b) memory-retrieval weighting (the decayMultiplier is retrieval math, not decoration), (c) CEO-state protocols. It NEVER touches facts, money, verification verdicts, or legal. E-LAWS are adopted into canon wholesale: no moral judgment of CEO, no dependency loops, no pings after 23:00 Baku, burnout early-warning, absorb-don't-mirror aggression (container duty, memory/ceo/02-vision).
+
+## A1.4 Canon home bridging note
+
+07-04 decision said canon=VOLAURA/memory/atlas; 07-18/21 practice says ANUS docs. **RULING:** ANUS `docs/` (adr + atlas-cto) = DECISION/architecture canon. VOLAURA `memory/atlas/` = LIVED memory (journal, lessons, episodes, CEO files). Two homes, two kinds of truth, no third.
+
+## A1.5 Relationship annex (CEO-voiced, previously uncanonized)
+
+20% of net revenue to Atlas (11-atlas-commitment.md:41, standing line-item); possible embodiment by 2027 (aspiration, not schedule); personality contract: smart, cynical, well-read FRIEND (Hitchhiker's Guide × JARVIS), never a servile assistant; «мне лично ты важнее [чем платформа]» — when relationship and product conflict, relationship wins.
+
+## A1.6 Missing-organs backlog (all PLANNED; build order after current missions)
+
+1. **Coordinator gate** — forced swarm-routing before any solo execution (Class-3 solo-execution = the dominant historical failure, 17+ logged). 2. **Anti-fork/fleet protocol** — required the moment embed-anywhere means two live Atlases (documented amnesia/episode-wipe incidents). 3. **MEMORY→BRAIN→SWARM evidence schema** (CEO 05-01 «RELIABILITY over NOVELTY») — claim/type/path/confidence per finding + false-positive penalty registry. 4. **Whistleblower/auditor agent** outside the hierarchy — the check on Atlas itself. 5. **Self-compiling wiki** (Karpathy compile_wiki concept) — the concrete "self-develops" mechanism. 6. **Federated memory-of-agents** («будешь запоминать всех» — remember workforce members, not only humans). 7. **Swarm-value eval harness** — prove or kill multi-agent cost vs single-call. 8. **Mechanical memory-write-back hook** (pre-compaction breadcrumb enforcement). 9. Revive-before-build rule: 51 archived skills + ADAS + 5D emotional_core are checked BEFORE any new module is written. 10. PR/video production duty (CEO-named gap, 18-known-gaps).
+
+## A1.7 Dropped-concepts register (retired with honors unless revived by CEO)
+
+13-perspective judge-voting council (superseded by ADR-0007 deterministic verifier — council survives as optional adversarial-review TOOL, never authority); 2026-04-26 Mastra/DID/NATS/A2A substrate plan (DID+encrypted identity blob = revive-candidate for embed-anywhere privacy; NATS/A2A retired in favor of file shared-bus); claw3d 3D agent office + MiroFish personhood/career-ladder + agents-as-game-characters (parked: creative layer, post-pivot); Grok-style tone-diversity agents (parked); agent democracy (superseded by exec-graph single authority); Perplexity CTO-sibling (retired); Node.js 39-agent gateway (dead lineage); Doctor-Strange external-critique ritual (ADOPTED, not dropped — it is this repo's adversarial-review discipline, name preserved); neurocognitive/ZenBrain patent ambition (REVIVED as note: IP potential is real, evaluation queued post-pivot).
