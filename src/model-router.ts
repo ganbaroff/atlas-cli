@@ -83,7 +83,7 @@ const MODEL_REGISTRY: ModelConfig[] = [
     provider: 'anthropic',
     modelId: 'claude-sonnet-4-20250514',
     costTier: 2,
-    roles: ['WORKER', 'JUDGE', 'CRITICAL'],
+    roles: ['JUDGE', 'CRITICAL'],
   },
 ];
 

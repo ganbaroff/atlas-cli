@@ -60,4 +60,11 @@ describe('Model Router', () => {
   it('throws when no provider available for role', () => {
     expect(() => routeModel({ role: 'WORKER' })).toThrow('No model available');
   });
+
+  it('never routes WORKER to anthropic (credits-before-cash, ADR-013; ADR-0007 follow-up 3)', () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', 'test-key');
+    vi.stubEnv('GROQ_API_KEY', 'test-key');
+    const candidates = listAvailableModels().filter((m) => m.roles.includes('WORKER'));
+    expect(candidates.some((m) => m.provider === 'anthropic')).toBe(false);
+  });
 });
