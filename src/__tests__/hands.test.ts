@@ -100,7 +100,7 @@ describe('Hand Contract V0 (isolated temp exec-graph dir per test)', () => {
     expect(() => getHand('__proto__')).toThrow(HandNotFoundError);
     expect(() => getHand('toString')).toThrow(HandNotFoundError);
     expect(getHand('sonnet-foreground').handId).toBe('sonnet-foreground');
-    expect(listHands().map((h) => h.handId).sort()).toEqual(['local-readonly', 'sonnet-foreground', 'swarm-local']);
+    expect(listHands().map((h) => h.handId).sort()).toEqual(['browser-foreground', 'local-readonly', 'sonnet-foreground', 'swarm-local']);
   });
 
   // ── 2b. swarm-local hand: foreground-only, no write/mutation action ──────

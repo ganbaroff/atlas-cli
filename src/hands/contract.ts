@@ -22,6 +22,7 @@
 import { z } from 'zod';
 import { createHash } from 'node:crypto';
 import { taskIdSchema } from '../exec-graph/contracts.js';
+import { browserActionSchema, browserActionResultSchema } from './browser-actions.js';
 
 export const delegationRiskClassSchema = z.enum([
   'low',
@@ -53,6 +54,7 @@ export const receiptKindSchema = z.enum([
   'commit-exists',
   'file-contains',
   'command-output-match',
+  'browser-action',
   'narrative',
 ]);
 export type ReceiptKind = z.infer<typeof receiptKindSchema>;
@@ -71,6 +73,10 @@ export const receiptSchema = z
     expectedSubstring: z.string().min(1).optional(),
     claimedResult: z.string().min(1),
     artifacts: z.array(z.string().min(1)).optional(),
+    /** Structured browser actions — required for browser-action receipts. */
+    actions: z.array(browserActionSchema).optional(),
+    /** Deterministic results from browser actions — required for browser-action receipts. */
+    actionResults: z.array(browserActionResultSchema).optional(),
   })
   .superRefine((r, ctx) => {
     if ((r.kind === 'file-exists' || r.kind === 'commit-exists' || r.kind === 'file-contains') && !r.ref) {
@@ -93,6 +99,14 @@ export const receiptSchema = z
           path: ['expectedSubstring'],
           message: "receipt kind 'command-output-match' requires expectedSubstring",
         });
+      }
+    }
+    if (r.kind === 'browser-action') {
+      if (!r.actions || r.actions.length === 0) {
+        ctx.addIssue({ code: 'custom', path: ['actions'], message: "receipt kind 'browser-action' requires at least one action" });
+      }
+      if (!r.actionResults || r.actionResults.length === 0) {
+        ctx.addIssue({ code: 'custom', path: ['actionResults'], message: "receipt kind 'browser-action' requires actionResults" });
       }
     }
     // A whitespace-only or near-empty expectedSubstring (e.g. ' ') passes

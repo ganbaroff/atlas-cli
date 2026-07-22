@@ -146,6 +146,31 @@ export const REGISTRY: Readonly<Record<string, HandSpec>> = Object.freeze({
       'Objective implies any write/mutating/credential action -> escalate to ceo; this hand '
       + 'must never be asked to do more than read.',
   }),
+  'browser-foreground': handSpecSchema.parse({
+    handId: 'browser-foreground',
+    purpose:
+      'Foreground, CEO-supervised browser Hand — navigates local/fixture pages, reads text, '
+      + 'fills fields, clicks buttons via a closed typed action vocabulary. No form submit, '
+      + 'no credentials, no uploads, no payment, no real portal. Playwright adapter.',
+    capabilities: ['browser-navigate', 'browser-read', 'browser-fill', 'browser-click', 'browser-select'],
+    trustLevel: 'medium',
+    allowedEnvironments: ['local-foreground'],
+    allowedActions: ['browser-navigate', 'browser-read', 'browser-fill', 'browser-click', 'browser-select'],
+    disallowedActions: ['browser-submit', 'credential-access', 'upload', 'payment', 'unattended', 'deploy', 'command-exec'],
+    costClass: 'FOREGROUND-CEO-SUPERVISED',
+    autonomy: 'foreground-only',
+    inputContract:
+      'A DelegationBrief (see ./contract.ts): objective, allowedActions subset of this '
+      + "hand's allowedActions, a falsifiable expectedResult, timeoutMs, riskClass.",
+    timeoutMs: 60_000,
+    retryPolicy: 'none',
+    abortPolicy:
+      "On timeout or CEO-interrupt, the delegating adapter call (abortHandTask) moves the "
+      + "task to 'blocked' — never silently 'verified'. Browser session is closed on abort.",
+    escalationCondition:
+      'Any action outside the typed vocabulary (submit, credentials, upload, payment, real portal) '
+      + "-> escalate to ceo, don't silently widen scope.",
+  }),
   'swarm-local': handSpecSchema.parse({
     handId: 'swarm-local',
     purpose:

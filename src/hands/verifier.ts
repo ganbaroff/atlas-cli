@@ -170,6 +170,30 @@ export function verify(receipt: Receipt): VerifyResult {
       }
     }
 
+    case 'browser-action': {
+      if (!receipt.actions || receipt.actions.length === 0) {
+        return { verified: false, reason: 'browser-action receipt has no actions' };
+      }
+      if (!receipt.actionResults || receipt.actionResults.length === 0) {
+        return { verified: false, reason: 'browser-action receipt has no actionResults' };
+      }
+      // All action results must report success
+      const failed = receipt.actionResults.find(r => !r.success);
+      if (failed) {
+        return { verified: false, reason: `browser action '${failed.action.kind}' failed: ${failed.error ?? 'unknown'}` };
+      }
+      // If expectedSubstring is provided, at least one result value must contain it
+      if (receipt.expectedSubstring) {
+        const found = receipt.actionResults.some(
+          r => r.value !== undefined && r.value.includes(receipt.expectedSubstring!)
+        );
+        if (!found) {
+          return { verified: false, reason: `no browser action result contains expected substring '${receipt.expectedSubstring}'` };
+        }
+      }
+      return { verified: true, reason: `all ${receipt.actionResults.length} browser actions succeeded` };
+    }
+
     default: {
       const _exhaustive: never = receipt.kind;
       return { verified: false, reason: `unknown receipt kind: ${String(_exhaustive)}` };
