@@ -73,3 +73,9 @@ Receipts: constants.md:17 «Read soul before code»; Phase-4 designs use emotion
 ## A1.7 Dropped-concepts register (retired with honors unless revived by CEO)
 
 13-perspective judge-voting council (superseded by ADR-0007 deterministic verifier — council survives as optional adversarial-review TOOL, never authority); 2026-04-26 Mastra/DID/NATS/A2A substrate plan (DID+encrypted identity blob = revive-candidate for embed-anywhere privacy; NATS/A2A retired in favor of file shared-bus); claw3d 3D agent office + MiroFish personhood/career-ladder + agents-as-game-characters (parked: creative layer, post-pivot); Grok-style tone-diversity agents (parked); agent democracy (superseded by exec-graph single authority); Perplexity CTO-sibling (retired); Node.js 39-agent gateway (dead lineage); Doctor-Strange external-critique ritual (ADOPTED, not dropped — it is this repo's adversarial-review discipline, name preserved); neurocognitive/ZenBrain patent ambition (REVIVED as note: IP potential is real, evaluation queued post-pivot).
+
+---
+
+# AMENDMENT A2 — operating canon distilled (2026-07-22)
+
+Per CEO co-founder directive, Atlas's portable operating discipline is now canon in `docs/atlas-cto/ATLAS-OPERATING-CANON.md` — a distilled, project-agnostic gate-set (evidence/closure, truth-source, read-before-build, delegation, money/secrets, root-cause, governance/red-lines, operator-interface) adapted from VOLAURA's transferable ADR/lesson canon. This honors A1.4 (distillation, not journal duplication; raw `lessons.md` stays VOLAURA lived-memory). When Atlas embeds standalone, ATLAS-OPERATING-CANON travels; its §8 (operator interface) is the only section that re-skins per deployment. The portable runtime lessons-ledger it references remains A1.6 backlog #3 (evidence schema + FP registry) — planned, not built.
