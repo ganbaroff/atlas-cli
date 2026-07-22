@@ -198,19 +198,20 @@ describe('Hand Contract V0 (isolated temp exec-graph dir per test)', () => {
     expect(getTask(taskId)?.status).toBe('verified');
   });
 
-  it('7b. a valid command-output-match receipt (allowlisted `ls`) verifies', () => {
+  it('7b. a valid command-output-match receipt (cross-platform `git ls-files`) verifies', () => {
     const taskId = planTask('valid-command-receipt-task');
     assignHand(taskId, 'local-readonly', { actor: 'atlas' });
 
-    writeFileSync(join(dir, 'ls-proof.txt'), 'x');
+    // git ls-files is a real cross-platform executable (not a shell builtin),
+    // works identically on Unix and Windows. We use a tracked file from the repo.
     submitReceipt(taskId, {
       taskId,
       handId: 'local-readonly',
       submittedBy: 'local-readonly',
       kind: 'command-output-match',
-      command: `ls ${dir}`,
-      expectedSubstring: 'ls-proof.txt',
-      claimedResult: 'ls shows the proof file',
+      command: 'git ls-files package.json',
+      expectedSubstring: 'package.json',
+      claimedResult: 'git ls-files shows tracked file',
     });
 
     const result = verifyAndTransition(taskId, { actor: 'atlas' });
@@ -451,7 +452,7 @@ describe('Hand Contract V0 (isolated temp exec-graph dir per test)', () => {
 
   // ── 16. HOLE 1 — generic exec-graph callers cannot bypass Hand authority ──
   describe('16. HandAuthorityError — adversarial-review Hole 1 regression', () => {
-    it('16a. generic moveTask(...,"verified") on a hand-owned task throws HandAuthorityError; the same call with _viaHandAdapter:true succeeds', () => {
+    it('16a. generic moveTask(...,"verified") on a hand-owned task throws HandAuthorityError; the same call with _viaVerifier:true succeeds', () => {
       const taskId = planTask('hole1a-fake-verify-task');
       assignHand(taskId, 'local-readonly', { actor: 'atlas' });
       moveTask({ taskId, to: 'in-progress', actor: 'atlas' });
@@ -469,12 +470,12 @@ describe('Hand Contract V0 (isolated temp exec-graph dir per test)', () => {
         to: 'verified',
         actor: 'atlas',
         evidenceRefs: ['fake-ref'],
-        _viaHandAdapter: true,
+        _viaVerifier: true,
       });
       expect(moved.status).toBe('verified');
     });
 
-    it('16b. generic reassignOwner(taskId, "hand:sonnet-foreground", ...) throws HandAuthorityError; the same call with _viaHandAdapter:true succeeds', () => {
+    it('16b. generic reassignOwner(taskId, "hand:sonnet-foreground", ...) throws HandAuthorityError; the same call with _viaVerifier:true succeeds', () => {
       const goal = createGoal({ title: 'hole1b-goal', actor: 'atlas', ts: NOW });
       const { task } = createTask({
         goalId: goal.id,
@@ -494,7 +495,7 @@ describe('Hand Contract V0 (isolated temp exec-graph dir per test)', () => {
       const reassigned = reassignOwner(task.id, 'hand:sonnet-foreground', {
         actor: 'atlas',
         reason: 'legit via adapter flag',
-        _viaHandAdapter: true,
+        _viaVerifier: true,
       });
       expect(reassigned.owner).toBe('hand:sonnet-foreground');
     });
@@ -523,7 +524,7 @@ describe('Hand Contract V0 (isolated temp exec-graph dir per test)', () => {
       moveTask({ taskId: task.id, to: 'planned', actor: 'atlas' });
       moveTask({ taskId: task.id, to: 'in-progress', actor: 'atlas' });
       moveTask({ taskId: task.id, to: 'evidence-submitted', actor: 'atlas', evidenceRefs: ['x'] });
-      const verified = moveTask({ taskId: task.id, to: 'verified', actor: 'atlas', evidenceRefs: ['x'] });
+      const verified = moveTask({ taskId: task.id, to: 'verified', actor: 'atlas', evidenceRefs: ['x'], _viaVerifier: true });
       expect(verified.owner).toBe('atlas');
       expect(verified.owner).not.toMatch(/^hand:/);
 
@@ -535,7 +536,7 @@ describe('Hand Contract V0 (isolated temp exec-graph dir per test)', () => {
       expect(getTask(task.id)?.owner).toBe('atlas');
     });
 
-    it('non-hand-owned tasks are unaffected — a plain atlas-owned task can still move to verified/rejected via generic moveTask', () => {
+    it('non-hand-owned tasks also require verifier path to reach verified/rejected', () => {
       const goal = createGoal({ title: 'unaffected-goal', actor: 'atlas', ts: NOW });
       const { task } = createTask({
         goalId: goal.id,
@@ -548,8 +549,27 @@ describe('Hand Contract V0 (isolated temp exec-graph dir per test)', () => {
       moveTask({ taskId: task.id, to: 'planned', actor: 'atlas' });
       moveTask({ taskId: task.id, to: 'in-progress', actor: 'atlas' });
       moveTask({ taskId: task.id, to: 'evidence-submitted', actor: 'atlas', evidenceRefs: ['x'] });
-      const verified = moveTask({ taskId: task.id, to: 'verified', actor: 'atlas', evidenceRefs: ['x'] });
+      const verified = moveTask({ taskId: task.id, to: 'verified', actor: 'atlas', evidenceRefs: ['x'], _viaVerifier: true });
       expect(verified.status).toBe('verified');
+    });
+
+    it('non-hand-owned task also throws HandAuthorityError on generic moveTask to verified without _viaVerifier', () => {
+      const goal = createGoal({ title: 'no-self-promote-goal', actor: 'atlas', ts: NOW });
+      const { task } = createTask({
+        goalId: goal.id,
+        title: 'no-self-promote-task',
+        actor: 'atlas',
+        ts: NOW,
+        idempotencyKey: 'exec-graph:no-self-promote-task',
+      });
+      moveTask({ taskId: task.id, to: 'accepted', actor: 'atlas' });
+      moveTask({ taskId: task.id, to: 'planned', actor: 'atlas' });
+      moveTask({ taskId: task.id, to: 'in-progress', actor: 'atlas' });
+      moveTask({ taskId: task.id, to: 'evidence-submitted', actor: 'atlas', evidenceRefs: ['x'] });
+      // Without _viaVerifier, even atlas-owned tasks cannot self-promote
+      expect(() =>
+        moveTask({ taskId: task.id, to: 'verified', actor: 'atlas', evidenceRefs: ['x'] }),
+      ).toThrow(HandAuthorityError);
     });
   });
 
@@ -640,6 +660,39 @@ describe('Hand Contract V0 (isolated temp exec-graph dir per test)', () => {
       // Proves the guard returned BEFORE the process was ever spawned — not just that the
       // verdict happens to be false.
       expect(mockedExec).not.toHaveBeenCalled();
+    });
+
+    it('17a-inj. shell metacharacters in command are rejected before execFileSync runs', () => {
+      const mockedExec = vi.mocked(childProcess.execFileSync);
+
+      // Each payload starts with an allowlisted prefix but appends a shell metacharacter injection
+      const injectionPayloads = [
+        'dir . & echo INJECTED',           // & (cmd.exe chain)
+        'dir . && echo INJECTED',          // && (bash/cmd chain)
+        'git status | cat /etc/passwd',     // | (pipe)
+        'git log ; rm -rf /',               // ; (semicolon chain)
+        'git status $(whoami)',             // $() (command substitution)
+        'git log `whoami`',                 // `` (backtick substitution)
+        'git status > /tmp/exfil.txt',      // > (redirect out)
+        'git status < /dev/null',           // < (redirect in)
+      ];
+
+      for (const payload of injectionPayloads) {
+        mockedExec.mockClear();
+        const result = verify({
+          taskId: 'tsk_test0000000000000001',
+          handId: 'local-readonly',
+          submittedBy: 'local-readonly',
+          kind: 'command-output-match',
+          command: payload,
+          expectedSubstring: 'INJECTED',
+          claimedResult: 'x',
+        });
+        expect(result.verified).toBe(false);
+        expect(result.reason).toMatch(/not in read-only verifier allowlist/);
+        // Process must never be spawned for any injection payload
+        expect(mockedExec).not.toHaveBeenCalled();
+      }
     });
 
     it('17b. submitReceipt rejects a receipt whose claimedResult contains secret-shaped content (obviously-fake literal)', () => {

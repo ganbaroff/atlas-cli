@@ -117,7 +117,7 @@ export function createTask(input: CreateTaskInput): CreateTaskResult {
   const owner = input.owner ?? 'atlas';
   // No legitimate flow creates a hand-owned task at creation — hand:
   // ownership is only ever reached through assignHand()'s reassignOwner
-  // path (which carries the _viaHandAdapter guard). Hard reject here, no
+  // path (which carries the _viaVerifier guard). Hard reject here, no
   // escape hatch: this closes the residual the moveTask/reassignOwner
   // guards below left open (a caller could otherwise plant a fake
   // hand-owned task via `task add`/`task import`, bypassing assignHand()'s
@@ -200,7 +200,7 @@ export interface MoveTaskInput extends Omit<ApplyTransitionOptions, 'ts'> {
    * Generic callers (including the CLI's `atlas task move`) must never set
    * this — see HandAuthorityError.
    */
-  _viaHandAdapter?: boolean;
+  _viaVerifier?: boolean;
 }
 
 export function moveTask(input: MoveTaskInput): Task {
@@ -212,12 +212,11 @@ export function moveTask(input: MoveTaskInput): Task {
 
   if (
     (input.to === 'verified' || input.to === 'rejected')
-    && task.owner.startsWith(HAND_OWNER_PREFIX)
-    && !input._viaHandAdapter
+    && !input._viaVerifier
   ) {
     throw new HandAuthorityError(
-      `exec-graph: task ${input.taskId} is hand-owned (owner=${task.owner}) — hand-owned tasks reach `
-      + "'verified'/'rejected' only through the Hand verifier (atlas hand verify), not generic task move",
+      `exec-graph: task ${input.taskId} (owner=${task.owner}) — tasks reach `
+      + "'verified'/'rejected' only through the verifier path, not generic task move",
     );
   }
 
@@ -261,7 +260,7 @@ export interface ReassignOwnerOptions {
    * (including the CLI's `atlas task reassign`) must never set this — see
    * HandAuthorityError.
    */
-  _viaHandAdapter?: boolean;
+  _viaVerifier?: boolean;
 }
 
 /**
@@ -281,7 +280,7 @@ export function reassignOwner(taskId: string, newOwner: string, opts: ReassignOw
   if (!reason || !reason.trim()) {
     throw new ExecGraphOwnerReassignError('reason is required and must be non-empty');
   }
-  if (newOwner.startsWith(HAND_OWNER_PREFIX) && !opts._viaHandAdapter) {
+  if (newOwner.startsWith(HAND_OWNER_PREFIX) && !opts._viaVerifier) {
     throw new HandAuthorityError(
       "exec-graph: 'hand:' ownership is assigned only via atlas hand assign, not generic task reassign "
       + `(taskId=${taskId}, newOwner=${newOwner})`,

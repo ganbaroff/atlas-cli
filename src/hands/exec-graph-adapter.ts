@@ -20,7 +20,7 @@
  * `verifyAndTransition()` is THE ONLY place a delegated task's FINAL state
  * (verified/rejected) is set — enforced not just here but in
  * exec-graph/api.ts's `moveTask()` itself via an internal
- * `_viaHandAdapter` capability flag (see ADR-0006): a hand-owned task
+ * `_viaVerifier` capability flag (see ADR-0006): a hand-owned task
  * cannot reach verified/rejected through the plain `task move` CLI/API path
  * at all, closing the sibling-CLI bypass an adversarial review found in V0's
  * first cut.
@@ -205,7 +205,7 @@ export function assignHand(taskId: string, handId: string, opts: AssignHandOptio
   return reassignOwner(taskId, `${HAND_OWNER_PREFIX}${handId}`, {
     actor: opts.actor,
     reason: `assigned to hand ${handId}`,
-    _viaHandAdapter: true,
+    _viaVerifier: true,
   });
 }
 
@@ -364,7 +364,7 @@ export function verifyAndTransition(taskId: string, opts: VerifyAndTransitionOpt
       to: 'rejected',
       actor: opts.actor,
       note: 'no receipt evidence found to verify',
-      _viaHandAdapter: true,
+      _viaVerifier: true,
     });
     return {
       finalStatus: moved.status,
@@ -391,7 +391,7 @@ export function verifyAndTransition(taskId: string, opts: VerifyAndTransitionOpt
       actor: opts.actor,
       evidenceRefs: [receiptEvidence.ref],
       note: `verified: ${primary.reason}`,
-      _viaHandAdapter: true,
+      _viaVerifier: true,
     });
     return { finalStatus: moved.status, verdict: { verified: true, reason: primary.reason, refuter: refuterResult } };
   }
@@ -402,7 +402,7 @@ export function verifyAndTransition(taskId: string, opts: VerifyAndTransitionOpt
     to: 'rejected',
     actor: opts.actor,
     note: `rejected: ${rejectionReason}`,
-    _viaHandAdapter: true,
+    _viaVerifier: true,
   });
   return { finalStatus: moved.status, verdict: { verified: false, reason: rejectionReason, refuter: refuterResult } };
 }

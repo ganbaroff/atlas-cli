@@ -74,7 +74,7 @@ const READONLY_COMMAND_ALLOWLIST: readonly RegExp[] = [
   /^git show\b/,
   /^git status\b/,
   /^git rev-parse\b/,
-  /^ls\b/,
+  /^git ls-files\b/,
   /^git cat-file\b/,
 ];
 
@@ -82,8 +82,13 @@ function isProtectedPath(ref: string): boolean {
   return PROTECTED_PATH_RE.test(ref);
 }
 
+// Shell metacharacters that could chain/redirect/substitute commands.
+// Rejected unconditionally before the allowlist even runs.
+const SHELL_METACHAR_RE = /[&|;`$()><]/;
+
 function isAllowlistedCommand(command: string): boolean {
   const trimmed = command.trim();
+  if (SHELL_METACHAR_RE.test(trimmed)) return false;
   return READONLY_COMMAND_ALLOWLIST.some((re) => re.test(trimmed));
 }
 

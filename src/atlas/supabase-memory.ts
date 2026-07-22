@@ -192,11 +192,9 @@ export async function sweepStaleCommands(timeoutMinutes = 30): Promise<number> {
 export async function recallMemories(limit = 10, category?: string): Promise<Array<{
   category: string; content: string; emotional_intensity: number; decay_score: number;
 }>> {
-  const params = new URLSearchParams();
-  params.set('p_limit', String(limit));
-  if (category) params.set('p_category', category);
-
-  return supaFetch(`rpc/recall_atlas_memories?${params}`, {
+  // RPC parameters go ONLY in the POST body. Appending them as URL query params
+  // causes PostgREST to interpret them as row filters → "failed to parse filter (5)".
+  return supaFetch('rpc/recall_atlas_memories', {
     method: 'POST',
     body: JSON.stringify({ p_limit: limit, ...(category ? { p_category: category } : {}) }),
   }).then((rows: any[]) => rows?.map(r => ({
@@ -328,7 +326,7 @@ export async function loadRecentJournalDB(limit = 3): Promise<string> {
   if (!isSupabaseConfigured()) return '';
   try {
     const rows = await supaFetch(
-      `atlas_learnings?content=like.[journal:*&order=created_at.desc&limit=${limit}&select=content,created_at`
+      `atlas_learnings?content=like.%5Bjournal:*&order=created_at.desc&limit=${limit}&select=content,created_at`
     );
     if (!Array.isArray(rows) || rows.length === 0) return '';
     const entries = rows

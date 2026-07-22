@@ -245,7 +245,7 @@ describe('exec-graph ledger + api (isolated temp dir per test)', () => {
     moveTask({ taskId: task.id, to: 'in-progress', actor: 'atlas', ts: NOW });
     addEvidence({ taskId: task.id, evidence: { ref: 'commit-abc123', kind: 'commit' }, actor: 'atlas', ts: NOW });
     moveTask({ taskId: task.id, to: 'evidence-submitted', actor: 'atlas', ts: NOW, evidenceRefs: ['commit-abc123'] });
-    moveTask({ taskId: task.id, to: 'verified', actor: 'atlas', ts: NOW, evidenceRefs: ['commit-abc123'] });
+    moveTask({ taskId: task.id, to: 'verified', actor: 'atlas', ts: NOW, evidenceRefs: ['commit-abc123'], _viaVerifier: true });
     moveTask({ taskId: task.id, to: 'closed', actor: 'ceo', ts: NOW });
 
     const onDisk = readSnapshotFile();
@@ -351,6 +351,7 @@ describe('exec-graph ledger + api (isolated temp dir per test)', () => {
       actor: 'atlas',
       ts: NOW,
       evidenceRefs: ['test-output:vitest-run-1'],
+      _viaVerifier: true,
     });
     expect(verified.status).toBe('verified');
     expect(verified.evidence.length).toBeGreaterThanOrEqual(1);
@@ -409,12 +410,12 @@ describe('exec-graph ledger + api (isolated temp dir per test)', () => {
     moveTask({ taskId: task.id, to: 'delegated', actor: 'atlas', ts: NOW });
     moveTask({ taskId: task.id, to: 'escalated', actor: 'atlas', ts: NOW });
 
-    // _viaHandAdapter:true — this test exercises the ledger/rebuild mechanics for an
+    // _viaVerifier:true — this test exercises the ledger/rebuild mechanics for an
     // arbitrary owner value (which happens to be hand:-prefixed); it is not simulating
     // the Hand Contract V0 adapter's real assignHand() flow, so it legitimately needs the
     // internal capability flag to get past api.ts's HandAuthorityError guard (see
     // hands.test.ts's dedicated Hole 1 regression tests for the guard itself).
-    reassignOwner(task.id, 'hand:volaura', { actor: 'ceo', reason: 'delegated to hand', ts: NOW, _viaHandAdapter: true });
+    reassignOwner(task.id, 'hand:volaura', { actor: 'ceo', reason: 'delegated to hand', ts: NOW, _viaVerifier: true });
 
     const onDisk = readSnapshotFile();
     const rebuilt = rebuildSnapshot();

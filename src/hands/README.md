@@ -32,7 +32,7 @@ by deterministic, falsifiable evidence — never by narrative alone.
      `moveTask({ to: 'verified' | 'rejected', ... })`.
   2. **In the exec-graph transition layer itself**
      (`src/exec-graph/api.ts`'s `moveTask()`/`reassignOwner()`), via an
-     internal `_viaHandAdapter` capability flag that only
+     internal `_viaVerifier` capability flag that only
      `exec-graph-adapter.ts` ever sets. See "Generic primitives are now
      hand-aware" below — #2 is the fix for a real bypass found in V0's
      first cut, not defense-in-depth added speculatively.
