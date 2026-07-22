@@ -42,6 +42,7 @@ import {
   listTasks,
   statusSummary,
 } from '../exec-graph/api.js';
+import { moveTaskAsVerifier, reassignOwnerAsVerifier } from '../exec-graph/verifier-port.js';
 
 const NOW = '2026-07-17T00:00:00.000Z';
 
@@ -245,7 +246,7 @@ describe('exec-graph ledger + api (isolated temp dir per test)', () => {
     moveTask({ taskId: task.id, to: 'in-progress', actor: 'atlas', ts: NOW });
     addEvidence({ taskId: task.id, evidence: { ref: 'commit-abc123', kind: 'commit' }, actor: 'atlas', ts: NOW });
     moveTask({ taskId: task.id, to: 'evidence-submitted', actor: 'atlas', ts: NOW, evidenceRefs: ['commit-abc123'] });
-    moveTask({ taskId: task.id, to: 'verified', actor: 'atlas', ts: NOW, evidenceRefs: ['commit-abc123'], _viaVerifier: true });
+    moveTaskAsVerifier({ taskId: task.id, to: 'verified', actor: 'atlas', ts: NOW, evidenceRefs: ['commit-abc123'] });
     moveTask({ taskId: task.id, to: 'closed', actor: 'ceo', ts: NOW });
 
     const onDisk = readSnapshotFile();
@@ -345,13 +346,12 @@ describe('exec-graph ledger + api (isolated temp dir per test)', () => {
       evidenceRefs: ['test-output:vitest-run-1'],
     });
     expect(submitted.evidence.some((e) => e.ref === 'test-output:vitest-run-1')).toBe(true);
-    const verified = moveTask({
+    const verified = moveTaskAsVerifier({
       taskId: task.id,
       to: 'verified',
       actor: 'atlas',
       ts: NOW,
       evidenceRefs: ['test-output:vitest-run-1'],
-      _viaVerifier: true,
     });
     expect(verified.status).toBe('verified');
     expect(verified.evidence.length).toBeGreaterThanOrEqual(1);
@@ -410,12 +410,10 @@ describe('exec-graph ledger + api (isolated temp dir per test)', () => {
     moveTask({ taskId: task.id, to: 'delegated', actor: 'atlas', ts: NOW });
     moveTask({ taskId: task.id, to: 'escalated', actor: 'atlas', ts: NOW });
 
-    // _viaVerifier:true — this test exercises the ledger/rebuild mechanics for an
-    // arbitrary owner value (which happens to be hand:-prefixed); it is not simulating
-    // the Hand Contract V0 adapter's real assignHand() flow, so it legitimately needs the
-    // internal capability flag to get past api.ts's HandAuthorityError guard (see
-    // hands.test.ts's dedicated Hole 1 regression tests for the guard itself).
-    reassignOwner(task.id, 'hand:volaura', { actor: 'ceo', reason: 'delegated to hand', ts: NOW, _viaVerifier: true });
+    // This test exercises the ledger/rebuild mechanics for an arbitrary owner value
+    // (which happens to be hand:-prefixed); it uses the verifier-port's privileged
+    // reassign since api.ts's reassignOwner now unconditionally rejects hand: prefix.
+    reassignOwnerAsVerifier(task.id, 'hand:volaura', { actor: 'ceo', reason: 'delegated to hand', ts: NOW });
 
     const onDisk = readSnapshotFile();
     const rebuilt = rebuildSnapshot();

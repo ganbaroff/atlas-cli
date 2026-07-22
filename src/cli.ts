@@ -485,6 +485,31 @@ const goalCmd = program
   .description('exec-graph (EB-0) goal management');
 
 goalCmd
+  .command('run <objective...>')
+  .description('Run a goal through the goal-runner: decompose → delegate → verify (bounded, autonomous)')
+  .option('--hand <handId>', 'Hand to use for execution', 'browser-foreground')
+  .option('--max-attempts <n>', 'Max attempts per task', '3')
+  .option('--max-wall-time <ms>', 'Max wall time in milliseconds', '300000')
+  .action(async (objectiveParts: string[], opts) => {
+    try {
+      const { runGoal } = await import('./goal-runner/runner.js');
+      const report = await runGoal({
+        objective: objectiveParts.join(' '),
+        handId: opts.hand,
+        config: {
+          maxAttemptsPerTask: parseInt(opts.maxAttempts, 10) || 3,
+          maxWallTimeMs: parseInt(opts.maxWallTime, 10) || 300_000,
+        },
+      });
+      console.log(JSON.stringify(report, null, 2));
+      process.exit(report.status === 'completed' ? 0 : 2);
+    } catch (err) {
+      console.error(`goal run error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
+  });
+
+goalCmd
   .command('add <title...>')
   .description('Create a new exec-graph goal')
   .option('--source-kind <kind>', 'Source kind', 'exec-graph')

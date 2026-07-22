@@ -20,7 +20,7 @@
  * `verifyAndTransition()` is THE ONLY place a delegated task's FINAL state
  * (verified/rejected) is set — enforced not just here but in
  * exec-graph/api.ts's `moveTask()` itself via an internal
- * `_viaVerifier` capability flag (see ADR-0006): a hand-owned task
+ * verifier-port capability boundary (see ADR-0006): a hand-owned task
  * cannot reach verified/rejected through the plain `task move` CLI/API path
  * at all, closing the sibling-CLI bypass an adversarial review found in V0's
  * first cut.
@@ -69,7 +69,8 @@
  */
 
 import type { Task, Evidence, TaskStatus } from '../exec-graph/contracts.js';
-import { getTask, moveTask, addEvidence, reassignOwner } from '../exec-graph/api.js';
+import { getTask, moveTask, addEvidence } from '../exec-graph/api.js';
+import { moveTaskAsVerifier, reassignOwnerAsVerifier } from '../exec-graph/verifier-port.js';
 import { getHand, type HandSpec } from './registry.js';
 import { classifyRisk } from './risk.js';
 import { runRefuter, type RefuterResult } from './refuter.js';
@@ -202,10 +203,9 @@ export function assignHand(taskId: string, handId: string, opts: AssignHandOptio
   }
 
   moveTask({ taskId, to: 'delegated', actor: opts.actor, note: `assigned to hand:${handId}` });
-  return reassignOwner(taskId, `${HAND_OWNER_PREFIX}${handId}`, {
+  return reassignOwnerAsVerifier(taskId, `${HAND_OWNER_PREFIX}${handId}`, {
     actor: opts.actor,
     reason: `assigned to hand ${handId}`,
-    _viaVerifier: true,
   });
 }
 
@@ -359,12 +359,11 @@ export function verifyAndTransition(taskId: string, opts: VerifyAndTransitionOpt
 
   const receiptEvidence = findLatestReceiptEvidence(task);
   if (!receiptEvidence) {
-    const moved = moveTask({
+    const moved = moveTaskAsVerifier({
       taskId,
       to: 'rejected',
       actor: opts.actor,
       note: 'no receipt evidence found to verify',
-      _viaVerifier: true,
     });
     return {
       finalStatus: moved.status,
@@ -385,24 +384,22 @@ export function verifyAndTransition(taskId: string, opts: VerifyAndTransitionOpt
   const finalVerified = primary.verified && (!refuterResult.triggered || refuterResult.passed);
 
   if (finalVerified) {
-    const moved = moveTask({
+    const moved = moveTaskAsVerifier({
       taskId,
       to: 'verified',
       actor: opts.actor,
       evidenceRefs: [receiptEvidence.ref],
       note: `verified: ${primary.reason}`,
-      _viaVerifier: true,
     });
     return { finalStatus: moved.status, verdict: { verified: true, reason: primary.reason, refuter: refuterResult } };
   }
 
   const rejectionReason = !primary.verified ? primary.reason : `refuter disagreement: ${refuterResult.reason}`;
-  const moved = moveTask({
+  const moved = moveTaskAsVerifier({
     taskId,
     to: 'rejected',
     actor: opts.actor,
     note: `rejected: ${rejectionReason}`,
-    _viaVerifier: true,
   });
   return { finalStatus: moved.status, verdict: { verified: false, reason: rejectionReason, refuter: refuterResult } };
 }

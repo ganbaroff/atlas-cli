@@ -188,11 +188,11 @@ describe('browser Hand: receipt schema', () => {
 // ── 5. I1 authority: browser Hand cannot bypass verifier ─────────────────
 
 describe('browser Hand: I1 authority', () => {
-  it('5-I1. browser-foreground hand is subject to the same _viaVerifier guard as all other hands', () => {
+  it('5-I1. browser-foreground hand is subject to the verifier-port authority boundary', () => {
     // The I1 invariant: no owner (including hand:browser-foreground) can
-    // self-promote to verified/rejected without _viaVerifier. This is tested
-    // end-to-end in hands.test.ts (tests 16a, 18, and the negative regression).
-    // Here we confirm the registry entry itself does not carry any escape flag.
+    // self-promote to verified/rejected — the generic moveTask unconditionally
+    // rejects these transitions. Only the verifier-port (used by exec-graph-adapter)
+    // can finalize task state. Here we confirm the registry entry carries no escape.
     const hand = getHand('browser-foreground');
 
     // browser-foreground must not have 'command-exec' in allowed actions

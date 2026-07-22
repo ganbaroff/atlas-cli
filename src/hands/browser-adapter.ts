@@ -27,6 +27,28 @@ export class BrowserSession {
     const { chromium } = await import('playwright');
     this.browser = await chromium.launch({ headless: true });
     const context = await this.browser.newContext();
+
+    // Capture-layer submit guard (Round 16 item 3): block ALL form
+    // submission paths at the DOM level — form.submit(), requestSubmit(),
+    // submit events, Enter-key implicit submission. This is a defense-in-depth
+    // layer on top of the pre-click element check in execute().
+    // Note: the callback runs in the browser context (not Node), so DOM
+    // globals are available there but not visible to the TS compiler.
+    await context.addInitScript(`(() => {
+      document.addEventListener('submit', (e) => {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+      }, true);
+      HTMLFormElement.prototype.submit = function() {
+        throw new Error('SUBMIT_BLOCKED_BY_CAPTURE_GUARD');
+      };
+      if (HTMLFormElement.prototype.requestSubmit) {
+        HTMLFormElement.prototype.requestSubmit = function() {
+          throw new Error('SUBMIT_BLOCKED_BY_CAPTURE_GUARD');
+        };
+      }
+    })()`);
+
     this.page = await context.newPage();
   }
 
@@ -70,7 +92,38 @@ export class BrowserSession {
         }
 
         case 'click': {
-          await this.page.getByRole(action.role as any, { name: action.name }).click({ timeout: 5000 });
+          const clickLocator = this.page.getByRole(action.role as any, { name: action.name });
+
+          // Submit-click guard (Round 16 item 3): refuse click on any
+          // submit-type element BEFORE Playwright acts. Covers:
+          // button[type=submit], button with omitted type inside a form
+          // (HTML default is submit), input[type=submit|image], and any
+          // form-associated control whose activation submits.
+          // Note: the evaluate callback runs in the browser context — DOM
+          // types are available there, typed as `any` for the Node compiler.
+          const isSubmitElement = await clickLocator.evaluate((el: any) => {
+            const tag = el.tagName?.toLowerCase();
+            if (tag === 'button') {
+              const type = el.getAttribute('type');
+              if (type === 'submit') return true;
+              if (type === null && el.form !== null) return true;
+            }
+            if (tag === 'input') {
+              const type = (el.type || '').toLowerCase();
+              if (type === 'submit' || type === 'image') return true;
+            }
+            return false;
+          });
+
+          if (isSubmitElement) {
+            return {
+              action,
+              success: false,
+              error: 'SUBMIT_DENIED: click on submit-type element refused — no CEO capability token present',
+            };
+          }
+
+          await clickLocator.click({ timeout: 5000 });
           return { action, success: true };
         }
 

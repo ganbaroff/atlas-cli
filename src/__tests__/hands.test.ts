@@ -48,6 +48,7 @@ import {
   statusSummary,
   HandAuthorityError,
 } from '../exec-graph/api.js';
+import { moveTaskAsVerifier } from '../exec-graph/verifier-port.js';
 import { formatStatusMessage } from '../exec-graph/brief.js';
 
 const NOW = '2026-07-18T00:00:00.000Z';
@@ -452,30 +453,21 @@ describe('Hand Contract V0 (isolated temp exec-graph dir per test)', () => {
 
   // ── 16. HOLE 1 — generic exec-graph callers cannot bypass Hand authority ──
   describe('16. HandAuthorityError — adversarial-review Hole 1 regression', () => {
-    it('16a. generic moveTask(...,"verified") on a hand-owned task throws HandAuthorityError; the same call with _viaVerifier:true succeeds', () => {
+    it('16a. generic moveTask(...,"verified") ALWAYS throws HandAuthorityError — no escape hatch', () => {
       const taskId = planTask('hole1a-fake-verify-task');
       assignHand(taskId, 'local-readonly', { actor: 'atlas' });
       moveTask({ taskId, to: 'in-progress', actor: 'atlas' });
       moveTask({ taskId, to: 'evidence-submitted', actor: 'atlas', evidenceRefs: ['fake-ref'] });
       expect(getTask(taskId)?.owner).toBe('hand:local-readonly');
 
-      // The fake-verify bypass: a generic caller tries to skip verifyAndTransition entirely.
+      // Generic moveTask ALWAYS rejects verified — there is no boolean escape hatch.
+      // The only path to verified is through verifier-port (used by exec-graph-adapter).
       expect(() => moveTask({ taskId, to: 'verified', actor: 'atlas', evidenceRefs: ['fake-ref'] }))
         .toThrow(HandAuthorityError);
       expect(getTask(taskId)?.status).toBe('evidence-submitted');
-
-      // The identical call, but with the internal capability flag only exec-graph-adapter.ts sets, succeeds.
-      const moved = moveTask({
-        taskId,
-        to: 'verified',
-        actor: 'atlas',
-        evidenceRefs: ['fake-ref'],
-        _viaVerifier: true,
-      });
-      expect(moved.status).toBe('verified');
     });
 
-    it('16b. generic reassignOwner(taskId, "hand:sonnet-foreground", ...) throws HandAuthorityError; the same call with _viaVerifier:true succeeds', () => {
+    it('16b. generic reassignOwner(taskId, "hand:...") ALWAYS throws HandAuthorityError — no escape hatch', () => {
       const goal = createGoal({ title: 'hole1b-goal', actor: 'atlas', ts: NOW });
       const { task } = createTask({
         goalId: goal.id,
@@ -485,22 +477,16 @@ describe('Hand Contract V0 (isolated temp exec-graph dir per test)', () => {
         idempotencyKey: 'exec-graph:hole1b-task',
       });
 
-      // The unattended-escape bypass: a generic caller tries to fabricate hand: ownership,
-      // skipping assertHandAllowedInContext entirely.
+      // Generic reassignOwner ALWAYS rejects hand: prefix — there is no boolean
+      // escape hatch. The only path to hand: ownership is through verifier-port
+      // (used by exec-graph-adapter.ts's assignHand).
       expect(() =>
         reassignOwner(task.id, 'hand:sonnet-foreground', { actor: 'atlas', reason: 'trying to sneak in' }),
       ).toThrow(HandAuthorityError);
       expect(getTask(task.id)?.owner).toBe('atlas');
-
-      const reassigned = reassignOwner(task.id, 'hand:sonnet-foreground', {
-        actor: 'atlas',
-        reason: 'legit via adapter flag',
-        _viaVerifier: true,
-      });
-      expect(reassigned.owner).toBe('hand:sonnet-foreground');
     });
 
-    it('16c. a full generic-CLI-style laundering attempt (reassign->hand then move->verified, neither carrying the flag) can never produce a hand-owned verified task', () => {
+    it('16c. a full generic-CLI-style laundering attempt can never produce a hand-owned verified task', () => {
       const goal = createGoal({ title: 'hole1c-goal', actor: 'atlas', ts: NOW });
       const { task } = createTask({
         goalId: goal.id,
@@ -510,33 +496,31 @@ describe('Hand Contract V0 (isolated temp exec-graph dir per test)', () => {
         idempotencyKey: 'exec-graph:hole1c-task',
       });
 
-      // Step 1 of the laundering attempt never lands — ownership stays 'atlas'.
+      // Step 1: reassign to hand: — ALWAYS rejected, no escape hatch.
       expect(() =>
         reassignOwner(task.id, 'hand:sonnet-foreground', { actor: 'atlas', reason: 'laundering attempt' }),
       ).toThrow(HandAuthorityError);
       expect(getTask(task.id)?.owner).toBe('atlas');
 
-      // Step 2: walk the task to 'evidence-submitted' and attempt the generic verified move.
-      // Because step 1 never created hand: ownership, this is just an ordinary atlas-owned
-      // move (not the bypass) — the point is there is no way to combine the two steps to
-      // land a hand:-owned task in 'verified' without ever touching exec-graph-adapter.ts.
+      // Step 2: walk the task to evidence-submitted, try generic moveTask to verified — ALWAYS rejected.
       moveTask({ taskId: task.id, to: 'accepted', actor: 'atlas' });
       moveTask({ taskId: task.id, to: 'planned', actor: 'atlas' });
       moveTask({ taskId: task.id, to: 'in-progress', actor: 'atlas' });
       moveTask({ taskId: task.id, to: 'evidence-submitted', actor: 'atlas', evidenceRefs: ['x'] });
-      const verified = moveTask({ taskId: task.id, to: 'verified', actor: 'atlas', evidenceRefs: ['x'], _viaVerifier: true });
-      expect(verified.owner).toBe('atlas');
-      expect(verified.owner).not.toMatch(/^hand:/);
 
-      // And directly confirming the combined attack surface: no sequence of generic calls
-      // without the flag can ever produce (owner starts with 'hand:', status 'verified').
+      expect(() =>
+        moveTask({ taskId: task.id, to: 'verified', actor: 'atlas', evidenceRefs: ['x'] }),
+      ).toThrow(HandAuthorityError);
+      expect(getTask(task.id)?.status).toBe('evidence-submitted');
+
+      // No combination of generic API calls can produce (hand:-owned, verified).
       expect(() =>
         reassignOwner(task.id, 'hand:sonnet-foreground', { actor: 'atlas', reason: 'post-hoc relabel attempt' }),
       ).toThrow(HandAuthorityError);
       expect(getTask(task.id)?.owner).toBe('atlas');
     });
 
-    it('non-hand-owned tasks also require verifier path to reach verified/rejected', () => {
+    it('non-hand-owned tasks also cannot reach verified via generic moveTask', () => {
       const goal = createGoal({ title: 'unaffected-goal', actor: 'atlas', ts: NOW });
       const { task } = createTask({
         goalId: goal.id,
@@ -549,11 +533,16 @@ describe('Hand Contract V0 (isolated temp exec-graph dir per test)', () => {
       moveTask({ taskId: task.id, to: 'planned', actor: 'atlas' });
       moveTask({ taskId: task.id, to: 'in-progress', actor: 'atlas' });
       moveTask({ taskId: task.id, to: 'evidence-submitted', actor: 'atlas', evidenceRefs: ['x'] });
-      const verified = moveTask({ taskId: task.id, to: 'verified', actor: 'atlas', evidenceRefs: ['x'], _viaVerifier: true });
+      // Even non-hand-owned tasks cannot reach verified via generic moveTask
+      expect(() =>
+        moveTask({ taskId: task.id, to: 'verified', actor: 'atlas', evidenceRefs: ['x'] }),
+      ).toThrow(HandAuthorityError);
+      // But the verifier-port CAN move them (for tests/internal use)
+      const verified = moveTaskAsVerifier({ taskId: task.id, to: 'verified', actor: 'atlas', evidenceRefs: ['x'] });
       expect(verified.status).toBe('verified');
     });
 
-    it('non-hand-owned task also throws HandAuthorityError on generic moveTask to verified without _viaVerifier', () => {
+    it('non-hand-owned task also throws HandAuthorityError on generic moveTask to verified', () => {
       const goal = createGoal({ title: 'no-self-promote-goal', actor: 'atlas', ts: NOW });
       const { task } = createTask({
         goalId: goal.id,
@@ -566,7 +555,7 @@ describe('Hand Contract V0 (isolated temp exec-graph dir per test)', () => {
       moveTask({ taskId: task.id, to: 'planned', actor: 'atlas' });
       moveTask({ taskId: task.id, to: 'in-progress', actor: 'atlas' });
       moveTask({ taskId: task.id, to: 'evidence-submitted', actor: 'atlas', evidenceRefs: ['x'] });
-      // Without _viaVerifier, even atlas-owned tasks cannot self-promote
+      // Generic moveTask unconditionally rejects verified/rejected
       expect(() =>
         moveTask({ taskId: task.id, to: 'verified', actor: 'atlas', evidenceRefs: ['x'] }),
       ).toThrow(HandAuthorityError);
