@@ -47,6 +47,7 @@ import { buildStatusReport } from './atlas/status-report.js';
 import { notifyCeoResult } from './atlas/notify.js';
 import { renderHelp } from './atlas/commands.js';
 import { analyzeWindow, readEmotion, buildEmotionDirectiveLine } from './atlas/emotion.js';
+import { checkEmotionalSafety, logToneShift } from './atlas/emotional-safety.js';
 import { loadPulse, savePulse, processEvent } from './atlas/pulse.js';
 import { runOperatorActionLane } from './operator/action-lane.js';
 import { runSwarm } from './swarm.js';
@@ -292,6 +293,22 @@ async function ask(chatId: number, text: string): Promise<string> {
   console.log(`[out-final] chat=${chatId} reply="${reply.slice(0, 100)}"`);
 
   const finalReply = reply.trim() || 'Молчу. Повтори?';
+
+  // Phase 3.5 emotional-safety audit — log-only, never blocks or rewrites.
+  // Runs whenever emotion shifted tone (state !== 'neutral'), regardless of violations.
+  if (ceoRead.state !== 'neutral') {
+    const safetyCheck = checkEmotionalSafety(finalReply);
+    if (safetyCheck.flagged) {
+      console.warn(`[emotional-safety] chat=${chatId} state=${ceoRead.state} violations=${JSON.stringify(safetyCheck.violations)}`);
+    }
+    logToneShift({
+      state: ceoRead.state,
+      directive: ceoRead.directive,
+      ts: new Date().toISOString(),
+      ...(safetyCheck.flagged ? { violations: safetyCheck.violations } : {}),
+    });
+  }
+
   addMsg(chatId, 'assistant', finalReply);
 
   // Compound-memory loop: remember emotionally meaningful CEO turns using the REAL
