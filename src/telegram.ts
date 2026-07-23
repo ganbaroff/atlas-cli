@@ -50,6 +50,7 @@ import { analyzeWindow, readEmotion, buildEmotionDirectiveLine } from './atlas/e
 import { checkEmotionalSafety, logToneShift } from './atlas/emotional-safety.js';
 import { loadPulse, savePulse, processEvent } from './atlas/pulse.js';
 import { runOperatorActionLane } from './operator/action-lane.js';
+import { classifyIntent, routeFreeformAction, defaultActionRouterDeps, actionResultToReply } from './atlas/action-router.js';
 import { runSwarm } from './swarm.js';
 import { getMemoryRoot } from './atlas/path-util.js';
 import { isAuthorizedChat } from './atlas/telegram-auth.js';
@@ -239,6 +240,22 @@ async function ask(chatId: number, text: string): Promise<string> {
     const blocked = describeControlBlock();
     addMsg(chatId, 'assistant', blocked);
     return blocked;
+  }
+
+  // Phase 4.3: freeform action-router — classify intent, route safe actions
+  // to exec-graph, gate red-lines. Wrapped so any throw falls through to brain reply.
+  try {
+    if (classifyIntent(text) === 'action') {
+      const routerResult = await routeFreeformAction(text, defaultActionRouterDeps());
+      const actionReply = actionResultToReply(routerResult);
+      if (actionReply) {
+        addMsg(chatId, 'assistant', actionReply);
+        return actionReply;
+      }
+      // kind:'chat' → actionReply is null → fall through to normal brain reply
+    }
+  } catch (e) {
+    console.error('[action-router] error, falling through to brain reply:', e);
   }
 
   const messages = buildMessages(chatId);

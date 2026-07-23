@@ -184,6 +184,24 @@ export function defaultActionRouterDeps(): ActionRouterDeps {
   };
 }
 
+// ── Reply helper (pure, no deps — testable without a live bot) ──────────
+
+/**
+ * Map an ActionRouterResult to a Russian CEO-facing reply string.
+ * Returns null for 'chat' (caller should fall through to the normal brain
+ * reply). Pure function — no side effects, no network.
+ */
+export function actionResultToReply(result: ActionRouterResult): string | null {
+  switch (result.kind) {
+    case 'chat':
+      return null;
+    case 'queued':
+      return `Принял. Задача в работе: ${result.summary} (id ${result.taskId}). Идёт через проверяемый конвейер, вернусь с результатом.`;
+    case 'needs-approval':
+      return `Это требует твоего явного 'да' (${result.reason}). Без подтверждения не делаю.`;
+  }
+}
+
 // ── Router ──────────────────────────────────────────────────────────────
 
 /**
