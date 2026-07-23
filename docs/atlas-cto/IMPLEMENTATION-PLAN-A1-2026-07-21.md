@@ -91,3 +91,37 @@ R1: P1 overload — 11 items in ~7 weeks alongside pivot work; mitigation: stric
 **R-8: marked ASPIRATIONAL (not planned):** 5.2 multi-tenancy (until an external-customer signal exists), 5.4 DID blob, 0.3 auditor + 1.2 agent-profiles (fleet-of-one today), 4.3 OpenManus (revisit when DAYTONA/env question is CEO-decided).
 **R-9: observability mini-block added to P2 head:** counters for verifier rejects / notify suppressions / gate refusals; feature-flag on moveTask+notify hot-path changes; `schemaVersion` + GC policy for every new state store.
 **R-10: decision-verification framework (§5) unchanged in principle, but its первый numbered proof-point becomes the live-run of 2026-07-21:** the machinery already refused to fake success — the honesty chain is real; what's broken is provider reliability and spend accounting, and P1 now fixes exactly those.
+
+
+---
+
+# 2026-07-22 · STATE RECONCILIATION + DESIGN-LANE SPRINT (atlas-cto-design)
+
+**The binding execution plan is NOT this file.** It is the M1-M10 mission map in `VOLAURA/memory/atlas/codex-loop.md` (Rounds 6-23), owned by `fable-orchestrator` (sequence/tokens), `codex-verifier` (PASS/REFUTE), `terminal-atlas-executor` (code). This section is the `atlas-cto-design` VIEW: reconcile reality, slot my design-lane specs, hand the CEO his gate-list. NO verdicts here (Codex is sole verifier).
+
+## A. Reality 2026-07-22 (receipts: ground-truth reader, this session)
+- ANUS HEAD `e6a317a` (feat/arsenal-wiring), clean, == origin. Suite: **620 passed / 2 skipped, exit clean** (Git Bash run).
+- Gate A `TRUST-FLOOR-01` `c47a2ea`: REFUTE -> rework -> **PASS** (Codex R9). I1 now UNCONDITIONAL (`api.ts:206-211` throws for ALL owners; `_viaVerifier` removed; promotion only via `src/exec-graph/verifier-port.ts`) — stronger than this plan's R-1 proposed.
+- Gate B `BROWSER-HAND-01` `b21228b` + Gate C `GOAL-RUNNER-01` `0983154`: **PASS-WITH-EXCEPTION** (Fable self-verified). Standing debt: independent Git-Bash audit through the codex-verifier SEAT. This session's green suite run satisfies it as a FACT, not through that seat — the protocol step is still owed.
+- Frozen mission map (codex-loop R23): M1 done, M2 done(debt), M3 done(debt) -> **M7 pending token** -> M4 -> M6 -> M5 -> M8 -> M9 -> M10-internal.
+
+## B. This plan's P1 (§8 R-6) reconciled — done/open
+1. I1-fix -> **DONE** (`c47a2ea`+`0983154`). 2a. spend-table live apply -> **OPEN** (CEO gate). 2b. recall filter -> **DONE**. 3. license/provenance -> **OPEN**. 4. write-back hook -> **OPEN**. 5. /pause round-trip -> **OPEN** (folded into M7). 6. cos-brief CLI -> **DONE**. 7. revive-inventory -> **OPEN**.
+
+## C. Design-lane sprint — atlas-cto-design deliverables (spec-only; executor builds; codex verifies)
+Sequenced to land WHERE the mission needs them, never parallel to the M-map.
+- **D1 — Evidence-schema + auditor spec (feeds M8).** ANUS spec for A1.6 #3 (typed claims `claim/type/path/confidence` + false-positive penalty registry) + #4 (read-only auditor hand, no authority). DONE-bar: spec doc in `docs/atlas-cto/` with interfaces + machine-checkable test criteria; executor builds in M8; codex verifies. Owner (spec): me. Can start now — blocks nothing.
+- **D2 — Portable lessons-ledger spec (A1.6 #3 runtime half).** The mechanism a standalone-embedded Atlas uses to record its OWN new lessons (ties to `ATLAS-OPERATING-CANON.md` §Lessons-ledger). DONE-bar: spec of append-only local ledger + schema; distinct from VOLAURA lived-memory per A1.4. Owner (spec): me.
+- **D3 — Canon-sync duty (standing, per-milestone).** As M4-M10 land, reflect shipped reality into ADR-0009 / ATLAS-STATE-NOW so canon never lags code (Class-58). Owner: me.
+
+## D. CEO gate-list — the taps only you can make (work minimized to a checklist)
+1. **Spend live-DB apply** — money-truth broken since 07-21; migration ready (`ANUS/db/migrations/llm_spend.sql`), needs apply to live Supabase. One decision.
+2. **M7 trigger** — after fable-orchestrator countersigns the R23 draft: your single trigger (includes `claude update` approval) -> executor spawns. Unblocks /pause + notify chokepoint.
+3. **Vercel billing** — VOLAURA frontend frozen; `/az/login` still a placeholder (primary market cannot log in). Business action.
+4. **Hub71 / Sanabil portal registrations** — standing external ask (Gate C business fallback 2026-07-24 23:00 Baku).
+5. **Three forks awaiting YOUR ruling** (flagged this session, no verdict from you yet): (a) grant-money via 3 non-Atlas ventures vs Atlas-as-fundable; (b) my `[ASSUMED]` rulings in ADR-0009 A1 (product-but-pivot-first) — stand until you veto by number; (c) felt-not-seen (internal UI) vs visible-product (external embeds), A1.2 `[ASSUMED]`.
+
+## E. Frozen / what dies (sprint-contract)
+Nothing new starts outside the codex-loop M-map. Embodiment / 3D-office / voice / NATS stay parked (ADR-0009 A1.7). This section adds ONLY design specs D1-D3 + the CEO surface; it creates no competing execution track.
+
+Provenance: reconciled from codex-loop Rounds 6-23 + live suite run + IMPLEMENTATION-PLAN-A1 / ADR-0009 via ground-truth reader receipts, 2026-07-22, atlas-cto-design.
