@@ -11,6 +11,8 @@
  * PAD: valence -1..+1 (negative→positive), arousal 0..1 (calm→excited),
  *      dominance 0..1 (submissive→dominant).
  */
+import { Agent } from '@mastra/core/agent';
+import { routeModelWithFallback } from '../model-router.js';
 
 export type EmotionState =
   | 'drive'
@@ -214,4 +216,102 @@ export function emotionDirective(read: EmotionRead): string {
       break;
   }
   return lines.join('\n');
+}
+
+// ── LLM-first emotion read ───────────────────────────────────────────────────
+
+const VALID_STATES: readonly EmotionState[] = [
+  'drive', 'warm', 'correcting', 'exhausted', 'analytical',
+];
+
+/**
+ * LLM-first emotion read — calls the model router (FAST role, spend-safe: excludes
+ * anthropic per model-router.ts registry) with a compact prompt and parses the returned
+ * PAD JSON. Code-fences stripped, JSON.parse in try/catch. Throws on any error so
+ * readEmotion() can catch and fall back to the keyword path.
+ */
+export async function readEmotionLLM(window: string | string[]): Promise<EmotionRead> {
+  const msgs = Array.isArray(window) ? window : [window];
+  const prompt =
+    'Messages (most recent first):\n' +
+    msgs.map((m, i) => `[${i + 1}] ${m}`).join('\n') +
+    '\n\nReturn ONLY the JSON: ' +
+    '{"valence":<-1 to 1>,"arousal":<0 to 1>,"dominance":<0 to 1>,' +
+    '"state":"<drive|warm|correcting|exhausted|analytical>"}' +
+    ' — no code fences, no prose.';
+
+  const { result } = await routeModelWithFallback({ role: 'FAST' }, async (route) => {
+    const agent = new Agent({
+      id: 'atlas-emotion',
+      name: 'AtlasEmotion',
+      instructions:
+        'You are a CEO emotional-state classifier using the PAD model. ' +
+        'Return ONLY a JSON object — no explanation, no code fences, no prose.',
+      model: route.model,
+    });
+    const messages = [{ role: 'user' as const, content: prompt }];
+    const response =
+      route.provider === 'ollama'
+        ? await agent.generateLegacy(messages as any)
+        : await agent.generate(messages as any);
+    return response.text;
+  });
+
+  // Strip markdown code fences the model may wrap around the JSON
+  const raw = (result as string)
+    .trim()
+    .replace(/^```[a-z]*\n?/i, '')
+    .replace(/\n?```$/i, '')
+    .trim();
+
+  const parsed = JSON.parse(raw) as {
+    valence: unknown;
+    arousal: unknown;
+    dominance: unknown;
+    state: unknown;
+  };
+
+  const v = Number(parsed.valence);
+  const a = Number(parsed.arousal);
+  const d = Number(parsed.dominance);
+
+  if (!Number.isFinite(v) || !Number.isFinite(a) || !Number.isFinite(d)) {
+    throw new Error(
+      `readEmotionLLM: non-numeric PAD in response: ${raw.slice(0, 200)}`,
+    );
+  }
+  if (!VALID_STATES.includes(parsed.state as EmotionState)) {
+    throw new Error(
+      `readEmotionLLM: invalid state "${String(parsed.state)}" in response: ${raw.slice(0, 200)}`,
+    );
+  }
+
+  return finishRead(v, a, d, 0);
+}
+
+/**
+ * Unified emotion read — LLM-first, deterministic keyword path as the offline fallback.
+ * Never throws: any error (no provider, parse failure, network) is caught and the
+ * keyword analyzeWindow result is returned instead. Return shape is always EmotionRead.
+ */
+export async function readEmotion(window: string | string[]): Promise<EmotionRead> {
+  try {
+    return await readEmotionLLM(window);
+  } catch {
+    const msgs = Array.isArray(window) ? window : [window];
+    return analyzeWindow(msgs);
+  }
+}
+
+/**
+ * Pure helper: builds the single CEO-emotion directive line injected into the system
+ * prompt in the telegram reply path. Marked TONE ONLY — it never alters facts,
+ * verification, or money judgment. Extracted as a pure function so it can be unit-tested
+ * without a live bot.
+ */
+export function buildEmotionDirectiveLine(read: EmotionRead): string {
+  return (
+    `[CEO-emotion: state=${read.state} intensity=${read.intensity}/5 directive=${read.directive}]` +
+    ' TONE ONLY — never alters facts, verification, or money judgment.'
+  );
 }

@@ -46,7 +46,7 @@ import { enforceSpendPolicy, isPaused } from './atlas/spend-policy.js';
 import { buildStatusReport } from './atlas/status-report.js';
 import { notifyCeoResult } from './atlas/notify.js';
 import { renderHelp } from './atlas/commands.js';
-import { analyzeWindow } from './atlas/emotion.js';
+import { analyzeWindow, readEmotion, buildEmotionDirectiveLine } from './atlas/emotion.js';
 import { loadPulse, savePulse, processEvent } from './atlas/pulse.js';
 import { runOperatorActionLane } from './operator/action-lane.js';
 import { runSwarm } from './swarm.js';
@@ -244,22 +244,31 @@ async function ask(chatId: number, text: string): Promise<string> {
   console.log(`[in]  chat=${chatId} msg="${text.slice(0, 100)}"`);
 
   // Emotion layer: read CEO state over the last 2-3 user messages (05-emotional-states.md:59),
-  // update Atlas's own Pulse, persist MOOD.md. The emotion DIRECTIVE now lives in the shared
-  // brain-planner (one soul, both mouths) — here we only run the pulse mutation + log, then hand
-  // the message window to the builder so CLI and Telegram derive tone from the same code path.
+  // update Atlas's own Pulse, persist MOOD.md. Phase 2.8: LLM-first read via readEmotion()
+  // (keyword fallback inside); directive injected into system prompt below.
   const userWindow = getConvo(chatId)
     .msgs.filter((m) => m.role === 'user')
     .slice(-3)
     .reverse()
     .map((m) => m.content);
-  const ceoRead = analyzeWindow(userWindow);
+
+  // Sync keyword read as safety baseline — readEmotion() upgrades it asynchronously.
+  // If readEmotion throws even with its internal fallback, the reply still proceeds.
+  let ceoRead = analyzeWindow(userWindow);
+  try {
+    ceoRead = await readEmotion(userWindow);
+  } catch {
+    // readEmotion already catches internally; outer guard keeps the reply path alive.
+  }
+
   const pulse = processEvent(loadPulse(), 'ceo', 'user_feedback');
   savePulse(pulse.state, `telegram message, CEO read: ${ceoRead.state}`);
   console.log(
     `[emotion] chat=${chatId} ceo=${ceoRead.state}/${ceoRead.intensity} pulse-int=${pulse.intensity.toFixed(2)}${pulse.wouldBlock ? ' [would-block: log-only]' : ''}`,
   );
 
-  const system = (await buildAtlasBrainPlan({ channel: 'telegram', recentUserMessages: userWindow })).systemPrompt;
+  const basePlan = await buildAtlasBrainPlan({ channel: 'telegram', recentUserMessages: userWindow });
+  const system = basePlan.systemPrompt + '\n\n' + buildEmotionDirectiveLine(ceoRead);
   const firstPass = await generateWithFallback(messages, system);
   console.log(`[out] chat=${chatId} provider=${firstPass.provider}/${firstPass.modelId} reply="${firstPass.reply.slice(0, 100)}"`);
   const delivery = await deliverReply(firstPass.reply, async (prompt) => {
