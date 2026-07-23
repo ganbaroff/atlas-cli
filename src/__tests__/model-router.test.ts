@@ -9,6 +9,9 @@ function clearProviderEnvs(): void {
   vi.stubEnv('ANTHROPIC_API_KEY', '');
   vi.stubEnv('OLLAMA_URL', '');
   vi.stubEnv('OLLAMA_HOST', '');
+  vi.stubEnv('GEMINI_API_KEY', '');
+  vi.stubEnv('AZURE_OPENAI_API_KEY', '');
+  vi.stubEnv('AZURE_OPENAI_ENDPOINT', '');
   vi.stubEnv('ATLAS_PREFERRED_PROVIDER', '');
 }
 
@@ -66,5 +69,48 @@ describe('Model Router', () => {
     vi.stubEnv('GROQ_API_KEY', 'test-key');
     const candidates = listAvailableModels().filter((m) => m.roles.includes('WORKER'));
     expect(candidates.some((m) => m.provider === 'anthropic')).toBe(false);
+  });
+
+  // ── gemini + azure availability gating ─────────────────────────────────────
+
+  it('gemini is absent when GEMINI_API_KEY is not set', () => {
+    // all provider envs cleared by beforeEach/clearProviderEnvs
+    const models = listAvailableModels();
+    expect(models.some((m) => m.provider === 'gemini')).toBe(false);
+  });
+
+  it('gemini is available when GEMINI_API_KEY is set', () => {
+    vi.stubEnv('GEMINI_API_KEY', 'test-key');
+    const models = listAvailableModels();
+    expect(models.some((m) => m.provider === 'gemini')).toBe(true);
+  });
+
+  it('azure is absent when AZURE_OPENAI_API_KEY is missing (endpoint present)', () => {
+    vi.stubEnv('AZURE_OPENAI_ENDPOINT', 'https://my.openai.azure.com/openai');
+    const models = listAvailableModels();
+    expect(models.some((m) => m.provider === 'azure')).toBe(false);
+  });
+
+  it('azure is absent when AZURE_OPENAI_ENDPOINT is missing (key present)', () => {
+    vi.stubEnv('AZURE_OPENAI_API_KEY', 'test-key');
+    const models = listAvailableModels();
+    expect(models.some((m) => m.provider === 'azure')).toBe(false);
+  });
+
+  it('azure is available when both AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT are set', () => {
+    vi.stubEnv('AZURE_OPENAI_API_KEY', 'test-key');
+    vi.stubEnv('AZURE_OPENAI_ENDPOINT', 'https://my.openai.azure.com/openai');
+    const models = listAvailableModels();
+    expect(models.some((m) => m.provider === 'azure')).toBe(true);
+  });
+
+  it('gemini and azure do NOT appear in the available pool when their env keys are absent (existing routing unchanged)', () => {
+    vi.stubEnv('GROQ_API_KEY', 'test-key');
+    const models = listAvailableModels();
+    expect(models.some((m) => m.provider === 'gemini')).toBe(false);
+    expect(models.some((m) => m.provider === 'azure')).toBe(false);
+    // groq still routes WORKER as before
+    const result = routeModel({ role: 'WORKER' });
+    expect(result.provider).toBe('groq');
   });
 });

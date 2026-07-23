@@ -194,15 +194,31 @@ export async function recallMemories(limit = 10, category?: string): Promise<Arr
 }>> {
   // RPC parameters go ONLY in the POST body. Appending them as URL query params
   // causes PostgREST to interpret them as row filters → "failed to parse filter (5)".
-  return supaFetch('rpc/recall_atlas_memories', {
+  const rows: any[] = await supaFetch('rpc/recall_atlas_memories', {
     method: 'POST',
     body: JSON.stringify({ p_limit: limit, ...(category ? { p_category: category } : {}) }),
-  }).then((rows: any[]) => rows?.map(r => ({
+  });
+
+  const mapped = rows?.map(r => ({
     category: r.category,
     content: r.content,
     emotional_intensity: r.emotional_intensity,
     decay_score: r.decay_score,
-  })) ?? []);
+  })) ?? [];
+
+  // Write-back: atomically increment recall_count + stamp last_recalled_at for all
+  // surfaced rows. Fire-and-forget — never blocks the caller, never throws.
+  const ids: string[] = (rows ?? []).map((r: any) => r.id).filter(Boolean);
+  if (ids.length > 0) {
+    supaFetch('rpc/bump_recall_count', {
+      method: 'POST',
+      body: JSON.stringify({ p_ids: ids }),
+    }).catch((e: unknown) => {
+      console.warn(`[supabase-memory] recallMemories write-back failed (non-fatal): ${e instanceof Error ? e.message : String(e)}`);
+    });
+  }
+
+  return mapped;
 }
 
 export async function saveMemory(

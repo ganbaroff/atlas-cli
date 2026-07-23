@@ -16,8 +16,10 @@ export type ModelRole = 'FAST' | 'WORKER' | 'JUDGE' | 'CRITICAL';
 export type ProviderName =
   | 'ollama'
   | 'freellmapi'
+  | 'gemini'
   | 'groq'
   | 'nvidia'
+  | 'azure'
   | 'openai'
   | 'openrouter'
   | 'anthropic';
@@ -47,6 +49,14 @@ const MODEL_REGISTRY: ModelConfig[] = [
     roles: ['WORKER'],
   },
   {
+    // Azure OpenAI — credit-tier, third per Constitution (NVIDIA → Vertex → Azure).
+    // Requires AZURE_OPENAI_API_KEY + AZURE_OPENAI_ENDPOINT (both checked in isAvailable).
+    provider: 'azure',
+    modelId: 'gpt-4o-mini',
+    costTier: 0,
+    roles: ['FAST', 'WORKER', 'JUDGE'],
+  },
+  {
     provider: 'ollama',
     modelId: 'qwen3:8b',
     costTier: 0,
@@ -57,6 +67,14 @@ const MODEL_REGISTRY: ModelConfig[] = [
     // Only selected when FREELLMAPI_BASE_URL is set (isAvailable gate), so it
     // never costs a guaranteed-failed attempt on machines without the gateway.
     provider: 'freellmapi',
+    modelId: 'gemini-2.5-flash',
+    costTier: 0,
+    roles: ['FAST', 'WORKER', 'JUDGE'],
+  },
+  {
+    // Gemini direct API — openai-compatible endpoint at generativelanguage.googleapis.com.
+    // Selected when GEMINI_API_KEY is set; endpoint is fixed (no GEMINI_BASE_URL needed).
+    provider: 'gemini',
     modelId: 'gemini-2.5-flash',
     costTier: 0,
     roles: ['FAST', 'WORKER', 'JUDGE'],
@@ -91,8 +109,10 @@ function getEnvKey(provider: ProviderName): string | undefined {
   const map: Record<ProviderName, string> = {
     ollama: 'OLLAMA_URL',
     freellmapi: 'FREELLMAPI_API_KEY',
+    gemini: 'GEMINI_API_KEY',
     groq: 'GROQ_API_KEY',
     nvidia: 'NVIDIA_API_KEY',
+    azure: 'AZURE_OPENAI_API_KEY',
     openai: 'OPENAI_API_KEY',
     openrouter: 'OPENROUTER_API_KEY',
     anthropic: 'ANTHROPIC_API_KEY',
@@ -124,6 +144,10 @@ function isAvailable(provider: ProviderName): boolean {
   if (provider === 'freellmapi') {
     return !!process.env['FREELLMAPI_API_KEY'] && !!process.env['FREELLMAPI_BASE_URL'];
   }
+  // azure requires both the API key and the resource endpoint (no default endpoint).
+  if (provider === 'azure') {
+    return !!process.env['AZURE_OPENAI_API_KEY'] && !!process.env['AZURE_OPENAI_ENDPOINT'];
+  }
   return !!getEnvKey(provider);
 }
 
@@ -150,6 +174,29 @@ function createModel(config: ModelConfig): any {
         baseURL,
         headers: {
           Authorization: `Bearer ${process.env['FREELLMAPI_API_KEY']}`,
+        },
+      }).languageModel(config.modelId);
+    }
+
+    case 'gemini':
+      return createOpenAICompatible({
+        name: 'gemini',
+        baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+        headers: {
+          Authorization: `Bearer ${process.env['GEMINI_API_KEY']}`,
+        },
+      }).languageModel(config.modelId);
+
+    case 'azure': {
+      // Endpoint comes ONLY from env — no hardcoded resource URL in source.
+      // isAvailable() already gates selection on this; the guard is defensive.
+      const azureBaseURL = process.env['AZURE_OPENAI_ENDPOINT'];
+      if (!azureBaseURL) throw new Error('AZURE_OPENAI_ENDPOINT not set — set it in .env (e.g. https://<resource>.openai.azure.com/openai)');
+      return createOpenAICompatible({
+        name: 'azure',
+        baseURL: azureBaseURL,
+        headers: {
+          'api-key': process.env['AZURE_OPENAI_API_KEY'] ?? '',
         },
       }).languageModel(config.modelId);
     }
