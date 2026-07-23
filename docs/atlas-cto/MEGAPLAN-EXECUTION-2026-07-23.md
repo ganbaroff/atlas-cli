@@ -14,8 +14,8 @@ The June megaplan predates the current architecture (exec-graph task authority, 
 |------|-------|------|--------|--------|-------|
 | W0 | Reconciliation recon (megaplan → live code, receipts) | Sonnet recon agent | DONE | — | gap list below |
 | A | Phase 1 gemini+azure providers · Phase 5A-iii recall write-back | Sonnet `claude -p` | ✅ DONE | `3ac1810` | Fable-verified: tsc 0, vitest 678/0/2, +9 tests; gemini+azure openai-compat, bump_recall_count RPC |
-| B | Phase 2.8 LLM-first emotion read + wire emotion.ts into telegram reply path | Sonnet `claude -p` | RUNNING | — | — |
-| C | Phase 3.5 emotional-safety guardrail (enforced reply-gate + tone-shift audit log) | Sonnet `claude -p` | PENDING | — | — |
+| B | Phase 2.8 LLM-first emotion read + wire emotion.ts into telegram reply path | Sonnet `claude -p` | ✅ DONE | `213fbba` | Fable-verified: tsc 0, vitest 681/0/2, +3 tests; readEmotionLLM+fallback, telegram injection helper. (1 restart — my backtick bug, discarded partial, clean re-run) |
+| C | Phase 3.5 emotional-safety guardrail (enforced reply-gate + tone-shift audit log) | Sonnet `claude -p` | RUNNING | — | — |
 | D | Phase 4.2 general arbitrary-objective executor (via swarm-exec/goal-runner, not old dispatcher) | Opus `claude -p` | PENDING | — | — |
 | E | Phase 4.3 Telegram freeform action-intent classifier → exec-graph/swarm-exec/goal-runner | Opus `claude -p` | PENDING | — | — |
 | Z | Full verify (tsc/vitest/build) + redeploy to Railway + final report | Fable seat | PENDING | — | — |
