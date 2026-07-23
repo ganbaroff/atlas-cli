@@ -17,7 +17,7 @@ import { execFileSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, basename } from 'node:path';
-import { notifyCeo } from './notify.js';
+import { notifyCeoResult } from './notify.js';
 import { repoWatchRoots, repoWatchIntervalMin } from './policy.js';
 
 export interface RepoStatus {
@@ -124,20 +124,6 @@ export function decideNotify(
   return { notify: true, reason: 'changed and interval elapsed', sig };
 }
 
-/** Telegram sender for the notify gate. Token from env, never logged. */
-async function telegramSend(chatId: number, text: string): Promise<unknown> {
-  const token = process.env.TELEGRAM_BOT_TOKEN;
-  if (!token) throw new Error('TELEGRAM_BOT_TOKEN missing');
-  const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text: text.slice(0, 4096) }),
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!res.ok) throw new Error(`telegram HTTP ${res.status}`); // status only, no token
-  return res.json();
-}
-
 export async function runRepoWatch(
   opts: { notify?: boolean; now?: number } = {},
 ): Promise<{ statuses: RepoStatus[]; digest: string; decision: ReturnType<typeof decideNotify>; sent: boolean }> {
@@ -148,10 +134,9 @@ export async function runRepoWatch(
   const decision = decideNotify(statuses, repoWatchIntervalMin(), now);
   let sent = false;
   if (opts.notify && decision.notify) {
-    sent = await notifyCeo('important', digest, {
-      send: telegramSend,
-      ceoChatId: process.env.TELEGRAM_CEO_CHAT_ID,
-    });
+    // M7: route through the canonical notify chokepoint (no private telegramSend).
+    const outcome = await notifyCeoResult('important', digest);
+    sent = outcome.result === 'SENT';
     if (sent) writeState({ sig: decision.sig, lastNotifyMs: now });
   }
   return { statuses, digest, decision, sent };

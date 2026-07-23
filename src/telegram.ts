@@ -44,6 +44,7 @@ import { listAvailableModels, routeModelWithFallback } from './model-router.js';
 import { recordSpendFromResult } from './atlas/spend-tracker.js';
 import { enforceSpendPolicy, isPaused } from './atlas/spend-policy.js';
 import { buildStatusReport } from './atlas/status-report.js';
+import { notifyCeoResult } from './atlas/notify.js';
 import { renderHelp } from './atlas/commands.js';
 import { analyzeWindow } from './atlas/emotion.js';
 import { loadPulse, savePulse, processEvent } from './atlas/pulse.js';
@@ -398,19 +399,20 @@ bot.command('models', async (ctx) => {
 // For a pause that survives a redeploy, set the Railway env var. See docs/PANIC.md.
 // Already CEO-only via the inbound-auth middleware (telegram.ts top).
 bot.command('pause', async (ctx) => {
+  // Route through the control-plane state machine (M7 unification).
+  // Also set ATLAS_PAUSE for process-local backward compat (spend-policy gate).
   process.env.ATLAS_PAUSE = '1';
-  const reply = isPaused()
-    ? '⏸ ATLAS_PAUSE=1 — автономия остановлена (этот процесс, до рестарта). Для устойчивой паузы задай переменную на Railway. /resume чтобы снять.'
-    : 'Не удалось выставить паузу — проверь логи.';
+  const result = applyControlCommand({ command: 'pause' }, 'telegram');
+  const reply = `⏸ ${result.message}`;
   await ctx.reply(reply);
 });
 
-// /resume — lift the process-local pause.
+// /resume — lift the process-local pause AND transition control-plane to active.
+// Reports any remaining hard overlays (env var on Railway, pause file).
 bot.command('resume', async (ctx) => {
   process.env.ATLAS_PAUSE = '';
-  const reply = !isPaused()
-    ? '▶️ Пауза снята (этот процесс). Если на Railway стоит ATLAS_PAUSE — сними её там тоже, иначе рестарт вернёт паузу.'
-    : 'Пауза всё ещё активна — вероятно ATLAS_PAUSE задан в окружении Railway.';
+  const result = applyControlCommand({ command: 'resume' }, 'telegram');
+  const reply = `▶️ ${result.message}`;
   await ctx.reply(reply);
 });
 
@@ -766,9 +768,12 @@ async function deliverRemoteResults(): Promise<void> {
       const receipt = formatReceipt(`/remote ${cmd.command}`, resultText);
       const msg = `[remote result] ${cmd.command.slice(0, 60)}\n\n${resultText}\n\n${receipt}`;
       try {
-        await bot.telegram.sendMessage(chatId, msg.slice(0, 4096));
-        await deleteDeliveredCommand(cmd.id);
-        console.log(`[remote] delivered cmd=${cmd.id.slice(0, 8)} status=${cmd.status}`);
+        // M7: route through canonical notify chokepoint (quiet-hours aware).
+        const outcome = await notifyCeoResult('remote-result', msg);
+        if (outcome.result === 'SENT' || outcome.result === 'QUEUED') {
+          await deleteDeliveredCommand(cmd.id);
+        }
+        console.log(`[remote] delivered cmd=${cmd.id.slice(0, 8)} status=${cmd.status} notify=${outcome.result}`);
       } catch (e: any) {
         console.error(`[remote] delivery failed cmd=${cmd.id.slice(0, 8)}:`, e.message);
       }
@@ -843,8 +848,9 @@ async function sendMorningBriefing(): Promise<void> {
   }
 
   try {
-    await bot.telegram.sendMessage(chatId, text.slice(0, 4096));
-    console.log(`[briefing] sent morning briefing to CEO chat=${chatId}`);
+    // M7: route through canonical notify chokepoint (quiet-hours aware).
+    const outcome = await notifyCeoResult('briefing', text);
+    console.log(`[briefing] morning briefing notify=${outcome.result}`);
   } catch (e: any) {
     console.error('[briefing] send failed:', e?.message?.slice(0, 200));
   }

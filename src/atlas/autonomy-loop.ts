@@ -108,6 +108,7 @@ import { repoWatchRoots, repoWatchIntervalMin } from './policy.js';
 import { runHealthCheck, type HealthReport, type HealthCheck } from './health-check.js';
 import { notifyCeoResult, type NotifyKind, type NotifyResult } from './notify.js';
 import { isPaused } from './spend-policy.js';
+import { effectivelyPaused } from './control-plane.js';
 
 export interface TickSignals {
   repoDigest: string;
@@ -336,8 +337,8 @@ export async function runTick(opts: RunTickOptions = {}): Promise<TickResult> {
   const now = opts.now ?? Date.now();
   const ts = new Date(now).toISOString();
 
-  if (isPaused()) {
-    return { state: 'paused', ts, reason: 'ATLAS_PAUSE active — tick skipped before observing' };
+  if (effectivelyPaused()) {
+    return { state: 'paused', ts, reason: 'Control paused — tick skipped before observing' };
   }
 
   const doObserve = opts.observeFn ?? observe;
@@ -360,8 +361,8 @@ export async function runTick(opts: RunTickOptions = {}): Promise<TickResult> {
   }
 
   // Re-check pause right before notifying — a pause set mid-tick must still win.
-  if (isPaused()) {
-    return { state: 'paused', ts, signals, events, reason: 'ATLAS_PAUSE active — notify suppressed after observing' };
+  if (effectivelyPaused()) {
+    return { state: 'paused', ts, signals, events, reason: 'Control paused — notify suppressed after observing' };
   }
 
   const message = formatEventMessage(events);
@@ -374,12 +375,14 @@ export async function runTick(opts: RunTickOptions = {}): Promise<TickResult> {
 
   const outcomeToState: Record<NotifyResult, TickState> = {
     SENT: 'notified',
+    QUEUED: 'silent',
     SUPPRESSED: 'silent',
     NOT_CONFIGURED: 'silent',
     FAILED: 'notify-failed',
   };
   const outcomeToReason: Record<NotifyResult, string> = {
     SENT: 'notified CEO',
+    QUEUED: 'queued for delivery outside quiet hours',
     SUPPRESSED: `notify kind '${kind}' gated (silent by default)`,
     NOT_CONFIGURED: 'no CEO chat configured (TELEGRAM_CEO_CHAT_ID unset)',
     FAILED: `send failed: ${outcome.error ?? 'unknown error'}`,
@@ -455,8 +458,8 @@ export async function sendControlledTestNotification(
   const now = opts.now ?? Date.now();
   const intervalMin = opts.intervalMin ?? repoWatchIntervalMin();
 
-  if (isPaused()) {
-    return { attempted: false, reason: 'ATLAS_PAUSE active — test notification skipped' };
+  if (effectivelyPaused()) {
+    return { attempted: false, reason: 'Control paused — test notification skipped' };
   }
 
   const st = readTestNotifyState();

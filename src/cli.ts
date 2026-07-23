@@ -1243,6 +1243,74 @@ program
     console.log(buildStatusReport());
   });
 
+// --- Supervised Assist (M7) ---
+
+const assistCmd = program
+  .command('assist')
+  .description('Supervised browser assist — CEO-approved answer pack fill');
+
+assistCmd
+  .command('run <plan>')
+  .description('Fill a form using an approved answer pack (foreground TTY only)')
+  .requiredOption('--answers <packPath>', 'Path to the JSON answer pack file')
+  .action(async (plan: string, opts: { answers: string }) => {
+    const { readFileSync } = await import('node:fs');
+    const { createHash } = await import('node:crypto');
+    const { createAnswerPack, validatePack } = await import('./hands/assist-contract.js');
+    const { requestApproval, isForegroundTTY } = await import('./hands/assist-approval-port.js');
+    const { runSupervisedAssist } = await import('./hands/supervised-assist.js');
+
+    if (!isForegroundTTY()) {
+      console.error('ERROR: atlas assist run requires a foreground TTY. Headless/non-TTY refused.');
+      process.exit(1);
+    }
+
+    let pack;
+    try {
+      pack = JSON.parse(readFileSync(opts.answers, 'utf8'));
+    } catch (e: any) {
+      console.error(`ERROR: cannot read answer pack: ${e.message}`);
+      process.exit(1);
+    }
+
+    // Print pack summary for CEO review
+    console.log('\n=== ANSWER PACK SUMMARY ===');
+    console.log(`Origin: ${pack.origin}`);
+    console.log(`Form: ${pack.formFingerprint}`);
+    console.log(`Fields:`);
+    for (const f of pack.fields ?? []) {
+      console.log(`  ${f.label}: "${f.value}"`);
+    }
+    console.log(`Pack hash: ${pack.packHash}`);
+    console.log(`Expires: ${pack.expiresAt}`);
+
+    // Request TTY approval
+    const approval = await requestApproval(pack);
+    if (!approval.approved) {
+      console.error(`\nApproval denied: ${approval.reason}`);
+      process.exit(1);
+    }
+
+    console.log('\nApproved. Starting supervised assist session...');
+
+    const actionPlanHash = createHash('sha256').update(plan).digest('hex');
+    const result = await runSupervisedAssist({
+      pack,
+      capability: approval.capability!,
+      currentOrigin: pack.origin,
+      currentFormFingerprint: pack.formFingerprint,
+      actionPlanHash: pack.actionPlanHash,
+    });
+
+    if (result.halted) {
+      console.error(`\nHALTED: ${result.haltReason} — ${result.haltDetail}`);
+      process.exit(1);
+    }
+
+    console.log(`\nCompleted: ${result.fieldsFilled}/${result.fieldsAttempted} fields filled.`);
+    console.log('Final submit is left to the human.');
+  });
+
 if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith('cli.js')) {
   program.parse();
 }

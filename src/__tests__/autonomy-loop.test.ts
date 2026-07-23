@@ -308,13 +308,16 @@ describe('autonomy-loop runTick — end-to-end tick behavior (fixed fixtures via
   let stateFile: string;
   let priorChatId: string | undefined;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.restoreAllMocks();
     stateDir = mkdtempSync(join(tmpdir(), 'atlas-autonomy-test-'));
     stateFile = join(stateDir, 'alert-state.json');
     process.env.ATLAS_ALERT_STATE_FILE = stateFile;
     priorChatId = process.env.TELEGRAM_CEO_CHAT_ID;
     process.env.TELEGRAM_CEO_CHAT_ID = '12345';
+    // M7: mock quiet-hours to false so these tests are not affected by real clock
+    const notifyQueue = await import('../atlas/notify-queue.js');
+    vi.spyOn(notifyQueue, 'isQuietHours').mockReturnValue(false);
   });
 
   afterEach(() => {
@@ -459,13 +462,16 @@ describe('sendControlledTestNotification — V0.1 Blocker 3 rate-limit + pause g
   let testStateFile: string;
   let priorChatId: string | undefined;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.restoreAllMocks();
     testStateDir = mkdtempSync(join(tmpdir(), 'atlas-test-notify-'));
     testStateFile = join(testStateDir, 'test-notify-state.json');
     process.env.ATLAS_AUTONOMY_TEST_STATE_FILE = testStateFile;
     priorChatId = process.env.TELEGRAM_CEO_CHAT_ID;
     process.env.TELEGRAM_CEO_CHAT_ID = '12345';
+    // M7: mock quiet-hours to false so these tests are not affected by real clock
+    const notifyQueue = await import('../atlas/notify-queue.js');
+    vi.spyOn(notifyQueue, 'isQuietHours').mockReturnValue(false);
   });
 
   afterEach(() => {

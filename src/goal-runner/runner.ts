@@ -36,6 +36,7 @@ import {
   releaseLease,
 } from './budgets.js';
 import { notifyCeoResult, type NotifyOutcome } from '../atlas/notify.js';
+import { effectivelyPaused } from '../atlas/control-plane.js';
 import { DEFAULT_GOAL_RUNNER_CONFIG, type GoalRunnerConfig, type GoalReport, type TaskReport, type TaskPlan } from './types.js';
 import type { BrowserAction } from '../hands/browser-actions.js';
 import { BrowserSession } from '../hands/browser-adapter.js';
@@ -105,6 +106,25 @@ export async function runGoal(input: GoalRunnerInput): Promise<GoalReport> {
     const frozenAcceptance = plans.map(p => ({ title: p.taskTitle, criteria: p.acceptanceCriteria }));
 
     for (const plan of plans) {
+      // ── Effective control re-check (M7: pause arriving mid-goal prevents next action) ──
+      if (effectivelyPaused()) {
+        const { task } = createTask({
+          goalId: goal.id, title: plan.taskTitle,
+          riskClass: 'low',
+          source: { kind: 'exec-graph', ref: 'goal-runner' },
+          actor: 'goal-runner',
+        });
+        moveTask({ taskId: task.id, to: 'accepted', actor: 'goal-runner' });
+        moveTask({ taskId: task.id, to: 'escalated', actor: 'goal-runner',
+          note: 'control paused — task blocked before execution' });
+        taskReports.push({
+          taskId: task.id, title: plan.taskTitle, handId: plan.handId,
+          finalStatus: 'blocked', attempts: 0,
+          verifierReason: 'control paused — task blocked before execution',
+        });
+        continue;
+      }
+
       // ── Red-line check ────────────────────────────────────────
       if (hasRedLine(plan.effects)) {
         const { task } = createTask({

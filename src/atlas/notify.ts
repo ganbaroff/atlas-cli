@@ -17,13 +17,14 @@
  * formatError helper enforces that shape.
  */
 
-export type NotifyKind = 'briefing' | 'error' | 'important' | 'remote-result' | 'chatter';
+export type NotifyKind = 'briefing' | 'error' | 'important' | 'remote-result' | 'panic' | 'chatter';
 
 const ALLOWED: ReadonlySet<NotifyKind> = new Set<NotifyKind>([
   'briefing',
   'error',
   'important',
   'remote-result',
+  'panic',
 ]);
 
 /** Does this kind earn a proactive send? Silent by default. */
@@ -78,9 +79,11 @@ export async function notifyCeo(
   }
 }
 
-// ── Canonical structured-result API (V0.1 hardening) ──────────────────────────
+// ── Canonical structured-result API (V0.1 hardening, M7 quiet-hours) ─────────
 
-export type NotifyResult = 'NOT_CONFIGURED' | 'SUPPRESSED' | 'SENT' | 'FAILED';
+import { isQuietHours, enqueue } from './notify-queue.js';
+
+export type NotifyResult = 'NOT_CONFIGURED' | 'SUPPRESSED' | 'QUEUED' | 'SENT' | 'FAILED';
 
 export interface NotifyOutcome {
   result: NotifyResult;
@@ -154,6 +157,17 @@ export async function notifyCeoResult(
   if (chatId === null) {
     return { result: 'NOT_CONFIGURED' };
   }
+
+  // M7 quiet-hours policy: 23:00-08:00 Baku. Panic bypasses. Chatter suppressed (not queued).
+  if (isQuietHours() && kind !== 'panic') {
+    if (kind === 'chatter') {
+      return { result: 'SUPPRESSED' };
+    }
+    const queueResult = enqueue(kind, msg);
+    console.log(`[notify] quiet-hours: ${queueResult} kind=${kind}`);
+    return { result: 'QUEUED' };
+  }
+
   try {
     await send(chatId, msg.slice(0, 4096));
     console.log(`[notify] sent kind=${kind}`);

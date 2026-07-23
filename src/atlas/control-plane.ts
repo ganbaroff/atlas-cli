@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import type { OperatorEvaluation, OperatorLifecycle, OperatorPromotion } from '../operator/contracts.js';
+import { isPaused, pauseFilePath } from './spend-policy.js';
 
 export type ControlMode = 'active' | 'paused' | 'stopped';
 export type ControlCommandName = 'pause' | 'stop' | 'resume' | 'reroute' | 'validate';
@@ -128,6 +129,34 @@ export function getControlState(state: OperatorStateRecord = readOperatorState()
 
 export function controlAllowsModelCalls(state: OperatorStateRecord = readOperatorState()): boolean {
   return getControlState(state).mode === 'active';
+}
+
+/**
+ * Returns a list of active hard overlays (env var, pause file) that prevent
+ * resumption even when the control-state machine is 'active'. Used by /resume
+ * to warn the CEO which external pause sources remain.
+ */
+export function activeHardOverlays(): string[] {
+  const overlays: string[] = [];
+  const envVal = (process.env['ATLAS_PAUSE'] ?? '').trim().toLowerCase();
+  if (envVal === '1' || envVal === 'true' || envVal === 'yes') {
+    overlays.push('ATLAS_PAUSE env var');
+  }
+  try {
+    if (existsSync(pauseFilePath())) {
+      overlays.push(`pause file (${pauseFilePath()})`);
+    }
+  } catch { /* best-effort */ }
+  return overlays;
+}
+
+/**
+ * True if Atlas is effectively paused by ANY source: control-state machine,
+ * ATLAS_PAUSE env, or desktop pause file. Use this as the single gate before
+ * any new action (goal-runner task, notify send, autonomy tick).
+ */
+export function effectivelyPaused(state: OperatorStateRecord = readOperatorState()): boolean {
+  return !controlAllowsModelCalls(state) || isPaused();
 }
 
 export function describeControlBlock(state: OperatorStateRecord = readOperatorState()): string {
@@ -350,9 +379,14 @@ export function nextControlState(
       nextControl.mode = 'active';
       nextState.control = nextControl;
       nextState.updated_at = commandStamp.at;
+      const overlays = activeHardOverlays();
+      const base = commandStamp.note ? `Control resumed. ${commandStamp.note}` : 'Control resumed.';
+      const message = overlays.length > 0
+        ? `${base} WARNING: hard overlays still active: ${overlays.join(', ')}. Atlas remains effectively paused until these are cleared.`
+        : base;
       return {
         changed: true,
-        message: commandStamp.note ? `Control resumed. ${commandStamp.note}` : 'Control resumed.',
+        message,
         state: nextState,
       };
     }

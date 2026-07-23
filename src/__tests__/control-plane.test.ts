@@ -1,11 +1,13 @@
 import { resolve } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import {
   buildControlContext,
   describeControlBlock,
   nextControlState,
   parseControlCommand,
   validateControlState,
+  activeHardOverlays,
+  effectivelyPaused,
 } from '../atlas/control-plane.js';
 
 describe('control plane', () => {
@@ -81,6 +83,98 @@ describe('control plane', () => {
 
     expect(validation.passed).toBe(false);
     expect(validation.issues).toContain('phase.next and control.next_lane drift: browser-proof != executor-proof');
+  });
+
+  it('M7: resume reports active hard overlays when env pause is set', () => {
+    const initial = {
+      phase: { next: 'test-lane' },
+      control: { mode: 'paused' as const, next_lane: 'test-lane' },
+    };
+    const priorPause = process.env.ATLAS_PAUSE;
+    process.env.ATLAS_PAUSE = '1';
+    try {
+      const result = nextControlState(initial, { command: 'resume' }, 'telegram');
+      expect(result.state.control?.mode).toBe('active');
+      expect(result.message).toContain('WARNING');
+      expect(result.message).toContain('ATLAS_PAUSE env var');
+    } finally {
+      if (priorPause === undefined) delete process.env.ATLAS_PAUSE;
+      else process.env.ATLAS_PAUSE = priorPause;
+    }
+  });
+
+  it('M7: resume without hard overlays has no WARNING', () => {
+    const initial = {
+      phase: { next: 'test-lane' },
+      control: { mode: 'paused' as const, next_lane: 'test-lane' },
+    };
+    const priorPause = process.env.ATLAS_PAUSE;
+    delete process.env.ATLAS_PAUSE;
+    try {
+      const result = nextControlState(initial, { command: 'resume' }, 'telegram');
+      expect(result.message).toBe('Control resumed.');
+      expect(result.message).not.toContain('WARNING');
+    } finally {
+      if (priorPause !== undefined) process.env.ATLAS_PAUSE = priorPause;
+    }
+  });
+
+  it('M7: effectivelyPaused returns true when control-state is paused', () => {
+    const state = {
+      control: { mode: 'paused' as const, next_lane: 'test' },
+    };
+    expect(effectivelyPaused(state)).toBe(true);
+  });
+
+  it('M7: effectivelyPaused returns true when ATLAS_PAUSE env is set even if control is active', () => {
+    const state = {
+      control: { mode: 'active' as const, next_lane: 'test' },
+    };
+    const prior = process.env.ATLAS_PAUSE;
+    process.env.ATLAS_PAUSE = '1';
+    try {
+      expect(effectivelyPaused(state)).toBe(true);
+    } finally {
+      if (prior === undefined) delete process.env.ATLAS_PAUSE;
+      else process.env.ATLAS_PAUSE = prior;
+    }
+  });
+
+  it('M7: effectivelyPaused returns false when both control-active and no env pause', () => {
+    const state = {
+      control: { mode: 'active' as const, next_lane: 'test' },
+    };
+    const prior = process.env.ATLAS_PAUSE;
+    delete process.env.ATLAS_PAUSE;
+    try {
+      expect(effectivelyPaused(state)).toBe(false);
+    } finally {
+      if (prior !== undefined) process.env.ATLAS_PAUSE = prior;
+    }
+  });
+
+  it('M7: pause -> goal/task blocked -> resume -> allowed round-trip', () => {
+    // Simulate the round-trip with temp state
+    const initial = {
+      phase: { next: 'test-lane' },
+      control: { mode: 'active' as const, next_lane: 'test-lane' },
+    };
+
+    // Step 1: Pause
+    const paused = nextControlState(initial, { command: 'pause' }, 'telegram');
+    expect(paused.state.control?.mode).toBe('paused');
+    expect(effectivelyPaused(paused.state)).toBe(true);
+
+    // Step 2: Resume
+    const prior = process.env.ATLAS_PAUSE;
+    delete process.env.ATLAS_PAUSE;
+    try {
+      const resumed = nextControlState(paused.state, { command: 'resume' }, 'telegram');
+      expect(resumed.state.control?.mode).toBe('active');
+      expect(effectivelyPaused(resumed.state)).toBe(false);
+    } finally {
+      if (prior !== undefined) process.env.ATLAS_PAUSE = prior;
+    }
   });
 
   it('accepts retry-aware evaluation chain when proof is durable', () => {
