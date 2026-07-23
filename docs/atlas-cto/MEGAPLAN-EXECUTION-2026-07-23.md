@@ -16,8 +16,8 @@ The June megaplan predates the current architecture (exec-graph task authority, 
 | A | Phase 1 gemini+azure providers · Phase 5A-iii recall write-back | Sonnet `claude -p` | ✅ DONE | `3ac1810` | Fable-verified: tsc 0, vitest 678/0/2, +9 tests; gemini+azure openai-compat, bump_recall_count RPC |
 | B | Phase 2.8 LLM-first emotion read + wire emotion.ts into telegram reply path | Sonnet `claude -p` | ✅ DONE | `213fbba` | Fable-verified: tsc 0, vitest 681/0/2, +3 tests; readEmotionLLM+fallback, telegram injection helper. (1 restart — my backtick bug, discarded partial, clean re-run) |
 | C | Phase 3.5 emotional-safety guardrail (enforced reply-gate + tone-shift audit log) | Sonnet `claude -p` | ✅ DONE | `f7d9bab` | Fable-verified: tsc 0, vitest 699/0/2, +18 tests; emotional-safety.ts (3 detectors + audit) + telegram wiring |
-| D | Phase 4.2/4.3a — action-router module (intent classify + safe route to swarm-exec/exec-graph, red-line gated); pure+tested, not yet wired | Opus `claude -p` | RUNNING | — | — |
-| E | Phase 4.3b — wire action-router into telegram freeform path (chat vs action lane) | Opus `claude -p` | PENDING | — | — |
+| D | Phase 4.2/4.3a — action-router module (intent classify + safe route to swarm-exec/exec-graph, red-line gated); pure+tested, not yet wired | Opus `claude -p` | ✅ DONE | `ccbfff0` | Fable-verified: tsc 0, vitest 718/0/2, router test 19/0; action-router.ts (chat/queued/needs-approval), red-line gated |
+| E | Phase 4.3b — wire action-router into telegram freeform path (chat vs action lane) | Opus `claude -p` | RUNNING | — | — |
 | Z | Full verify (tsc/vitest/build) + redeploy to Railway + final report | Fable seat | PENDING | — | — |
 
 ### W0 gap findings (receipts in codex-loop Round 28)
