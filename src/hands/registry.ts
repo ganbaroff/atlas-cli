@@ -27,7 +27,7 @@
  * hand as a falsy-but-present value. `parseHandSpec()`/`validateRegistry()`
  * throw on schema violation; this module never silently coerces a bad spec.
  *
- * Security: TWO STATIC HANDS in V0 (+ manifest overlay for file-search, local-readonly):
+ * Security: TWO STATIC HANDS in V0 (+ manifest overlay for file-search, local-readonly, browser-foreground):
  *   - 'sonnet-foreground'  — CEO-supervised, foreground-only, can write
  *     scoped code. Because 'write-scoped-code' is in its allowedActions,
  *     ./risk.ts's classifyRisk() (fed hand.allowedActions as the
@@ -110,31 +110,6 @@ export const REGISTRY: Readonly<Record<string, HandSpec>> = Object.freeze({
       'Objective is ambiguous, expectedResult cannot be independently falsified, or the work '
       + "would require an action outside this hand's allowedActions -> escalate to ceo, don't "
       + 'silently widen scope.',
-  }),
-  'browser-foreground': handSpecSchema.parse({
-    handId: 'browser-foreground',
-    purpose:
-      'Foreground, CEO-supervised browser Hand — navigates local/fixture pages, reads text, '
-      + 'fills fields, clicks buttons via a closed typed action vocabulary. No form submit, '
-      + 'no credentials, no uploads, no payment, no real portal. Playwright adapter.',
-    capabilities: ['browser-navigate', 'browser-read', 'browser-fill', 'browser-click', 'browser-select'],
-    trustLevel: 'medium',
-    allowedEnvironments: ['local-foreground'],
-    allowedActions: ['browser-navigate', 'browser-read', 'browser-fill', 'browser-click', 'browser-select'],
-    disallowedActions: ['browser-submit', 'credential-access', 'upload', 'payment', 'unattended', 'deploy', 'command-exec'],
-    costClass: 'FOREGROUND-CEO-SUPERVISED',
-    autonomy: 'foreground-only',
-    inputContract:
-      'A DelegationBrief (see ./contract.ts): objective, allowedActions subset of this '
-      + "hand's allowedActions, a falsifiable expectedResult, timeoutMs, riskClass.",
-    timeoutMs: 60_000,
-    retryPolicy: 'none',
-    abortPolicy:
-      "On timeout or CEO-interrupt, the delegating adapter call (abortHandTask) moves the "
-      + "task to 'blocked' — never silently 'verified'. Browser session is closed on abort.",
-    escalationCondition:
-      'Any action outside the typed vocabulary (submit, credentials, upload, payment, real portal) '
-      + "-> escalate to ceo, don't silently widen scope.",
   }),
   'swarm-local': handSpecSchema.parse({
     handId: 'swarm-local',

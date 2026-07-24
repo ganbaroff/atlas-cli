@@ -12,7 +12,7 @@ _Last written: 2026-07-25 · CEO: Atlas focus, not OPSBOARD_
 Migrate static REGISTRY hands → JSON manifests one at a time; zero behavior change.
 - [x] file-search
 - [x] local-readonly
-- [ ] browser-foreground
+- [x] browser-foreground
 - [ ] swarm-local
 - [ ] sonnet-foreground
 

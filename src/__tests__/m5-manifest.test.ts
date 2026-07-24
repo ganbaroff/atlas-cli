@@ -94,6 +94,20 @@ describe('M5 manifest SDK', () => {
     expect(registrySrc).not.toMatch(/handId:\s*'local-readonly'/);
   });
 
+  it('browser-foreground hand is available via manifest without REGISTRY literal', () => {
+    delete process.env.ATLAS_HAND_MANIFEST_DIR;
+    resetManifestCacheForTests();
+    const hand = getHand('browser-foreground');
+    expect(hand.handId).toBe('browser-foreground');
+    expect(hand.allowedActions).toContain('browser-navigate');
+    expect(hand.disallowedActions).toContain('browser-submit');
+    expect(listHands().some((h) => h.handId === 'browser-foreground')).toBe(true);
+
+    const registrySrc = readFileSync(REGISTRY_SRC, 'utf8');
+    expect(registrySrc).not.toMatch(/'browser-foreground'\s*:/);
+    expect(registrySrc).not.toMatch(/handId:\s*'browser-foreground'/);
+  });
+
   it('file-search hand is available via default manifests without REGISTRY literal', () => {
     delete process.env.ATLAS_HAND_MANIFEST_DIR;
     resetManifestCacheForTests();
