@@ -45,7 +45,7 @@ npm test -- --run src/__tests__/goal-runner.test.ts src/__tests__/m4-*.test.ts â
 - Supabase emotional memory write-back untested against live DB until DDL gate opens
 
 ## 6. Commit hash + counts
-- **Branch tip:** _(filled at push â€” see git log)_
+- **Branch tip:** `4cb9ff3`
 - **Windows / PowerShell / Node v24**
 - **typecheck:** 0 errors
 - **vitest:** 787 passed, 2 skipped
