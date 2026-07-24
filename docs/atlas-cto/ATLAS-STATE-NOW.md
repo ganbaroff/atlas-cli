@@ -20,7 +20,7 @@ _Last written: 2026-07-25 by proof-closure M6→M10. Read this FIRST on resume._
 - **Integration tip:** `feat/arsenal-wiring` (pushed origin)
 - **Independent stack receipt:** `docs/atlas-cto/M6-M9-VERIFIER-RECEIPT-2026-07-25.md` → **PASS-WITH-EXCEPTION** @ `5448b6d`
 - **Codex consolidated:** `docs/atlas-cto/M4-M9-CODEX-LOOP-CONSOLIDATED-2026-07-25.md`
-- **NEXT:** return executor allocation to OPSBOARD product; external distribution gated by G-ATLAS-USER
+- **NEXT:** merge `feat/arsenal-wiring` → `main` (PR #13); live Supabase `llm_spend` apply; Atlas product hardening — **NOT OPSBOARD**
 
 ## VERIFIED 2026-07-25 (proof-closure)
 - Full suite: **814 passed, 2 skipped** (incl. M10 lifecycle)
@@ -30,7 +30,7 @@ _Last written: 2026-07-25 by proof-closure M6→M10. Read this FIRST on resume._
 
 ## OPEN / CEO GATES
 1. **b1 Supabase** — apply `db/apply-llm-spend.ps1` + live smoke (`M6-LIVE-SMOKE-GATE.md`) — **OPEN**
-2. **OPSBOARD remote push** — `0923b5f` on OPSBOARD-PRO main — **OPEN**
+2. **OPSBOARD remote push** — deferred (CEO: Atlas focus, not OPSBOARD)
 3. **VOLAURA codex-loop append** — consolidated block ready; CEO/verifier-lane writes `codex-loop.md`
 4. **Git-Bash audit debt (M2+M3)** — codex-verifier seat
 5. **G-ATLAS-USER** — external distribution only
@@ -49,4 +49,4 @@ node scripts/m9-live-cross-repo.mts
 1. Read this file
 2. M4–M10 internal stack CLOSED — do not re-open without CEO veto
 3. CEO gates (Supabase, OPSBOARD push, VOLAURA codex append) are explicit OPEN items
-4. Next allocation: OPSBOARD product work
+4. Next allocation: **Atlas CLI product** (merge PR, Supabase spend, deploy from main)
