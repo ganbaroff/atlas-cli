@@ -18,8 +18,8 @@ Migrate static REGISTRY hands → JSON manifests one at a time; zero behavior ch
 
 **Sprint A CLOSED** — static REGISTRY empty; all hands via manifests.
 
-### Sprint B — Git-Bash audit debt (M2+M3)
-Independent verifier re-runs full suite under Git Bash; document counts in receipt.
+### Sprint B — Git-Bash audit debt (M2+M3) — CLOSED
+Independent verifier re-ran full suite under Git Bash; receipt: `GITBASH-AUDIT-RECEIPT-2026-07-25.md` (818 passed, 2 skipped).
 
 ### Sprint C — Swarm honest diversity
 One bounded live run with M6 health truth; verdict RESEARCH_ONLY_LIMITED or better — no provider zoo chase.

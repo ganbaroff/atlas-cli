@@ -19,7 +19,7 @@ _Last written: 2026-07-25 by proof-closure M6→M10. Read this FIRST on resume._
 - **M10-internal install/upgrade/rollback — CLOSED** (see M10-VERIFIER-RECEIPT-2026-07-25)
 - **Integration tip:** `main` @ **`ae79bf2`** (PR #13 merged, Railway + Supabase live)
 - **Roadmap:** [`POST-M10-ROADMAP.md`](POST-M10-ROADMAP.md) — Sprint A manifest migration in progress
-- **NEXT:** Sprint B Git-Bash audit → Sprint C swarm honesty → live product loop
+- **NEXT:** Sprint C swarm honesty → live product loop → goal evidence write-back
 
 ## VERIFIED 2026-07-25 (proof-closure)
 - Full suite: **814 passed, 2 skipped** (incl. M10 lifecycle)
@@ -31,7 +31,7 @@ _Last written: 2026-07-25 by proof-closure M6→M10. Read this FIRST on resume._
 1. **b1 Supabase** — **CLOSED** 2026-07-25 (`M6-LIVE-SMOKE-RECEIPT-2026-07-25.md`)
 2. **OPSBOARD remote push** — deferred (CEO: Atlas focus, not OPSBOARD)
 3. **VOLAURA codex-loop append** — consolidated block ready; CEO/verifier-lane writes `codex-loop.md`
-4. **Git-Bash audit debt (M2+M3)** — codex-verifier seat
+4. **Git-Bash audit debt (M2+M3)** — **CLOSED** 2026-07-25 (`GITBASH-AUDIT-RECEIPT-2026-07-25.md` · 818/820 PASS)
 5. **G-ATLAS-USER** — external distribution only
 
 ## VERIFY COMMANDS
