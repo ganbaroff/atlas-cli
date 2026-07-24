@@ -970,7 +970,8 @@ program
       console.error(`Swarm failed: ${msg}`);
       process.exit(1);
     }
-    await shutdown();
+    await Promise.race([shutdown(), new Promise((r) => setTimeout(r, 3000))]);
+    process.exit(process.exitCode ?? 0);
   });
 
 program
@@ -993,8 +994,8 @@ program
         verdict: 'KEEP_DISABLED',
         rationale: 'dry-run — no live calls',
       }, null, 2));
-      await shutdown();
-      return;
+      await Promise.race([shutdown(), new Promise((r) => setTimeout(r, 3000))]);
+      process.exit(0);
     }
     if (!controlAllowsModelCalls()) {
       console.error(describeControlBlock());
@@ -1013,7 +1014,8 @@ program
     });
     console.log(JSON.stringify(report, null, 2));
     if (report.verdict === 'KEEP_DISABLED') process.exitCode = 1;
-    await shutdown();
+    await Promise.race([shutdown(), new Promise((r) => setTimeout(r, 3000))]);
+    process.exit(process.exitCode ?? 0);
   });
 
 program
@@ -1048,7 +1050,8 @@ program
       console.error('[bridge] No silent fallback — use `atlas swarm` for TypeScript research-swarm');
       process.exit(1);
     }
-    await shutdown();
+    await Promise.race([shutdown(), new Promise((r) => setTimeout(r, 3000))]);
+    process.exit(process.exitCode ?? 0);
   });
 
 program
