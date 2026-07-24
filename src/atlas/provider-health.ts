@@ -31,13 +31,20 @@ const DEFAULT_DEAD_COOLDOWN_MS = 5 * 60 * 1000;
 const DEFAULT_DEGRADED_COOLDOWN_MS = 60 * 1000;
 const FAIL_THRESHOLD_DEAD = 2;
 
+function healthDir(): string {
+  return process.env.ATLAS_PROVIDER_HEALTH_DIR ?? join(homedir(), '.atlas');
+}
+
 function healthPath(): string {
-  const dir = process.env.ATLAS_PROVIDER_HEALTH_DIR ?? join(homedir(), '.atlas');
-  mkdirSync(dir, { recursive: true });
-  return join(dir, 'provider-health.json');
+  return join(healthDir(), 'provider-health.json');
+}
+
+function ensureHealthDir(): void {
+  mkdirSync(healthDir(), { recursive: true });
 }
 
 function writeAtomic(path: string, data: string): void {
+  ensureHealthDir();
   const tmp = `${path}.${process.pid}.tmp`;
   writeFileSync(tmp, data, 'utf8');
   renameSync(tmp, path);
@@ -45,6 +52,7 @@ function writeAtomic(path: string, data: string): void {
 
 function loadStore(): ProviderHealthStore {
   const path = healthPath();
+  // Read path must not mkdir — some tests mock node:fs without mkdirSync.
   if (!existsSync(path)) {
     return { updatedAt: new Date().toISOString(), providers: {} };
   }
