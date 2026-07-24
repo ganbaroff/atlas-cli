@@ -1371,6 +1371,25 @@ assistCmd
     console.log('Final submit is left to the human.');
   });
 
+program
+  .command('evidence')
+  .description('M8 evidence ledger tools')
+  .command('audit')
+  .description('Run read-only evidence auditor against ledger')
+  .option('--ledger <dir>', 'Evidence dir (default ATLAS_EVIDENCE_DIR or state/evidence)')
+  .action(async (opts: { ledger?: string }) => {
+    if (opts.ledger) process.env.ATLAS_EVIDENCE_DIR = opts.ledger;
+    const { runEvidenceAudit } = await import('./evidence/auditor.js');
+    const summary = runEvidenceAudit();
+    console.log(JSON.stringify({
+      auditRunId: summary.auditRunId,
+      findingsCount: summary.findingsCount,
+      adversarialLogPath: summary.adversarialLogPath,
+      findings: summary.findings,
+    }, null, 2));
+    process.exitCode = 0;
+  });
+
 if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith('cli.js')) {
   const instanceLease = acquireInstanceLease();
   if (instanceLease.mode === 'readonly') {
