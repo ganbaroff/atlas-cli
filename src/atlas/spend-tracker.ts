@@ -12,6 +12,10 @@
  */
 
 import { isSupabaseConfigured } from './supabase-memory.js';
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
+import { randomUUID } from 'node:crypto';
 
 export type SpendProvider =
   | 'ollama'
@@ -30,6 +34,8 @@ export interface RecordSpendInput {
   tokensOut: number;
   /** Channel tag: telegram | cli | swarm | brain-loop | api. */
   caller: string;
+  /** Optional correlation id for durable receipt / fixture matching. */
+  correlationId?: string;
 }
 
 /**
@@ -114,6 +120,7 @@ async function writeSpendRow(row: {
   tokens_out: number;
   est_cost_usd: number;
   caller: string;
+  correlation_id?: string;
 }): Promise<void> {
   const url = process.env['SUPABASE_URL'] ?? '';
   const key = process.env['SUPABASE_SERVICE_ROLE_KEY'] ?? '';
@@ -136,21 +143,70 @@ async function writeSpendRow(row: {
   }
 }
 
+export interface SpendReceipt {
+  ts: string;
+  correlationId: string;
+  provider: string;
+  model: string;
+  tokensIn: number;
+  tokensOut: number;
+  estCostUsd: number;
+  caller: string;
+}
+
+function receiptPath(): string {
+  const dir = process.env.ATLAS_SPEND_RECEIPT_DIR ?? join(homedir(), '.atlas');
+  mkdirSync(dir, { recursive: true });
+  return join(dir, 'spend-receipts.jsonl');
+}
+
+/** Append one durable local spend receipt (fixture-safe, no live DDL required). */
+export function appendSpendReceipt(receipt: SpendReceipt): void {
+  appendFileSync(receiptPath(), `${JSON.stringify(receipt)}\n`, 'utf8');
+}
+
+/** Read local receipts (tests / audit). */
+export function readSpendReceipts(): SpendReceipt[] {
+  const path = receiptPath();
+  if (!existsSync(path)) return [];
+  return readFileSync(path, 'utf8')
+    .split('\n')
+    .filter((l) => l.trim().length > 0)
+    .map((l) => JSON.parse(l) as SpendReceipt);
+}
+
 /**
  * Record one LLM call's spend. Estimates cost, bumps the in-memory daily
- * counter synchronously, and fires a Supabase insert in the background.
+ * counter synchronously, writes a durable local receipt, and fires a Supabase
+ * insert in the background when configured.
  * NEVER throws — telemetry failures are logged, not propagated.
  */
 export function recordSpend(input: RecordSpendInput): number {
   const tokensIn = Number.isFinite(input.tokensIn) ? Math.max(0, Math.trunc(input.tokensIn)) : 0;
   const tokensOut = Number.isFinite(input.tokensOut) ? Math.max(0, Math.trunc(input.tokensOut)) : 0;
   const estCost = estimateCostUsd(input.provider, tokensIn, tokensOut);
+  const correlationId = input.correlationId ?? randomUUID();
 
   rollIfNewDay();
   daily.tokensIn += tokensIn;
   daily.tokensOut += tokensOut;
   daily.costUsd = Math.round((daily.costUsd + estCost) * 1_000_000) / 1_000_000;
   daily.calls += 1;
+
+  try {
+    appendSpendReceipt({
+      ts: new Date().toISOString(),
+      correlationId,
+      provider: String(input.provider),
+      model: input.model,
+      tokensIn,
+      tokensOut,
+      estCostUsd: estCost,
+      caller: input.caller,
+    });
+  } catch (err) {
+    console.error('[spend] local receipt write failed:', err instanceof Error ? err.message : err);
+  }
 
   if (isSupabaseConfigured()) {
     writeSpendRow({
@@ -160,6 +216,7 @@ export function recordSpend(input: RecordSpendInput): number {
       tokens_out: tokensOut,
       est_cost_usd: estCost,
       caller: input.caller,
+      correlation_id: correlationId,
     }).catch((err) =>
       console.error('[spend] llm_spend write failed:', err instanceof Error ? err.message : err),
     );

@@ -44,10 +44,13 @@ import { listAvailableModels, routeModelWithFallback } from './model-router.js';
 import { recordSpendFromResult } from './atlas/spend-tracker.js';
 import { enforceSpendPolicy, isPaused } from './atlas/spend-policy.js';
 import { buildStatusReport } from './atlas/status-report.js';
+import { notifyCeoResult } from './atlas/notify.js';
 import { renderHelp } from './atlas/commands.js';
-import { analyzeWindow } from './atlas/emotion.js';
+import { analyzeWindow, readEmotion, buildEmotionDirectiveLine } from './atlas/emotion.js';
+import { checkEmotionalSafety, logToneShift } from './atlas/emotional-safety.js';
 import { loadPulse, savePulse, processEvent } from './atlas/pulse.js';
 import { runOperatorActionLane } from './operator/action-lane.js';
+import { classifyIntent, routeFreeformAction, defaultActionRouterDeps, actionResultToReply } from './atlas/action-router.js';
 import { runSwarm } from './swarm.js';
 import { getMemoryRoot } from './atlas/path-util.js';
 import { isAuthorizedChat } from './atlas/telegram-auth.js';
@@ -239,26 +242,51 @@ async function ask(chatId: number, text: string): Promise<string> {
     return blocked;
   }
 
+  // Phase 4.3: freeform action-router — classify intent, route safe actions
+  // to exec-graph, gate red-lines. Wrapped so any throw falls through to brain reply.
+  try {
+    if (classifyIntent(text) === 'action') {
+      const routerResult = await routeFreeformAction(text, defaultActionRouterDeps());
+      const actionReply = actionResultToReply(routerResult);
+      if (actionReply) {
+        addMsg(chatId, 'assistant', actionReply);
+        return actionReply;
+      }
+      // kind:'chat' → actionReply is null → fall through to normal brain reply
+    }
+  } catch (e) {
+    console.error('[action-router] error, falling through to brain reply:', e);
+  }
+
   const messages = buildMessages(chatId);
   console.log(`[in]  chat=${chatId} msg="${text.slice(0, 100)}"`);
 
   // Emotion layer: read CEO state over the last 2-3 user messages (05-emotional-states.md:59),
-  // update Atlas's own Pulse, persist MOOD.md. The emotion DIRECTIVE now lives in the shared
-  // brain-planner (one soul, both mouths) — here we only run the pulse mutation + log, then hand
-  // the message window to the builder so CLI and Telegram derive tone from the same code path.
+  // update Atlas's own Pulse, persist MOOD.md. Phase 2.8: LLM-first read via readEmotion()
+  // (keyword fallback inside); directive injected into system prompt below.
   const userWindow = getConvo(chatId)
     .msgs.filter((m) => m.role === 'user')
     .slice(-3)
     .reverse()
     .map((m) => m.content);
-  const ceoRead = analyzeWindow(userWindow);
+
+  // Sync keyword read as safety baseline — readEmotion() upgrades it asynchronously.
+  // If readEmotion throws even with its internal fallback, the reply still proceeds.
+  let ceoRead = analyzeWindow(userWindow);
+  try {
+    ceoRead = await readEmotion(userWindow);
+  } catch {
+    // readEmotion already catches internally; outer guard keeps the reply path alive.
+  }
+
   const pulse = processEvent(loadPulse(), 'ceo', 'user_feedback');
   savePulse(pulse.state, `telegram message, CEO read: ${ceoRead.state}`);
   console.log(
     `[emotion] chat=${chatId} ceo=${ceoRead.state}/${ceoRead.intensity} pulse-int=${pulse.intensity.toFixed(2)}${pulse.wouldBlock ? ' [would-block: log-only]' : ''}`,
   );
 
-  const system = (await buildAtlasBrainPlan({ channel: 'telegram', recentUserMessages: userWindow })).systemPrompt;
+  const basePlan = await buildAtlasBrainPlan({ channel: 'telegram', recentUserMessages: userWindow });
+  const system = basePlan.systemPrompt + '\n\n' + buildEmotionDirectiveLine(ceoRead);
   const firstPass = await generateWithFallback(messages, system);
   console.log(`[out] chat=${chatId} provider=${firstPass.provider}/${firstPass.modelId} reply="${firstPass.reply.slice(0, 100)}"`);
   const delivery = await deliverReply(firstPass.reply, async (prompt) => {
@@ -282,6 +310,22 @@ async function ask(chatId: number, text: string): Promise<string> {
   console.log(`[out-final] chat=${chatId} reply="${reply.slice(0, 100)}"`);
 
   const finalReply = reply.trim() || 'Молчу. Повтори?';
+
+  // Phase 3.5 emotional-safety audit — log-only, never blocks or rewrites.
+  // Runs whenever emotion shifted tone (state !== 'neutral'), regardless of violations.
+  if (ceoRead.state !== 'neutral') {
+    const safetyCheck = checkEmotionalSafety(finalReply);
+    if (safetyCheck.flagged) {
+      console.warn(`[emotional-safety] chat=${chatId} state=${ceoRead.state} violations=${JSON.stringify(safetyCheck.violations)}`);
+    }
+    logToneShift({
+      state: ceoRead.state,
+      directive: ceoRead.directive,
+      ts: new Date().toISOString(),
+      ...(safetyCheck.flagged ? { violations: safetyCheck.violations } : {}),
+    });
+  }
+
   addMsg(chatId, 'assistant', finalReply);
 
   // Compound-memory loop: remember emotionally meaningful CEO turns using the REAL
@@ -350,7 +394,22 @@ bot.command('status', async (ctx) => {
   try {
     // In-process status: health checks + today's spend + brain-loop queue + heartbeat.
     // No external script, no shell-out — reads the same live meters the bot runs on.
-    const reply = buildStatusReport();
+    let reply = buildStatusReport();
+
+    // Exec-graph (EB-0) task state — the ONE task authority (src/exec-graph/README.md),
+    // not an ad-hoc list. Lazy dynamic import (repo style, see src/cli.ts's `graph status`).
+    // Own try/catch: exec-graph reads are already fail-safe (never throw — see README's
+    // "Failure behavior") but this is belt-and-suspenders so a Railway read-only image
+    // or any surprise here degrades to a one-line note instead of losing the whole /status.
+    try {
+      const { statusSummary, listTasks } = await import('./exec-graph/api.js');
+      const { formatStatusMessage } = await import('./exec-graph/brief.js');
+      reply += `\n\n${formatStatusMessage(statusSummary(), listTasks())}`;
+    } catch (execGraphErr) {
+      reply += '\n\nExec-graph: не смог прочитать состояние задач.';
+      console.error('[status error][exec-graph]', execGraphErr);
+    }
+
     addMsg(chatId, 'assistant', reply);
     await ctx.reply(reply);
   } catch (e) {
@@ -375,6 +434,28 @@ bot.command('models', async (ctx) => {
   const models = listAvailableModels();
   const lines = models.map(m => `${m.provider}/${m.modelId} (tier ${m.costTier}, ${m.roles.join('/')})`);
   const reply = `Available models (${models.length}):\n${lines.join('\n')}`;
+  await ctx.reply(reply);
+});
+
+// /pause — panic switch. Sets ATLAS_PAUSE=1 for THIS process (halts autonomy:
+// brain-loop, swarm decompose, task-spawner). Process-local + instant, no redeploy.
+// For a pause that survives a redeploy, set the Railway env var. See docs/PANIC.md.
+// Already CEO-only via the inbound-auth middleware (telegram.ts top).
+bot.command('pause', async (ctx) => {
+  // Route through the control-plane state machine (M7 unification).
+  // Also set ATLAS_PAUSE for process-local backward compat (spend-policy gate).
+  process.env.ATLAS_PAUSE = '1';
+  const result = applyControlCommand({ command: 'pause' }, 'telegram');
+  const reply = `⏸ ${result.message}`;
+  await ctx.reply(reply);
+});
+
+// /resume — lift the process-local pause AND transition control-plane to active.
+// Reports any remaining hard overlays (env var on Railway, pause file).
+bot.command('resume', async (ctx) => {
+  process.env.ATLAS_PAUSE = '';
+  const result = applyControlCommand({ command: 'resume' }, 'telegram');
+  const reply = `▶️ ${result.message}`;
   await ctx.reply(reply);
 });
 
@@ -730,9 +811,12 @@ async function deliverRemoteResults(): Promise<void> {
       const receipt = formatReceipt(`/remote ${cmd.command}`, resultText);
       const msg = `[remote result] ${cmd.command.slice(0, 60)}\n\n${resultText}\n\n${receipt}`;
       try {
-        await bot.telegram.sendMessage(chatId, msg.slice(0, 4096));
-        await deleteDeliveredCommand(cmd.id);
-        console.log(`[remote] delivered cmd=${cmd.id.slice(0, 8)} status=${cmd.status}`);
+        // M7: route through canonical notify chokepoint (quiet-hours aware).
+        const outcome = await notifyCeoResult('remote-result', msg);
+        if (outcome.result === 'SENT' || outcome.result === 'QUEUED') {
+          await deleteDeliveredCommand(cmd.id);
+        }
+        console.log(`[remote] delivered cmd=${cmd.id.slice(0, 8)} status=${cmd.status} notify=${outcome.result}`);
       } catch (e: any) {
         console.error(`[remote] delivery failed cmd=${cmd.id.slice(0, 8)}:`, e.message);
       }
@@ -790,10 +874,26 @@ async function sendMorningBriefing(): Promise<void> {
     }
   } catch { /* non-fatal */ }
 
-  const text = composeMorningBriefing({ night, today, awaitingCeo });
+  let text = composeMorningBriefing({ night, today, awaitingCeo });
+
+  // Exec-graph (EB-0) decision-framed section — the ONE task authority
+  // (src/exec-graph/README.md), appended only when non-empty so a quiet
+  // graph doesn't add a blank trailer to the briefing. Own try/catch, same
+  // fail-safe posture as the exec-graph section in bot.command('status')
+  // above: a broken read must degrade, never block the briefing send.
   try {
-    await bot.telegram.sendMessage(chatId, text.slice(0, 4096));
-    console.log(`[briefing] sent morning briefing to CEO chat=${chatId}`);
+    const { statusSummary, listTasks } = await import('./exec-graph/api.js');
+    const { formatMorningBriefSection } = await import('./exec-graph/brief.js');
+    const execGraphSection = formatMorningBriefSection(statusSummary(), listTasks(), { now: new Date() });
+    if (execGraphSection) text += `\n\n${execGraphSection}`;
+  } catch (execGraphErr) {
+    console.error('[briefing] exec-graph section failed:', execGraphErr);
+  }
+
+  try {
+    // M7: route through canonical notify chokepoint (quiet-hours aware).
+    const outcome = await notifyCeoResult('briefing', text);
+    console.log(`[briefing] morning briefing notify=${outcome.result}`);
   } catch (e: any) {
     console.error('[briefing] send failed:', e?.message?.slice(0, 200));
   }

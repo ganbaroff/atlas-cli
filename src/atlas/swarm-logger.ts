@@ -17,6 +17,10 @@ export interface SwarmRunLog {
   synthesis: string;
   durationMs: number;
   jidokaViolation: string | null;
+  /** Research-swarm status when available */
+  status?: string;
+  exitReason?: string;
+  runId?: string;
 }
 
 function swarmLogsDir(): string {

@@ -55,8 +55,13 @@ export async function createAtlasAgentWithRoute(
   role: ModelRole = 'WORKER',
   channel: AtlasBrainChannel = 'cli',
   recentUserMessages: string[] = [],
+  preferredProvider?: import('./model-router.js').ProviderName,
 ): Promise<{ agent: Agent; route: ReturnType<typeof routeModel> }> {
-  const route = routeModel({ role, excludeProviders: ['anthropic'] });
+  const route = routeModel({
+    role,
+    excludeProviders: ['anthropic'],
+    preferredProvider,
+  });
   enforceSpendPolicy(route.provider, channel);
   const plan = await buildAtlasBrainPlan({ channel, role, recentUserMessages });
   const agent = new Agent({

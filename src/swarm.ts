@@ -1,19 +1,13 @@
 /**
- * Atlas Swarm — parallel agent orchestrator via child_process.fork().
+ * Atlas Swarm — parallel agent orchestrator.
  *
- * Lead decomposes task → forks N workers (real Node.js processes) →
- * each worker boots own Mastra Agent with assigned provider →
- * results collected via IPC → lead synthesizes final answer.
+ * Delegates to research-swarm lifecycle for honest provider diversity,
+ * bounded execution, structured evidence, and fail-closed status handling.
  */
 
-import { createAtlasAgentWithRoute, recordAgentSpend } from './agent.js';
-import type { ProviderName } from './model-router.js';
-import { validateCompletion } from './gates/verify-before-done.js';
-import { PERSPECTIVES } from './atlas/perspectives.js';
 import { logSwarmRun } from './atlas/swarm-logger.js';
-import { dedupFindings } from './atlas/dedup.js';
-import { controlAllowsModelCalls, describeControlBlock } from './atlas/control-plane.js';
-import { isPaused } from './atlas/spend-policy.js';
+import { runResearchSwarm, runResearchSwarmLegacyDetail } from './research-swarm/lifecycle.js';
+import type { ProviderName } from './model-router.js';
 
 export interface Subtask {
   id: number;
@@ -30,125 +24,53 @@ export interface WorkerResult {
   error?: string;
 }
 
-/** Decompose task into perspective-based subtasks. Each perspective analyzes from its angle. */
-function decomposeWithPerspectives(task: string): Subtask[] {
-  return PERSPECTIVES.map((p, i) => ({
-    id: i,
-    description: `${p.instruction}\n\nAnalyze this task from your perspective:\n${task}`,
-    perspective: p.name,
-    provider: p.provider as ProviderName | undefined,
-  }));
+export interface SwarmRunDetail {
+  subtasks: Subtask[];
+  results: WorkerResult[];
+  synthesis: string;
+  durationMs: number;
+  jidokaViolation: string | null;
 }
 
-/** Lead agent decomposes into custom subtasks (fallback for non-standard tasks). */
-async function decomposeCustom(task: string): Promise<Subtask[]> {
-  const { agent, route } = await createAtlasAgentWithRoute('JUDGE', 'operator');
-  const res = await agent.generate(
-    `Decompose this task into 2-5 independent parallel subtasks.
-Return ONLY a JSON array. Each element: {"id": number, "description": "...", "provider": "nvidia"|"openai"|"openrouter"|"ollama"}
-Spread providers for load diversity. Match complexity to provider capability.
-Task: ${task}`,
-  );
-  recordAgentSpend(res, route, 'swarm');
-  const match = res.text.match(/\[[\s\S]*\]/);
-  if (!match) throw new Error('Lead failed to produce subtask JSON');
-  return JSON.parse(match[0]) as Subtask[];
-}
-
-/** Run a single perspective in-process (no fork — API calls are I/O-bound, not CPU). */
-async function runWorker(subtask: Subtask): Promise<WorkerResult> {
-  const t0 = Date.now();
-  try {
-    const { agent, route } = await createAtlasAgentWithRoute('WORKER', 'operator');
-    const res = await agent.generate(subtask.description);
-    recordAgentSpend(res, route, 'swarm');
-    const jidoka = validateCompletion(res.text);
-    const output = jidoka.passed ? res.text : `${res.text}\n\n[WORKER JIDOKA: ${jidoka.violation}]`;
-    return { id: subtask.id, output, provider: subtask.provider ?? 'auto', durationMs: Date.now() - t0 };
-  } catch (err) {
-    return {
-      id: subtask.id, output: '', provider: subtask.provider ?? 'auto',
-      durationMs: Date.now() - t0, error: err instanceof Error ? err.message.slice(0, 200) : String(err),
-    };
-  }
-}
-
-/** Lead synthesizes worker outputs into coherent answer. */
-async function synthesize(task: string, results: WorkerResult[]): Promise<string> {
-  const { agent, route } = await createAtlasAgentWithRoute('JUDGE', 'operator');
-  const body = results
-    .map((r) => `### Subtask ${r.id} [${r.provider}, ${r.durationMs}ms]${r.error ? ` ERROR: ${r.error}` : ''}\n${r.output}`)
-    .join('\n\n');
-  const res = await agent.generate(
-    `Original task: ${task}\n\nWorker results:\n${body}\n\nSynthesize one coherent answer. Include key findings from each worker.`,
-  );
-  recordAgentSpend(res, route, 'swarm');
-  return res.text;
-}
-
-/** Main entry: perspectives analyze in parallel → synthesize. */
-export async function runSwarm(task: string, useCustomDecompose = false): Promise<string> {
-  if (isPaused()) {
-    console.warn('[swarm] refused: ATLAS_PAUSE=1 (kill switch active)');
-    throw new Error('Swarm refused: ATLAS_PAUSE=1 is set. Unset ATLAS_PAUSE to resume autonomy.');
-  }
-  if (!controlAllowsModelCalls()) {
-    throw new Error(describeControlBlock());
+/** Main entry: perspectives analyze in parallel → synthesize. Returns the full run detail. */
+export async function runSwarmDetailed(task: string, useCustomDecompose = false): Promise<SwarmRunDetail> {
+  if (useCustomDecompose) {
+    console.warn('[swarm] custom decompose not supported in research-swarm MVP — using perspectives');
   }
 
-  console.log('[swarm] Assigning perspectives...');
-  const subtasks = useCustomDecompose
-    ? await decomposeCustom(task)
-    : decomposeWithPerspectives(task);
-  console.log(`[swarm] Spawning ${subtasks.length} workers...`);
-  for (const st of subtasks) console.log(`  #${st.id} [${st.perspective ?? st.provider ?? '?'}] ${st.description.slice(0, 80)}`);
+  const detail = await runResearchSwarmLegacyDetail(task);
 
-  const t0 = Date.now();
-  const results = await Promise.all(
-    subtasks.map((st) => runWorker(st)),
-  );
-  const elapsed = Date.now() - t0;
-
-  const ok = results.filter((r) => !r.error).length;
-  console.log(`[swarm] ${ok}/${results.length} succeeded in ${elapsed}ms. Synthesizing...`);
-  for (const r of results) {
-    const perspective = subtasks.find(s => s.id === r.id)?.perspective ?? '?';
-    console.log(`  [${perspective}] provider=${r.provider} ${r.durationMs}ms ${r.error ? `ERROR: ${r.error}` : 'OK'}`);
-  }
-
-  // Dedup before synthesis — Cloudflare multi-reviewer pattern
-  const outputs = results.filter(r => !r.error && r.output).map(r => r.output);
-  if (outputs.length > 1) {
-    const dedup = dedupFindings(outputs);
-    if (dedup.duplicatesRemoved > 0) {
-      console.log(`[swarm] Dedup: removed ${dedup.duplicatesRemoved}/${dedup.totalInput} duplicate claims`);
-    }
-  }
-
-  let final = await synthesize(task, results);
-
-  const check = validateCompletion(final);
-  const jidokaViolation = check.passed ? null : (check.violation ?? 'unknown');
-  if (!check.passed) {
-    console.warn(`[swarm] Jidoka violation: ${check.violation}`);
-    final += '\n\n[JIDOKA: unverified completion claim detected]';
-  }
-
-  // Persist swarm run log
+  // Legacy swarm-logger for backward compat (also writes structured artifact)
   try {
     const logPath = await logSwarmRun({
       ts: new Date().toISOString(),
       task,
-      subtasks,
-      results,
-      synthesis: final,
-      durationMs: elapsed,
-      jidokaViolation,
+      subtasks: detail.subtasks,
+      results: detail.results,
+      synthesis: detail.synthesis,
+      durationMs: detail.durationMs,
+      jidokaViolation: detail.jidokaViolation,
+      status: detail.status,
+      exitReason: detail.exitReason,
+      runId: detail.runId,
     });
     console.log(`[swarm] Run logged: ${logPath}`);
   } catch (err) {
     console.warn(`[swarm] Failed to persist run log: ${err instanceof Error ? err.message : err}`);
   }
 
-  return final;
+  return detail;
 }
+
+/** Main entry: perspectives analyze in parallel → synthesize. Returns just the synthesis text. */
+export async function runSwarm(task: string, useCustomDecompose = false): Promise<string> {
+  if (useCustomDecompose) {
+    console.warn('[swarm] custom decompose not supported in research-swarm MVP — using perspectives');
+  }
+  const result = await runResearchSwarm(task);
+  return result.synthesis;
+}
+
+/** Full research swarm result with artifact and exit code. */
+export { runResearchSwarm } from './research-swarm/lifecycle.js';
+export type { ResearchSwarmResult } from './research-swarm/types.js';

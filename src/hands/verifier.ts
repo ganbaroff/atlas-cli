@@ -1,0 +1,202 @@
+/**
+ * hands/verifier.ts — Hand Contract V0: the deterministic receipt verifier.
+ *
+ * Purpose: `verify(receipt) -> {verified, reason}`. NO LLM, NO network. If a
+ * claim can't be independently checked by a fixed rule against the real
+ * filesystem/git state, it is REJECTED — that is the entire point of a
+ * deterministic verifier (a plausible-sounding narrative and a real receipt
+ * must be told apart by evidence, not by how convincing the text reads).
+ *
+ * Authority boundary: this module has NO authority over task state — it is
+ * a pure judgment function called by ./exec-graph-adapter.ts's
+ * `verifyAndTransition()`, the only place a verdict from here is turned
+ * into an actual `verified`/`rejected` transition. verifier.ts itself never
+ * imports the exec-graph API module and never writes anywhere.
+ *
+ * Inputs/outputs: one `Receipt` (./contract.ts) in, one `VerifyResult`
+ * (`{verified: boolean, reason: string}`) out — always, for every kind,
+ * every failure path. No side effects, no return-value ambiguity.
+ *
+ * State read/written: none written. Reads only: `existsSync`/`readFileSync`
+ * against `receipt.ref` (file-exists / file-contains), `git cat-file -t`
+ * against `receipt.ref` (commit-exists), or an allowlisted read-only
+ * command (command-output-match, see below) — never `state/exec-graph/` or
+ * any other Atlas-managed state directory.
+ *
+ * Failure behavior: every fs/git/process failure is caught and turned into
+ * `{verified: false, reason: <precise message>}` — this module NEVER
+ * throws. That mirrors exec-graph/ledger.ts's "reads never throw" rule,
+ * extended to verification: a verifier that can crash the caller on a
+ * missing file is a verifier that can be used to hang/DoS the
+ * delegation-control layer.
+ *
+ * Security:
+ *   - SECRET GUARD: any `ref` matching PROTECTED_PATH_RE (.env/secret/
+ *     credential/.pem/id_rsa/id_ed25519/id_ecdsa/.pfx/.p12/.jks/
+ *     service-account, case insensitive) is refused BEFORE any fs/git call
+ *     touches it — the guard runs first in every branch that would
+ *     otherwise read `ref`, so a protected path is never opened, only
+ *     pattern-matched against its own name. For 'command-output-match', the
+ *     same guard also runs against the WHOLE `command` string before
+ *     execFileSync, so a command that merely CITES a protected path (e.g.
+ *     `git show HEAD:apps/api/.env`) is refused too, not just an explicit
+ *     `ref`.
+ *   - COMMAND ALLOWLIST: 'command-output-match' only ever runs a command
+ *     whose full string matches one of a fixed set of read-only prefixes
+ *     (below). No shell is invoked (execFileSync, not exec) — the command
+ *     string is split on whitespace and run as `argv[0]` + args directly,
+ *     so there is no shell metacharacter interpretation surface even for an
+ *     allowlisted command.
+ *
+ * Tests: src/__tests__/hands.test.ts — every receipt kind's verified/
+ * rejected paths, the protected-path guard (both `ref` and whole-`command`
+ * forms), the command allowlist, and (describe block 6) the structural
+ * test asserting this file's source never cites the exec-graph API
+ * module's import path.
+ */
+
+import { existsSync, readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import type { Receipt } from './contract.js';
+
+export interface VerifyResult {
+  verified: boolean;
+  reason: string;
+}
+
+const PROTECTED_PATH_RE = /\.env|secret|credential|\.pem|id_rsa|id_ed25519|id_ecdsa|\.pfx|\.p12|\.jks|service-account/i;
+
+/** Anchored prefixes — a command must START with one of these to run at all. */
+const READONLY_COMMAND_ALLOWLIST: readonly RegExp[] = [
+  /^node dist\/cli\.js graph verify\b/,
+  /^node dist\/cli\.js graph status\b/,
+  /^git log\b/,
+  /^git show\b/,
+  /^git status\b/,
+  /^git rev-parse\b/,
+  /^git ls-files\b/,
+  /^git cat-file\b/,
+];
+
+function isProtectedPath(ref: string): boolean {
+  return PROTECTED_PATH_RE.test(ref);
+}
+
+// Shell metacharacters that could chain/redirect/substitute commands.
+// Rejected unconditionally before the allowlist even runs.
+const SHELL_METACHAR_RE = /[&|;`$()><]/;
+
+function isAllowlistedCommand(command: string): boolean {
+  const trimmed = command.trim();
+  if (SHELL_METACHAR_RE.test(trimmed)) return false;
+  return READONLY_COMMAND_ALLOWLIST.some((re) => re.test(trimmed));
+}
+
+function describeError(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * Deterministic, no-LLM, no-network verification of one Receipt. Never
+ * throws — every branch returns a {verified, reason} pair.
+ */
+export function verify(receipt: Receipt): VerifyResult {
+  switch (receipt.kind) {
+    case 'narrative':
+      return { verified: false, reason: 'narrative-only receipt has no independently checkable evidence' };
+
+    case 'file-exists': {
+      if (!receipt.ref) return { verified: false, reason: 'file-exists receipt is missing ref' };
+      if (isProtectedPath(receipt.ref)) return { verified: false, reason: 'cited artifact is a protected path' };
+      try {
+        return existsSync(receipt.ref)
+          ? { verified: true, reason: `file exists: ${receipt.ref}` }
+          : { verified: false, reason: `file does not exist: ${receipt.ref}` };
+      } catch (err) {
+        return { verified: false, reason: `file-exists check failed: ${describeError(err)}` };
+      }
+    }
+
+    case 'commit-exists': {
+      if (!receipt.ref) return { verified: false, reason: 'commit-exists receipt is missing ref' };
+      if (isProtectedPath(receipt.ref)) return { verified: false, reason: 'cited artifact is a protected path' };
+      try {
+        const out = execFileSync('git', ['cat-file', '-t', receipt.ref], { encoding: 'utf8' }).trim();
+        return out === 'commit'
+          ? { verified: true, reason: `git object ${receipt.ref} is a commit` }
+          : { verified: false, reason: `git object ${receipt.ref} is not a commit (type=${out || 'unknown'})` };
+      } catch (err) {
+        return { verified: false, reason: `commit-exists check failed: ${describeError(err)}` };
+      }
+    }
+
+    case 'file-contains': {
+      if (!receipt.ref) return { verified: false, reason: 'file-contains receipt is missing ref' };
+      if (isProtectedPath(receipt.ref)) return { verified: false, reason: 'cited artifact is a protected path' };
+      if (!receipt.expectedSubstring) return { verified: false, reason: 'file-contains receipt is missing expectedSubstring' };
+      try {
+        const contents = readFileSync(receipt.ref, 'utf8');
+        return contents.includes(receipt.expectedSubstring)
+          ? { verified: true, reason: `file ${receipt.ref} contains expected substring` }
+          : { verified: false, reason: `file ${receipt.ref} does not contain expected substring` };
+      } catch (err) {
+        return { verified: false, reason: `file-contains check failed: ${describeError(err)}` };
+      }
+    }
+
+    case 'command-output-match': {
+      if (!receipt.command) return { verified: false, reason: 'command-output-match receipt is missing command' };
+      // Guard the WHOLE command string against a protected-path reference (e.g.
+      // `git show HEAD:apps/api/.env`) BEFORE execFileSync ever runs — the
+      // `ref` field is optional/separate and was previously the only thing
+      // checked here, leaving a command that merely CITES a protected path
+      // unguarded.
+      if (isProtectedPath(receipt.command)) return { verified: false, reason: 'command references a protected path' };
+      if (receipt.ref && isProtectedPath(receipt.ref)) return { verified: false, reason: 'cited artifact is a protected path' };
+      if (!isAllowlistedCommand(receipt.command)) {
+        return { verified: false, reason: 'command not in read-only verifier allowlist' };
+      }
+      if (!receipt.expectedSubstring) {
+        return { verified: false, reason: 'command-output-match receipt is missing expectedSubstring' };
+      }
+      try {
+        const [cmd, ...args] = receipt.command.trim().split(/\s+/);
+        const stdout = execFileSync(cmd, args, { encoding: 'utf8' });
+        return stdout.includes(receipt.expectedSubstring)
+          ? { verified: true, reason: `command output matched expected substring '${receipt.expectedSubstring}'` }
+          : { verified: false, reason: `command output did not contain expected substring '${receipt.expectedSubstring}'` };
+      } catch (err) {
+        return { verified: false, reason: `command-output-match check failed: ${describeError(err)}` };
+      }
+    }
+
+    case 'browser-action': {
+      if (!receipt.actions || receipt.actions.length === 0) {
+        return { verified: false, reason: 'browser-action receipt has no actions' };
+      }
+      if (!receipt.actionResults || receipt.actionResults.length === 0) {
+        return { verified: false, reason: 'browser-action receipt has no actionResults' };
+      }
+      // All action results must report success
+      const failed = receipt.actionResults.find(r => !r.success);
+      if (failed) {
+        return { verified: false, reason: `browser action '${failed.action.kind}' failed: ${failed.error ?? 'unknown'}` };
+      }
+      // If expectedSubstring is provided, at least one result value must contain it
+      if (receipt.expectedSubstring) {
+        const found = receipt.actionResults.some(
+          r => r.value !== undefined && r.value.includes(receipt.expectedSubstring!)
+        );
+        if (!found) {
+          return { verified: false, reason: `no browser action result contains expected substring '${receipt.expectedSubstring}'` };
+        }
+      }
+      return { verified: true, reason: `all ${receipt.actionResults.length} browser actions succeeded` };
+    }
+
+    default: {
+      const _exhaustive: never = receipt.kind;
+      return { verified: false, reason: `unknown receipt kind: ${String(_exhaustive)}` };
+    }
+  }
+}

@@ -17,13 +17,14 @@
  * formatError helper enforces that shape.
  */
 
-export type NotifyKind = 'briefing' | 'error' | 'important' | 'remote-result' | 'chatter';
+export type NotifyKind = 'briefing' | 'error' | 'important' | 'remote-result' | 'panic' | 'chatter';
 
 const ALLOWED: ReadonlySet<NotifyKind> = new Set<NotifyKind>([
   'briefing',
   'error',
   'important',
   'remote-result',
+  'panic',
 ]);
 
 /** Does this kind earn a proactive send? Silent by default. */
@@ -46,6 +47,14 @@ export interface NotifyDeps {
  * The single gated proactive-send path. Returns true if the message was sent,
  * false if it was gated (dropped) or no CEO chat is configured. Never throws —
  * a proactive send failure must not crash the caller.
+ *
+ * LEGACY BOOLEAN CONTRACT — kept unchanged for existing callers (repo-watch.ts
+ * and this file's own pre-existing tests). Its `deps.ceoChatId` field is a
+ * historical testability seam, not a real target-selection vector: the only
+ * production caller (repo-watch.ts) always passes
+ * `process.env.TELEGRAM_CEO_CHAT_ID` verbatim. New callers that need to
+ * distinguish failure modes, or that must be structurally unable to pick an
+ * arbitrary chat ID, use notifyCeoResult() below instead.
  */
 export async function notifyCeo(
   kind: NotifyKind,
@@ -62,10 +71,110 @@ export async function notifyCeo(
   if (!Number.isFinite(chatId)) return false;
   try {
     await deps.send(chatId, msg.slice(0, 4096));
-    console.log(`[notify] sent kind=${kind} chat=${chatId}`);
+    console.log(`[notify] sent kind=${kind}`);
     return true;
   } catch (e: any) {
     console.error(`[notify] send failed kind=${kind}:`, e?.message?.slice(0, 200));
     return false;
+  }
+}
+
+// ── Canonical structured-result API (V0.1 hardening, M7 quiet-hours) ─────────
+
+import { isQuietHours, enqueue } from './notify-queue.js';
+
+export type NotifyResult = 'NOT_CONFIGURED' | 'SUPPRESSED' | 'QUEUED' | 'SENT' | 'FAILED';
+
+export interface NotifyOutcome {
+  result: NotifyResult;
+  error?: string;
+}
+
+/**
+ * Canonical Telegram sender. This is the ONLY place TELEGRAM_BOT_TOKEN is read
+ * for outbound CEO notifications — callers (repo-watch.ts has its own historical
+ * copy; autonomy-loop.ts does not and must not) should prefer importing this
+ * rather than re-reading the token themselves.
+ *
+ * Ungated raw primitive: chatId is caller-supplied here, with no shouldNotify()/
+ * resolveCeoChatId() gate. Never import this directly for a CEO-authority send —
+ * go through notifyCeoResult() instead, which is the only structurally-gated path.
+ */
+export async function telegramSend(chatId: number, text: string): Promise<unknown> {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) throw new Error('TELEGRAM_BOT_TOKEN missing');
+  const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, text: text.slice(0, 4096) }),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!res.ok) throw new Error(`telegram HTTP ${res.status}`); // status only, no token
+  const body: unknown = await res.json();
+  // Telegram can return HTTP 2xx with {ok:false, description:...} in the body —
+  // a 2xx status alone does not guarantee delivery.
+  if (body && typeof body === 'object' && (body as { ok?: boolean }).ok === false) {
+    const description = (body as { description?: string }).description;
+    throw new Error(`telegram rejected: ${String(description).slice(0, 200)}`);
+  }
+  return body;
+}
+
+/**
+ * The ONLY configured outbound target for notifyCeoResult(). Deliberately NOT
+ * exported and NOT a parameter of notifyCeoResult() — there is no code path by
+ * which a caller (including the autonomy loop) can direct a send at any chat
+ * ID other than whatever TELEGRAM_CEO_CHAT_ID resolves to right now.
+ */
+function resolveCeoChatId(): number | null {
+  const raw = process.env.TELEGRAM_CEO_CHAT_ID;
+  if (!raw) return null;
+  const chatId = parseInt(raw, 10);
+  return Number.isFinite(chatId) ? chatId : null;
+}
+
+/**
+ * Canonical structured-result send. Preserves notifyCeo()'s gate semantics
+ * (same shouldNotify() check, same silent-by-default philosophy) but returns a
+ * typed outcome so a real send failure is never indistinguishable from "kind
+ * gated" or "no CEO chat configured" — the false-completion failure mode that
+ * ended the original autonomousBrainLoop.
+ *
+ * `send` is injectable ONLY for testing the send mechanism (defaults to the
+ * real telegramSend) — the chat ID itself is never injectable, see
+ * resolveCeoChatId() above.
+ */
+export async function notifyCeoResult(
+  kind: NotifyKind,
+  msg: string,
+  send: (chatId: number, text: string) => Promise<unknown> = telegramSend,
+): Promise<NotifyOutcome> {
+  if (!shouldNotify(kind)) {
+    console.log(`[notify] gated kind=${kind} — silent by default`);
+    return { result: 'SUPPRESSED' };
+  }
+  const chatId = resolveCeoChatId();
+  if (chatId === null) {
+    return { result: 'NOT_CONFIGURED' };
+  }
+
+  // M7 quiet-hours policy: 23:00-08:00 Baku. Panic bypasses. Chatter suppressed (not queued).
+  if (isQuietHours() && kind !== 'panic') {
+    if (kind === 'chatter') {
+      return { result: 'SUPPRESSED' };
+    }
+    const queueResult = enqueue(kind, msg);
+    console.log(`[notify] quiet-hours: ${queueResult} kind=${kind}`);
+    return { result: 'QUEUED' };
+  }
+
+  try {
+    await send(chatId, msg.slice(0, 4096));
+    console.log(`[notify] sent kind=${kind}`);
+    return { result: 'SENT' };
+  } catch (e: any) {
+    const error = e?.message?.slice(0, 200);
+    console.error(`[notify] send failed kind=${kind}:`, error);
+    return { result: 'FAILED', error };
   }
 }

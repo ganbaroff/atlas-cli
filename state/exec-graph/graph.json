@@ -1,0 +1,770 @@
+{
+  "goals": [
+    {
+      "id": "gol_0865dbc558c04cae8de9114ba1dd68a3",
+      "title": "EB-0 Executive Brain activation",
+      "source": {
+        "kind": "external-cto-brief",
+        "ref": "2026-07-17-authority-correction"
+      },
+      "status": "open",
+      "createdAt": "2026-07-17T12:46:02.195Z"
+    },
+    {
+      "id": "gol_d1f4213c91984ca192065c98bc73405f",
+      "title": "Mission 2 — Hand Contract V0 controlled delegations",
+      "source": {
+        "kind": "external-cto-brief",
+        "ref": "2026-07-17-mission2"
+      },
+      "status": "open",
+      "createdAt": "2026-07-17T21:02:51.861Z"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "tsk_f993015b443543eb99baeca56cbae1e4",
+      "goalId": "gol_0865dbc558c04cae8de9114ba1dd68a3",
+      "title": "exec-graph core module + reconciliation tests",
+      "source": {
+        "kind": "external-cto-brief",
+        "ref": "2026-07-17-authority-correction"
+      },
+      "owner": "atlas",
+      "status": "closed",
+      "riskClass": "medium",
+      "idempotencyKey": "external-cto-brief:2026-07-17-authority-correction",
+      "evidence": [
+        {
+          "ref": "commit:8774627",
+          "kind": "other"
+        },
+        {
+          "ref": "test-receipt:vitest 394 passed / tsc clean / build clean",
+          "kind": "other"
+        },
+        {
+          "ref": "commit:8774627",
+          "kind": "other"
+        },
+        {
+          "ref": "test-receipt:vitest 394 passed / tsc clean / build clean",
+          "kind": "other"
+        }
+      ],
+      "createdAt": "2026-07-17T12:46:27.872Z",
+      "transitions": [
+        {
+          "from": null,
+          "to": "proposed",
+          "ts": "2026-07-17T12:46:27.872Z",
+          "actor": "atlas",
+          "note": "created"
+        },
+        {
+          "from": "proposed",
+          "to": "accepted",
+          "ts": "2026-07-17T12:49:53.939Z",
+          "actor": "atlas",
+          "note": "EB-0 activation: accepted, real work already completed"
+        },
+        {
+          "from": "accepted",
+          "to": "planned",
+          "ts": "2026-07-17T12:49:55.206Z",
+          "actor": "atlas"
+        },
+        {
+          "from": "planned",
+          "to": "in-progress",
+          "ts": "2026-07-17T12:49:56.644Z",
+          "actor": "atlas"
+        },
+        {
+          "from": "in-progress",
+          "to": "evidence-submitted",
+          "ts": "2026-07-17T12:50:11.534Z",
+          "actor": "atlas",
+          "evidenceRefs": [
+            "commit:8774627",
+            "test-receipt:vitest 394 passed / tsc clean / build clean"
+          ],
+          "note": "exec-graph core module + reconciliation tests already implemented and tested"
+        },
+        {
+          "from": "evidence-submitted",
+          "to": "verified",
+          "ts": "2026-07-17T12:50:12.848Z",
+          "actor": "atlas",
+          "evidenceRefs": [
+            "commit:8774627",
+            "test-receipt:vitest 394 passed / tsc clean / build clean"
+          ]
+        },
+        {
+          "from": "verified",
+          "to": "closed",
+          "ts": "2026-07-17T12:50:14.085Z",
+          "actor": "atlas"
+        }
+      ]
+    },
+    {
+      "id": "tsk_71bfbd867c314f9086f55f69f81edde2",
+      "goalId": "gol_0865dbc558c04cae8de9114ba1dd68a3",
+      "title": "C:/Program Files/Git/status + decision-framed morning brief read from graph",
+      "source": {
+        "kind": "external-cto-brief",
+        "ref": "2026-07-17-authority-correction-t2"
+      },
+      "owner": "atlas",
+      "status": "rejected",
+      "riskClass": "low",
+      "idempotencyKey": "external-cto-brief:2026-07-17-authority-correction-t2",
+      "evidence": [],
+      "createdAt": "2026-07-17T12:48:28.009Z",
+      "transitions": [
+        {
+          "from": null,
+          "to": "proposed",
+          "ts": "2026-07-17T12:48:28.009Z",
+          "actor": "atlas",
+          "note": "created"
+        },
+        {
+          "from": "proposed",
+          "to": "rejected",
+          "ts": "2026-07-17T12:49:17.489Z",
+          "actor": "atlas",
+          "note": "data-entry error: git-bash MSYS path-conversion mangled leading '/status' in title into a Windows path (C:/Program Files/Git/status ...); rejecting and recreating with MSYS_NO_PATHCONV=1"
+        }
+      ]
+    },
+    {
+      "id": "tsk_687ea07bb5944920ac8a5b16f900d73a",
+      "goalId": "gol_0865dbc558c04cae8de9114ba1dd68a3",
+      "title": "/status + decision-framed morning brief read from graph",
+      "source": {
+        "kind": "external-cto-brief",
+        "ref": "2026-07-17-authority-correction-t2b"
+      },
+      "owner": "atlas",
+      "status": "closed",
+      "riskClass": "low",
+      "idempotencyKey": "external-cto-brief:2026-07-17-authority-correction-t2b",
+      "evidence": [
+        {
+          "ref": "commit:ac6d384",
+          "kind": "other"
+        },
+        {
+          "ref": "test-receipt:vitest 405 passed",
+          "kind": "other"
+        },
+        {
+          "ref": "commit:ac6d384",
+          "kind": "other"
+        },
+        {
+          "ref": "test-receipt:vitest 405 passed",
+          "kind": "other"
+        }
+      ],
+      "createdAt": "2026-07-17T12:49:31.018Z",
+      "transitions": [
+        {
+          "from": null,
+          "to": "proposed",
+          "ts": "2026-07-17T12:49:31.018Z",
+          "actor": "atlas",
+          "note": "created"
+        },
+        {
+          "from": "proposed",
+          "to": "accepted",
+          "ts": "2026-07-17T12:50:29.466Z",
+          "actor": "atlas",
+          "note": "EB-0 activation: accepted, real work already completed"
+        },
+        {
+          "from": "accepted",
+          "to": "planned",
+          "ts": "2026-07-17T12:50:30.627Z",
+          "actor": "atlas"
+        },
+        {
+          "from": "planned",
+          "to": "in-progress",
+          "ts": "2026-07-17T12:50:31.795Z",
+          "actor": "atlas"
+        },
+        {
+          "from": "in-progress",
+          "to": "evidence-submitted",
+          "ts": "2026-07-17T12:50:32.967Z",
+          "actor": "atlas",
+          "evidenceRefs": [
+            "commit:ac6d384",
+            "test-receipt:vitest 405 passed"
+          ],
+          "note": "/status + decision-framed morning brief read from graph already implemented and tested"
+        },
+        {
+          "from": "evidence-submitted",
+          "to": "verified",
+          "ts": "2026-07-17T12:50:34.145Z",
+          "actor": "atlas",
+          "evidenceRefs": [
+            "commit:ac6d384",
+            "test-receipt:vitest 405 passed"
+          ]
+        },
+        {
+          "from": "verified",
+          "to": "closed",
+          "ts": "2026-07-17T12:50:35.333Z",
+          "actor": "atlas"
+        }
+      ]
+    },
+    {
+      "id": "tsk_8a48ef9e817b4a0eb10c69373dfbe8b9",
+      "goalId": "gol_0865dbc558c04cae8de9114ba1dd68a3",
+      "title": "governance docs: architecture map, ADRs 0001-0005, runbooks, state index",
+      "source": {
+        "kind": "external-cto-brief",
+        "ref": "2026-07-17-authority-correction-t3"
+      },
+      "owner": "atlas",
+      "status": "closed",
+      "riskClass": "low",
+      "idempotencyKey": "external-cto-brief:2026-07-17-authority-correction-t3",
+      "evidence": [
+        {
+          "ref": "commit:5842212",
+          "kind": "other"
+        },
+        {
+          "ref": "consistency-review:all checks PASS (Agent 3 report)",
+          "kind": "other"
+        },
+        {
+          "ref": "commit:5842212",
+          "kind": "other"
+        },
+        {
+          "ref": "consistency-review:all checks PASS (Agent 3 report)",
+          "kind": "other"
+        }
+      ],
+      "createdAt": "2026-07-17T12:49:32.341Z",
+      "transitions": [
+        {
+          "from": null,
+          "to": "proposed",
+          "ts": "2026-07-17T12:49:32.341Z",
+          "actor": "atlas",
+          "note": "created"
+        },
+        {
+          "from": "proposed",
+          "to": "accepted",
+          "ts": "2026-07-17T12:50:51.625Z",
+          "actor": "atlas",
+          "note": "EB-0 activation: accepted, real work already completed"
+        },
+        {
+          "from": "accepted",
+          "to": "planned",
+          "ts": "2026-07-17T12:50:52.782Z",
+          "actor": "atlas"
+        },
+        {
+          "from": "planned",
+          "to": "in-progress",
+          "ts": "2026-07-17T12:50:54.010Z",
+          "actor": "atlas"
+        },
+        {
+          "from": "in-progress",
+          "to": "evidence-submitted",
+          "ts": "2026-07-17T12:50:55.253Z",
+          "actor": "atlas",
+          "evidenceRefs": [
+            "commit:5842212",
+            "consistency-review:all checks PASS (Agent 3 report)"
+          ],
+          "note": "governance docs: architecture map, ADRs 0001-0005, runbooks, state index already written"
+        },
+        {
+          "from": "evidence-submitted",
+          "to": "verified",
+          "ts": "2026-07-17T12:50:56.643Z",
+          "actor": "atlas",
+          "evidenceRefs": [
+            "commit:5842212",
+            "consistency-review:all checks PASS (Agent 3 report)"
+          ]
+        },
+        {
+          "from": "verified",
+          "to": "closed",
+          "ts": "2026-07-17T12:50:57.987Z",
+          "actor": "atlas"
+        }
+      ]
+    },
+    {
+      "id": "tsk_38fc69aeec4943b48724c595bbac44a6",
+      "goalId": "gol_0865dbc558c04cae8de9114ba1dd68a3",
+      "title": "legacy task-authority classification (4 sources) per authority correction",
+      "source": {
+        "kind": "external-cto-brief",
+        "ref": "2026-07-17-authority-correction-t4"
+      },
+      "owner": "atlas",
+      "status": "closed",
+      "riskClass": "medium",
+      "idempotencyKey": "external-cto-brief:2026-07-17-authority-correction-t4",
+      "evidence": [
+        {
+          "ref": "file:docs/adr/0004-legacy-task-source-cutover.md",
+          "kind": "other"
+        },
+        {
+          "ref": "commit:5842212",
+          "kind": "other"
+        },
+        {
+          "ref": "file:docs/adr/0004-legacy-task-source-cutover.md",
+          "kind": "other"
+        },
+        {
+          "ref": "commit:5842212",
+          "kind": "other"
+        }
+      ],
+      "createdAt": "2026-07-17T12:49:33.514Z",
+      "transitions": [
+        {
+          "from": null,
+          "to": "proposed",
+          "ts": "2026-07-17T12:49:33.514Z",
+          "actor": "atlas",
+          "note": "created"
+        },
+        {
+          "from": "proposed",
+          "to": "accepted",
+          "ts": "2026-07-17T12:51:13.116Z",
+          "actor": "atlas",
+          "note": "EB-0 activation: accepted, real work already completed"
+        },
+        {
+          "from": "accepted",
+          "to": "planned",
+          "ts": "2026-07-17T12:51:14.281Z",
+          "actor": "atlas"
+        },
+        {
+          "from": "planned",
+          "to": "in-progress",
+          "ts": "2026-07-17T12:51:15.524Z",
+          "actor": "atlas"
+        },
+        {
+          "from": "in-progress",
+          "to": "evidence-submitted",
+          "ts": "2026-07-17T12:51:16.738Z",
+          "actor": "atlas",
+          "evidenceRefs": [
+            "file:docs/adr/0004-legacy-task-source-cutover.md",
+            "commit:5842212"
+          ],
+          "note": "legacy task-authority classification (4 sources) per authority correction already documented"
+        },
+        {
+          "from": "evidence-submitted",
+          "to": "verified",
+          "ts": "2026-07-17T12:51:17.914Z",
+          "actor": "atlas",
+          "evidenceRefs": [
+            "file:docs/adr/0004-legacy-task-source-cutover.md",
+            "commit:5842212"
+          ]
+        },
+        {
+          "from": "verified",
+          "to": "closed",
+          "ts": "2026-07-17T12:51:19.063Z",
+          "actor": "atlas"
+        }
+      ]
+    },
+    {
+      "id": "tsk_5422401e0add4e25bc35fd37862dbdae",
+      "goalId": "gol_0865dbc558c04cae8de9114ba1dd68a3",
+      "title": "cold-reader acceptance review (docs+code only)",
+      "source": {
+        "kind": "external-cto-brief",
+        "ref": "2026-07-17-authority-correction-t5"
+      },
+      "owner": "hand:cold-reader",
+      "status": "closed",
+      "riskClass": "low",
+      "idempotencyKey": "external-cto-brief:2026-07-17-authority-correction-t5",
+      "evidence": [
+        {
+          "ref": "file:docs/audit/EB0-COLD-READER-REVIEW-2026-07-17.md",
+          "kind": "other"
+        },
+        {
+          "ref": "verdict:5/5 PASS",
+          "kind": "other"
+        },
+        {
+          "ref": "file:docs/audit/EB0-COLD-READER-REVIEW-2026-07-17.md",
+          "kind": "other"
+        }
+      ],
+      "createdAt": "2026-07-17T12:51:34.221Z",
+      "transitions": [
+        {
+          "from": null,
+          "to": "proposed",
+          "ts": "2026-07-17T12:51:34.221Z",
+          "actor": "atlas",
+          "note": "created"
+        },
+        {
+          "from": "proposed",
+          "to": "accepted",
+          "ts": "2026-07-17T12:51:46.110Z",
+          "actor": "atlas"
+        },
+        {
+          "from": "accepted",
+          "to": "planned",
+          "ts": "2026-07-17T12:51:47.266Z",
+          "actor": "atlas"
+        },
+        {
+          "from": "planned",
+          "to": "delegated",
+          "ts": "2026-07-17T12:51:48.440Z",
+          "actor": "atlas",
+          "note": "read-only reviewer dispatched"
+        },
+        {
+          "from": "delegated",
+          "to": "in-progress",
+          "ts": "2026-07-17T15:09:31.737Z",
+          "actor": "atlas",
+          "note": "review returned"
+        },
+        {
+          "from": "in-progress",
+          "to": "evidence-submitted",
+          "ts": "2026-07-17T15:09:44.927Z",
+          "actor": "atlas",
+          "evidenceRefs": [
+            "file:docs/audit/EB0-COLD-READER-REVIEW-2026-07-17.md",
+            "verdict:5/5 PASS"
+          ]
+        },
+        {
+          "from": "evidence-submitted",
+          "to": "verified",
+          "ts": "2026-07-17T15:09:56.523Z",
+          "actor": "atlas",
+          "evidenceRefs": [
+            "file:docs/audit/EB0-COLD-READER-REVIEW-2026-07-17.md"
+          ]
+        },
+        {
+          "from": "verified",
+          "to": "closed",
+          "ts": "2026-07-17T15:10:07.682Z",
+          "actor": "atlas"
+        }
+      ]
+    },
+    {
+      "id": "tsk_16975661bc3e437ea0b2904fdcd418fb",
+      "goalId": "gol_0865dbc558c04cae8de9114ba1dd68a3",
+      "title": "MIRT assessment upgrade (8 independent -> 1 multidimensional)",
+      "source": {
+        "kind": "volaura-work-queue",
+        "ref": "2026-07-03-blocker-16.md"
+      },
+      "owner": "volaura-product-chat",
+      "status": "escalated",
+      "riskClass": "medium",
+      "idempotencyKey": "volaura-work-queue:2026-07-03-blocker-16.md",
+      "evidence": [],
+      "createdAt": "2026-07-17T12:52:29.979Z",
+      "transitions": [
+        {
+          "from": null,
+          "to": "proposed",
+          "ts": "2026-07-17T12:52:29.979Z",
+          "actor": "atlas",
+          "note": "created"
+        },
+        {
+          "from": "proposed",
+          "to": "escalated",
+          "ts": "2026-07-17T12:52:41.594Z",
+          "actor": "atlas",
+          "note": "imported from VOLAURA work-queue; stale 2 weeks; needs owner decision CEO/External-CTO"
+        }
+      ]
+    },
+    {
+      "id": "tsk_42291918c0d540dcaacdcba16ddc8bbe",
+      "goalId": "gol_d1f4213c91984ca192065c98bc73405f",
+      "title": "Confirm exec-graph integrity via graph verify",
+      "source": {
+        "kind": "external-cto-brief",
+        "ref": "2026-07-17-mission2-pos"
+      },
+      "owner": "hand:local-readonly",
+      "status": "verified",
+      "riskClass": "low",
+      "idempotencyKey": "external-cto-brief:2026-07-17-mission2-pos",
+      "evidence": [
+        {
+          "ref": "03ad456e063e116fc512fd022c33496a5de183a52baf1ced97ab76fa1dde3e86",
+          "kind": "tool-receipt",
+          "note": "{\"taskId\":\"tsk_42291918c0d540dcaacdcba16ddc8bbe\",\"handId\":\"local-readonly\",\"submittedBy\":\"local-readonly\",\"kind\":\"command-output-match\",\"command\":\"node dist/cli.js graph verify\",\"expectedSubstring\":\"\\\"ok\\\": true\",\"claimedResult\":\"graph verifies ok\"}"
+        },
+        {
+          "ref": "03ad456e063e116fc512fd022c33496a5de183a52baf1ced97ab76fa1dde3e86",
+          "kind": "other"
+        },
+        {
+          "ref": "03ad456e063e116fc512fd022c33496a5de183a52baf1ced97ab76fa1dde3e86",
+          "kind": "other"
+        }
+      ],
+      "createdAt": "2026-07-17T21:03:00.252Z",
+      "transitions": [
+        {
+          "from": null,
+          "to": "proposed",
+          "ts": "2026-07-17T21:03:00.252Z",
+          "actor": "atlas",
+          "note": "created"
+        },
+        {
+          "from": "proposed",
+          "to": "accepted",
+          "ts": "2026-07-17T21:03:07.683Z",
+          "actor": "atlas"
+        },
+        {
+          "from": "accepted",
+          "to": "planned",
+          "ts": "2026-07-17T21:03:14.779Z",
+          "actor": "atlas"
+        },
+        {
+          "from": "planned",
+          "to": "delegated",
+          "ts": "2026-07-17T21:03:22.175Z",
+          "actor": "atlas",
+          "note": "assigned to hand:local-readonly"
+        },
+        {
+          "from": "delegated",
+          "to": "in-progress",
+          "ts": "2026-07-17T21:03:30.478Z",
+          "actor": "local-readonly",
+          "note": "receipt submission requires in-progress"
+        },
+        {
+          "from": "in-progress",
+          "to": "evidence-submitted",
+          "ts": "2026-07-17T21:03:30.490Z",
+          "actor": "local-readonly",
+          "evidenceRefs": [
+            "03ad456e063e116fc512fd022c33496a5de183a52baf1ced97ab76fa1dde3e86"
+          ],
+          "note": "receipt kind=command-output-match"
+        },
+        {
+          "from": "evidence-submitted",
+          "to": "verified",
+          "ts": "2026-07-17T21:03:41.245Z",
+          "actor": "atlas",
+          "evidenceRefs": [
+            "03ad456e063e116fc512fd022c33496a5de183a52baf1ced97ab76fa1dde3e86"
+          ],
+          "note": "verified: command output matched expected substring '\"ok\": true'"
+        }
+      ]
+    },
+    {
+      "id": "tsk_ae7ea7e1a47041429773385c41305b2f",
+      "goalId": "gol_d1f4213c91984ca192065c98bc73405f",
+      "title": "Confirm ADR-0001 declares exec-graph the single authority",
+      "source": {
+        "kind": "external-cto-brief",
+        "ref": "2026-07-17-mission2-neg"
+      },
+      "owner": "hand:local-readonly",
+      "status": "closed",
+      "riskClass": "low",
+      "idempotencyKey": "external-cto-brief:2026-07-17-mission2-neg",
+      "evidence": [
+        {
+          "ref": "846d8782b3308efc0703efef2acdbe080215becf1069375eb134b309eb1951ae",
+          "kind": "tool-receipt",
+          "note": "{\"taskId\":\"tsk_ae7ea7e1a47041429773385c41305b2f\",\"handId\":\"local-readonly\",\"submittedBy\":\"local-readonly\",\"kind\":\"file-contains\",\"ref\":\"docs/adr/0001-one-task-authority-exec-graph.md\",\"expectedSubstring\":\"exec-graph is the SECONDARY task authority\",\"claimedResult\":\"ADR-0001 confirms authority\"}"
+        },
+        {
+          "ref": "846d8782b3308efc0703efef2acdbe080215becf1069375eb134b309eb1951ae",
+          "kind": "other"
+        }
+      ],
+      "createdAt": "2026-07-17T21:04:00.940Z",
+      "transitions": [
+        {
+          "from": null,
+          "to": "proposed",
+          "ts": "2026-07-17T21:04:00.940Z",
+          "actor": "atlas",
+          "note": "created"
+        },
+        {
+          "from": "proposed",
+          "to": "accepted",
+          "ts": "2026-07-17T21:04:09.535Z",
+          "actor": "atlas"
+        },
+        {
+          "from": "accepted",
+          "to": "planned",
+          "ts": "2026-07-17T21:04:10.932Z",
+          "actor": "atlas"
+        },
+        {
+          "from": "planned",
+          "to": "delegated",
+          "ts": "2026-07-17T21:04:19.199Z",
+          "actor": "atlas",
+          "note": "assigned to hand:local-readonly"
+        },
+        {
+          "from": "delegated",
+          "to": "in-progress",
+          "ts": "2026-07-17T21:04:27.922Z",
+          "actor": "local-readonly",
+          "note": "receipt submission requires in-progress"
+        },
+        {
+          "from": "in-progress",
+          "to": "evidence-submitted",
+          "ts": "2026-07-17T21:04:27.935Z",
+          "actor": "local-readonly",
+          "evidenceRefs": [
+            "846d8782b3308efc0703efef2acdbe080215becf1069375eb134b309eb1951ae"
+          ],
+          "note": "receipt kind=file-contains"
+        },
+        {
+          "from": "evidence-submitted",
+          "to": "rejected",
+          "ts": "2026-07-17T21:04:36.627Z",
+          "actor": "atlas",
+          "note": "rejected: file docs/adr/0001-one-task-authority-exec-graph.md does not contain expected substring"
+        },
+        {
+          "from": "rejected",
+          "to": "closed",
+          "ts": "2026-07-17T21:04:57.258Z",
+          "actor": "atlas"
+        }
+      ]
+    },
+    {
+      "id": "tsk_f7b3c555850c44d289f5f1ecd63b6756",
+      "goalId": "gol_d1f4213c91984ca192065c98bc73405f",
+      "title": "Confirm ADR-0002 names VOLAURA the execution-state authority",
+      "source": {
+        "kind": "external-cto-brief",
+        "ref": "2026-07-17-mission2-neg2"
+      },
+      "owner": "hand:local-readonly",
+      "status": "rejected",
+      "riskClass": "low",
+      "idempotencyKey": "external-cto-brief:2026-07-17-mission2-neg2",
+      "evidence": [
+        {
+          "ref": "e2fc178c26e1eb88f73d40f092bb876323f6847a713981496e19d2b09ce94975",
+          "kind": "tool-receipt",
+          "note": "{\"taskId\":\"tsk_f7b3c555850c44d289f5f1ecd63b6756\",\"handId\":\"local-readonly\",\"submittedBy\":\"local-readonly\",\"kind\":\"file-contains\",\"ref\":\"docs/adr/0002-volaura-intent-vs-anus-execution-state.md\",\"expectedSubstring\":\"VOLAURA is the execution-state authority\",\"claimedResult\":\"ADR-0002 names VOLAURA as the execution-state authority\"}"
+        },
+        {
+          "ref": "e2fc178c26e1eb88f73d40f092bb876323f6847a713981496e19d2b09ce94975",
+          "kind": "other"
+        }
+      ],
+      "createdAt": "2026-07-17T21:38:30.233Z",
+      "transitions": [
+        {
+          "from": null,
+          "to": "proposed",
+          "ts": "2026-07-17T21:38:30.233Z",
+          "actor": "atlas",
+          "note": "created"
+        },
+        {
+          "from": "proposed",
+          "to": "accepted",
+          "ts": "2026-07-17T21:38:37.950Z",
+          "actor": "atlas",
+          "note": "mission2 neg2 demonstration"
+        },
+        {
+          "from": "accepted",
+          "to": "planned",
+          "ts": "2026-07-17T21:38:44.943Z",
+          "actor": "atlas",
+          "note": "mission2 neg2 demonstration"
+        },
+        {
+          "from": "planned",
+          "to": "delegated",
+          "ts": "2026-07-17T21:38:52.539Z",
+          "actor": "atlas",
+          "note": "assigned to hand:local-readonly"
+        },
+        {
+          "from": "delegated",
+          "to": "in-progress",
+          "ts": "2026-07-17T21:39:08.151Z",
+          "actor": "local-readonly",
+          "note": "receipt submission requires in-progress"
+        },
+        {
+          "from": "in-progress",
+          "to": "evidence-submitted",
+          "ts": "2026-07-17T21:39:08.161Z",
+          "actor": "local-readonly",
+          "evidenceRefs": [
+            "e2fc178c26e1eb88f73d40f092bb876323f6847a713981496e19d2b09ce94975"
+          ],
+          "note": "receipt kind=file-contains"
+        },
+        {
+          "from": "evidence-submitted",
+          "to": "rejected",
+          "ts": "2026-07-17T21:39:15.465Z",
+          "actor": "atlas",
+          "note": "rejected: file docs/adr/0002-volaura-intent-vs-anus-execution-state.md does not contain expected substring"
+        }
+      ]
+    }
+  ]
+}

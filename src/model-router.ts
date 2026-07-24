@@ -10,14 +10,21 @@ import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { ollama } from 'ollama-ai-provider';
 import { createOpenAI } from '@ai-sdk/openai';
+import {
+  isProviderHealthyForRouting,
+  markProviderDead as persistMarkDead,
+  recordProviderFailure,
+} from './atlas/provider-health.js';
 
 export type ModelRole = 'FAST' | 'WORKER' | 'JUDGE' | 'CRITICAL';
 
 export type ProviderName =
   | 'ollama'
   | 'freellmapi'
+  | 'gemini'
   | 'groq'
   | 'nvidia'
+  | 'azure'
   | 'openai'
   | 'openrouter'
   | 'anthropic';
@@ -47,6 +54,14 @@ const MODEL_REGISTRY: ModelConfig[] = [
     roles: ['WORKER'],
   },
   {
+    // Azure OpenAI — credit-tier, third per Constitution (NVIDIA → Vertex → Azure).
+    // Requires AZURE_OPENAI_API_KEY + AZURE_OPENAI_ENDPOINT (both checked in isAvailable).
+    provider: 'azure',
+    modelId: 'gpt-4o-mini',
+    costTier: 0,
+    roles: ['FAST', 'WORKER', 'JUDGE'],
+  },
+  {
     provider: 'ollama',
     modelId: 'qwen3:8b',
     costTier: 0,
@@ -57,6 +72,14 @@ const MODEL_REGISTRY: ModelConfig[] = [
     // Only selected when FREELLMAPI_BASE_URL is set (isAvailable gate), so it
     // never costs a guaranteed-failed attempt on machines without the gateway.
     provider: 'freellmapi',
+    modelId: 'gemini-2.5-flash',
+    costTier: 0,
+    roles: ['FAST', 'WORKER', 'JUDGE'],
+  },
+  {
+    // Gemini direct API — openai-compatible endpoint at generativelanguage.googleapis.com.
+    // Selected when GEMINI_API_KEY is set; endpoint is fixed (no GEMINI_BASE_URL needed).
+    provider: 'gemini',
     modelId: 'gemini-2.5-flash',
     costTier: 0,
     roles: ['FAST', 'WORKER', 'JUDGE'],
@@ -83,7 +106,7 @@ const MODEL_REGISTRY: ModelConfig[] = [
     provider: 'anthropic',
     modelId: 'claude-sonnet-4-20250514',
     costTier: 2,
-    roles: ['WORKER', 'JUDGE', 'CRITICAL'],
+    roles: ['JUDGE', 'CRITICAL'],
   },
 ];
 
@@ -91,8 +114,10 @@ function getEnvKey(provider: ProviderName): string | undefined {
   const map: Record<ProviderName, string> = {
     ollama: 'OLLAMA_URL',
     freellmapi: 'FREELLMAPI_API_KEY',
+    gemini: 'GEMINI_API_KEY',
     groq: 'GROQ_API_KEY',
     nvidia: 'NVIDIA_API_KEY',
+    azure: 'AZURE_OPENAI_API_KEY',
     openai: 'OPENAI_API_KEY',
     openrouter: 'OPENROUTER_API_KEY',
     anthropic: 'ANTHROPIC_API_KEY',
@@ -108,7 +133,9 @@ const deadTimestamps = new Map<ProviderName, number>();
 const DEAD_TTL_MS = 5 * 60 * 1000; // retry dead provider after 5 min
 
 function isAvailable(provider: ProviderName): boolean {
-  // Check if provider was marked dead recently
+  // Durable health store (M6) — dead/cooldown providers never selected.
+  if (!isProviderHealthyForRouting(provider)) return false;
+  // Legacy in-memory dead set (kept for process-local fast path).
   if (deadProviders.has(provider)) {
     const deadSince = deadTimestamps.get(provider) ?? 0;
     if (Date.now() - deadSince < DEAD_TTL_MS) return false;
@@ -124,14 +151,28 @@ function isAvailable(provider: ProviderName): boolean {
   if (provider === 'freellmapi') {
     return !!process.env['FREELLMAPI_API_KEY'] && !!process.env['FREELLMAPI_BASE_URL'];
   }
+  // azure requires both the API key and the resource endpoint (no default endpoint).
+  if (provider === 'azure') {
+    return !!process.env['AZURE_OPENAI_API_KEY'] && !!process.env['AZURE_OPENAI_ENDPOINT'];
+  }
   return !!getEnvKey(provider);
 }
 
 /** Mark a provider as dead after a real call failure. Auto-recovers after DEAD_TTL_MS. */
-export function markProviderDead(provider: ProviderName): void {
+export function markProviderDead(provider: ProviderName, reason = 'runtime failure'): void {
   deadProviders.add(provider);
   deadTimestamps.set(provider, Date.now());
+  persistMarkDead(provider, reason);
   console.log(`[router] ${provider} marked dead — skipping for ${DEAD_TTL_MS / 1000}s`);
+}
+
+/** Record a classified failure into durable health + in-memory dead set when warranted. */
+export function noteProviderFailure(provider: ProviderName, error: string): void {
+  const state = recordProviderFailure(provider, error);
+  if (state === 'dead') {
+    deadProviders.add(provider);
+    deadTimestamps.set(provider, Date.now());
+  }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -150,6 +191,29 @@ function createModel(config: ModelConfig): any {
         baseURL,
         headers: {
           Authorization: `Bearer ${process.env['FREELLMAPI_API_KEY']}`,
+        },
+      }).languageModel(config.modelId);
+    }
+
+    case 'gemini':
+      return createOpenAICompatible({
+        name: 'gemini',
+        baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
+        headers: {
+          Authorization: `Bearer ${process.env['GEMINI_API_KEY']}`,
+        },
+      }).languageModel(config.modelId);
+
+    case 'azure': {
+      // Endpoint comes ONLY from env — no hardcoded resource URL in source.
+      // isAvailable() already gates selection on this; the guard is defensive.
+      const azureBaseURL = process.env['AZURE_OPENAI_ENDPOINT'];
+      if (!azureBaseURL) throw new Error('AZURE_OPENAI_ENDPOINT not set — set it in .env (e.g. https://<resource>.openai.azure.com/openai)');
+      return createOpenAICompatible({
+        name: 'azure',
+        baseURL: azureBaseURL,
+        headers: {
+          'api-key': process.env['AZURE_OPENAI_API_KEY'] ?? '',
         },
       }).languageModel(config.modelId);
     }
@@ -193,13 +257,22 @@ export interface RouterOptions {
   role?: ModelRole;
   maxCostTier?: number;
   preferredProvider?: ProviderName;
+  /** When true, ATLAS_PREFERRED_PROVIDER env is ignored (research-swarm workers). */
+  ignoreEnvPreference?: boolean;
   /** Providers the swarm must never use (canon: "never Claude as swarm agent"). */
   excludeProviders?: ProviderName[];
 }
 
 export function routeModel(opts: RouterOptions = {}): RouteResult {
   const envPref = process.env['ATLAS_PREFERRED_PROVIDER'] as ProviderName | undefined;
-  const { role = 'WORKER', maxCostTier = 3, preferredProvider = envPref, excludeProviders } = opts;
+  const {
+    role = 'WORKER',
+    maxCostTier = 3,
+    preferredProvider: explicitPref,
+    ignoreEnvPreference = false,
+    excludeProviders,
+  } = opts;
+  const preferredProvider = ignoreEnvPreference ? explicitPref : (explicitPref ?? envPref);
 
   const candidates = MODEL_REGISTRY.filter(
     (m) =>
@@ -284,10 +357,8 @@ export async function routeModelWithFallback(
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       errors.push({ provider: config.provider, error: msg.slice(0, 200) });
-      // Audit #8: only mark dead on infra errors, not content filter/rate limit
-      if (/ECONNREFUSED|ETIMEDOUT|ENETUNREACH|5\d\d|auth|unauthorized|invalid.*key/i.test(msg)) {
-        markProviderDead(config.provider);
-      }
+      // M6: classify into durable health (dead/degraded) + in-memory skip.
+      noteProviderFailure(config.provider, msg);
     }
   }
 
@@ -298,4 +369,25 @@ export async function routeModelWithFallback(
 
 export function listAvailableModels(): ModelConfig[] {
   return MODEL_REGISTRY.filter((m) => isAvailable(m.provider));
+}
+
+export function isKnownProvider(name: string): name is ProviderName {
+  return MODEL_REGISTRY.some((m) => m.provider === name);
+}
+
+export function isProviderConfigured(provider: ProviderName): boolean {
+  return isAvailable(provider);
+}
+
+export function providerSupportsWorkerRole(provider: ProviderName): boolean {
+  return MODEL_REGISTRY.some((m) => m.provider === provider && m.roles.includes('WORKER'));
+}
+
+/** Distinct WORKER providers that pass isAvailable() right now. */
+export function listAvailableWorkerProviders(): ProviderName[] {
+  const seen = new Set<ProviderName>();
+  for (const m of MODEL_REGISTRY) {
+    if (m.roles.includes('WORKER') && isAvailable(m.provider)) seen.add(m.provider);
+  }
+  return [...seen];
 }

@@ -5,16 +5,29 @@ The queue is the bridge between the Atlas **brain** (this repo, Mastra/TS) and a
 commands; the executor claims, runs, and completes them; Atlas polls results and
 delivers them to the CEO in Telegram.
 
+> **Status (2026-07-17): producer-dormant.** Both in-repo producers were
+> disabled on 2026-07-10 (board P0 — ungoverned external cron removed). Nothing
+> in this repo writes to the queue today. The consumer, delivery, and sweep
+> machinery below remains in code and describes how the queue behaves when it
+> is fed. Full detail: ADR-0004's "Correction to the record" section
+> (`docs/adr/0004-legacy-task-source-cutover.md`).
+
 Table: `atlas_command_queue` (Supabase). Access via the REST/RPC helpers in
 `src/atlas/supabase-memory.ts`.
 
 ## Roles
 
-- **Producer (in this repo):** the autonomous brain-loop and the `/remote`
-  Telegram command. Both call `queueRemoteCommand(chatId, command)`
-  (`supabase-memory.ts:110`). The brain-loop seeds work only when the queue is
-  empty, and is bounded by a daily cap (`ATLAS_BRAIN_QUEUE_CAP`,
-  `spend-policy.ts` → `tryConsumeBrainQueueSlot`).
+- **Producer (in this repo): none active since 2026-07-10.** The two historical
+  producers — the `/remote` Telegram command (`telegram.ts:512-523`) and the
+  autonomous brain-loop (`autonomousBrainLoop()`, `telegram.ts:787-797`) — were
+  both disabled on 2026-07-10 (board P0): `/remote` now only replies that it is
+  disabled, and the brain-loop body is two early-return guards. Neither calls
+  `queueRemoteCommand()` anymore. The function itself
+  (`queueRemoteCommand(chatId, command)`, `supabase-memory.ts:110`) still exists
+  as the sole write path for any future governed producer, and the historical
+  seeding rules (seed only when the queue is empty, daily
+  `ATLAS_BRAIN_QUEUE_CAP` via `spend-policy.ts` → `tryConsumeBrainQueueSlot`)
+  apply to any successor. See ADR-0004, "Correction to the record".
 - **Consumer (in-repo OPTIONAL worker OR external — exactly one active):**
   claims and executes commands via `claimNextCommand` / `completeCommand` /
   `failCommand`. There are now two possible consumers, and **exactly one must be
@@ -97,7 +110,7 @@ free-text `command` today.
   because the executor lives outside the repo.
 - **TTL.** A claimed command that has not completed within
   `sweepStaleCommands`'s timeout (default **30 minutes**) is considered stale and
-  reclaimed or killed. `/remote` tells the CEO to expect a result "within 15
+  reclaimed or killed. `/remote` (when it was active) told the CEO to expect a result "within 15
   minutes" — that is the poll-plus-run wall-clock expectation, and it sits
   inside the 30-minute stale TTL. Delivery polls every 2 minutes, so worst-case
   result latency for a fast command is run time + up to 2 minutes.

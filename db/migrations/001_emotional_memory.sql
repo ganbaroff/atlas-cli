@@ -100,3 +100,20 @@ as $$
   order by decay_score desc
   limit greatest(p_limit, 1);
 $$;
+
+-- ── bump_recall_count(p_ids) ────────────────────────────────────────────────────
+-- Called by recallMemories() write-back (src/atlas/supabase-memory.ts) to
+-- atomically increment recall_count + stamp last_recalled_at on rows that were
+-- just surfaced. One call per recall batch; ids are the UUIDs returned by
+-- recall_atlas_memories. Missing ids (deleted rows) are silently skipped.
+create or replace function public.bump_recall_count(p_ids uuid[])
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  update public.atlas_learnings
+  set recall_count    = recall_count + 1,
+      last_recalled_at = now()
+  where id = any(p_ids);
+$$;

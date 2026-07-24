@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { isPythonSwarmAvailable, loadHiveProfiles } from '../atlas/python-bridge.js';
+import {
+  isPythonSwarmAvailable,
+  loadHiveProfiles,
+  parseStdoutProtocol,
+  validateProposalsFile,
+} from '../atlas/python-bridge.js';
 
 describe('python-bridge', () => {
   it('detects VOLAURA Python swarm availability', () => {
@@ -17,5 +22,29 @@ describe('python-bridge', () => {
     for (const p of profiles) {
       expect(p['model'] || p['name']).toBeTruthy();
     }
+  });
+
+  it('parseStdoutProtocol accepts valid atlas-swarm JSON line', () => {
+    const stdout = 'log line\n{"bridge":"atlas-swarm","runId":"abc-123","proposals":[{"title":"test"}]}\n';
+    const parsed = parseStdoutProtocol(stdout);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.runId).toBe('abc-123');
+    expect(parsed!.proposals).toHaveLength(1);
+  });
+
+  it('parseStdoutProtocol rejects missing bridge field', () => {
+    const stdout = '{"runId":"abc","proposals":[]}\n';
+    expect(parseStdoutProtocol(stdout)).toBeNull();
+  });
+
+  it('parseStdoutProtocol rejects stale non-protocol stdout', () => {
+    const stdout = 'Running swarm...\nDone.\n';
+    expect(parseStdoutProtocol(stdout)).toBeNull();
+  });
+
+  it('validateProposalsFile rejects file without matching runId', async () => {
+    const result = await validateProposalsFile('expected-run-id', Date.now());
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBeTruthy();
   });
 });

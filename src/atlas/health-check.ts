@@ -20,6 +20,8 @@ export interface HealthCheck {
   name: string;
   ok: boolean;
   detail: string;
+  /** Staleness age in hours — only populated by the 'heartbeat' check; used for severity banding by callers. */
+  ageHours?: number;
 }
 
 function memoryRoot(): string {
@@ -40,15 +42,17 @@ function checkIdentityFile(): HealthCheck {
 
 function checkHeartbeat(): HealthCheck {
   const fp = join(memoryRoot(), 'memory', 'atlas', 'heartbeat.md');
-  if (!existsSync(fp)) return { name: 'heartbeat', ok: false, detail: 'missing' };
+  if (!existsSync(fp)) return { name: 'heartbeat', ok: false, detail: 'missing', ageHours: Infinity };
   const raw = readFileSync(fp, 'utf-8');
   const match = raw.match(/Updated:\s*(\S+)/);
   const age = match ? Date.now() - new Date(match[1]).getTime() : Infinity;
   const stale = age > 24 * 60 * 60 * 1000; // >24h
+  const ageHours = age / 3600000;
   return {
     name: 'heartbeat',
     ok: !stale,
-    detail: stale ? `stale (${Math.round(age / 3600000)}h old)` : 'fresh',
+    detail: stale ? `stale (${Math.round(ageHours)}h old)` : 'fresh',
+    ageHours: stale ? ageHours : undefined,
   };
 }
 

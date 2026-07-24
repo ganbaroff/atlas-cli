@@ -5,6 +5,7 @@ import { promisify } from 'node:util';
 import { appendFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { isAutonomyShellAllowed } from '../atlas/policy.js';
 
 const execAsync = promisify(exec);
 const TIMEOUT_MS = 30_000;
@@ -55,6 +56,39 @@ export function classifyShellCommand(command: string): { decision: ShellDecision
   return { decision: 'allow', rule: 'default-allow' };
 }
 
+export type ShellActor = 'ceo' | 'autonomy';
+
+/**
+ * Who is invoking the shell? AUTONOMY = an unattended actor (task-spawner
+ * subprocess / brain-loop / swarm) that tags itself via ATLAS_AGENT_ID=autonomy
+ * (or ATLAS_AUTONOMY=1). Everything else (CEO Telegram turn, interactive CLI) is
+ * CEO. The autonomy subprocess runs with its OWN env (see task-spawner.ts), so
+ * this env-based resolution is race-free — the in-process CEO path never sets it.
+ */
+export function resolveShellActor(): ShellActor {
+  const id = (process.env.ATLAS_AGENT_ID || '').trim().toLowerCase();
+  if (id === 'autonomy' || (process.env.ATLAS_AUTONOMY || '').trim() === '1') return 'autonomy';
+  return 'ceo';
+}
+
+/**
+ * Actor-aware classification (HYBRID policy). The BLOCKED/GATED denylist is the
+ * hard floor for EVERY actor. On top of that floor, an AUTONOMY actor may only
+ * run commands the policy whitelist permits — an otherwise-allowed command that
+ * is not whitelisted is denied for autonomy. CEO turns are unaffected.
+ */
+export function classifyShellForActor(
+  command: string,
+  actor: ShellActor,
+): { decision: ShellDecision; rule: string } {
+  const base = classifyShellCommand(command);
+  if (base.decision !== 'allow') return base; // denylist floor wins for everyone
+  if (actor === 'autonomy' && !isAutonomyShellAllowed(command)) {
+    return { decision: 'blocked', rule: 'autonomy-not-whitelisted' };
+  }
+  return base;
+}
+
 const AUDIT_LOG = process.env.ATLAS_SHELL_AUDIT_LOG || join(tmpdir(), 'atlas-shell-audit.jsonl');
 
 /** Append-only audit trail with agent attribution. Best-effort: never throws into execution. */
@@ -85,19 +119,23 @@ export const shellTool = createTool({
   }),
   execute: async ({ command, cwd }) => {
     const agent = process.env.ATLAS_AGENT_ID || 'unknown';
-    const { decision, rule } = classifyShellCommand(command);
+    const actor = resolveShellActor();
+    const { decision, rule } = classifyShellForActor(command, actor);
 
     if (decision === 'blocked') {
-      await audit({ agent, command, cwd, decision, rule });
+      await audit({ agent, actor, command, cwd, decision, rule });
+      const reason = rule === 'autonomy-not-whitelisted'
+        ? 'not on the autonomy shell whitelist (policy.yaml) and no CEO turn is active'
+        : 'command is catastrophic';
       return {
         stdout: '',
-        stderr: `[atlas-shell] BLOCKED (${rule}): command is catastrophic and was not executed.`,
+        stderr: `[atlas-shell] BLOCKED (${rule}): ${reason} — not executed.`,
         exitCode: 126,
       };
     }
 
     if (decision === 'gated' && !destructiveAllowed()) {
-      await audit({ agent, command, cwd, decision: 'gated-denied', rule });
+      await audit({ agent, actor, command, cwd, decision: 'gated-denied', rule });
       return {
         stdout: '',
         stderr: `[atlas-shell] REFUSED (${rule}): destructive command blocked by default. Set ATLAS_SHELL_ALLOW_DESTRUCTIVE=1 to permit.`,
@@ -105,7 +143,7 @@ export const shellTool = createTool({
       };
     }
 
-    await audit({ agent, command, cwd, decision: decision === 'gated' ? 'gated-allowed' : 'allow', rule });
+    await audit({ agent, actor, command, cwd, decision: decision === 'gated' ? 'gated-allowed' : 'allow', rule });
     try {
       const { stdout, stderr } = await execAsync(command, {
         cwd: cwd || process.cwd(),

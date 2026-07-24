@@ -1,0 +1,16 @@
+{
+  "handId": "file-search",
+  "purpose": "Read-only file search hand — recursively lists and greps local files under an allowed root. No writes, no shell mutation, no credentials.",
+  "capabilities": ["read-file", "grep", "file-search"],
+  "trustLevel": "low",
+  "allowedEnvironments": ["local-foreground", "local-unattended"],
+  "allowedActions": ["read-file", "grep", "file-search"],
+  "disallowedActions": ["write", "deploy", "mutation", "credential-access", "command-exec"],
+  "costClass": "FREE",
+  "autonomy": "read-only-unattended",
+  "inputContract": "A DelegationBrief: objective naming a search root + pattern; allowedActions subset of this hand's allowedActions; falsifiable expectedResult.",
+  "timeoutMs": 60000,
+  "retryPolicy": "none",
+  "abortPolicy": "On timeout, abortHandTask moves task to blocked — never silently verified. Read-only; no rollback needed.",
+  "escalationCondition": "Objective implies write/mutation/credential access -> escalate to ceo."
+}

@@ -34,6 +34,10 @@ logs/
 
 # Runtime state
 swarm-state.json
+# swarm-exec runtime artifacts (durable on disk, not committed)
+state/swarm-runs/
+state/intake-drafts/
+state/smoke-exec-graph/
 
 # Docker folder to help skip auth refreshes
 .docker
@@ -60,3 +64,7 @@ packages/vscode-ide-companion/*.vsix
 # Operator runs and state
 operator/runs/
 operator/state/operator-state.json
+
+# Private capability notes + smoke-test scratch logs (never commit)
+memory/atlas/CAPABILITIES-PRIVATE.md
+smoke-log*.txt
