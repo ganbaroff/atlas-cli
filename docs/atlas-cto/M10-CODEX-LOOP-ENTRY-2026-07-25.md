@@ -24,5 +24,5 @@ npm test -- --run src/__tests__/m10-install-lifecycle.test.ts → 3 passed
 - PASS-WITH-EXCEPTION (M10-ADV-01..03)
 
 ## 6. Commit hash + counts
-- Tip: (fill on commit)
+- Tip: `01351aa`
 - vitest M10: 3 passed

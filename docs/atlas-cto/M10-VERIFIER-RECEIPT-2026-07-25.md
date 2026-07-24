@@ -12,7 +12,7 @@ M10_ROLLBACK: PASS
 SUITE_M10: 3 passed / 0 failed
 EXCEPTIONS: M10-ADV-01 (no tarball clean-machine), M10-ADV-02 (health exit code), M10-ADV-03 (dist swap not git tag)
 BLOCKERS: none for internal close
-RECEIPT_HASH: (fill on commit)
+RECEIPT_HASH: 01351aa
 ```
 
 ## Commands reproduced
