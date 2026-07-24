@@ -4,6 +4,7 @@
 
 import { routeModel, type ProviderName, type RouteResult } from '../model-router.js';
 import { enforceSpendPolicy, isPaidProvider, paidAllowed } from '../atlas/spend-policy.js';
+import { isProviderHealthyForRouting } from '../atlas/provider-health.js';
 import type { ProviderPreference } from './types.js';
 
 export class ProviderRoutingError extends Error {
@@ -14,6 +15,11 @@ export class ProviderRoutingError extends Error {
 }
 
 export function assertProviderAllowed(provider: ProviderName, caller: string): void {
+  if (!isProviderHealthyForRouting(provider)) {
+    throw new ProviderRoutingError(
+      `Provider '${provider}' is dead/cooldown — not assignable (caller=${caller})`,
+    );
+  }
   if (isPaidProvider(provider) && !paidAllowed()) {
     throw new ProviderRoutingError(
       `Provider '${provider}' requires ATLAS_ALLOW_PAID=1 (caller=${caller})`,

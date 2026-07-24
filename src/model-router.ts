@@ -10,6 +10,11 @@ import { createAnthropic } from '@ai-sdk/anthropic';
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { ollama } from 'ollama-ai-provider';
 import { createOpenAI } from '@ai-sdk/openai';
+import {
+  isProviderHealthyForRouting,
+  markProviderDead as persistMarkDead,
+  recordProviderFailure,
+} from './atlas/provider-health.js';
 
 export type ModelRole = 'FAST' | 'WORKER' | 'JUDGE' | 'CRITICAL';
 
@@ -128,7 +133,9 @@ const deadTimestamps = new Map<ProviderName, number>();
 const DEAD_TTL_MS = 5 * 60 * 1000; // retry dead provider after 5 min
 
 function isAvailable(provider: ProviderName): boolean {
-  // Check if provider was marked dead recently
+  // Durable health store (M6) — dead/cooldown providers never selected.
+  if (!isProviderHealthyForRouting(provider)) return false;
+  // Legacy in-memory dead set (kept for process-local fast path).
   if (deadProviders.has(provider)) {
     const deadSince = deadTimestamps.get(provider) ?? 0;
     if (Date.now() - deadSince < DEAD_TTL_MS) return false;
@@ -152,10 +159,20 @@ function isAvailable(provider: ProviderName): boolean {
 }
 
 /** Mark a provider as dead after a real call failure. Auto-recovers after DEAD_TTL_MS. */
-export function markProviderDead(provider: ProviderName): void {
+export function markProviderDead(provider: ProviderName, reason = 'runtime failure'): void {
   deadProviders.add(provider);
   deadTimestamps.set(provider, Date.now());
+  persistMarkDead(provider, reason);
   console.log(`[router] ${provider} marked dead — skipping for ${DEAD_TTL_MS / 1000}s`);
+}
+
+/** Record a classified failure into durable health + in-memory dead set when warranted. */
+export function noteProviderFailure(provider: ProviderName, error: string): void {
+  const state = recordProviderFailure(provider, error);
+  if (state === 'dead') {
+    deadProviders.add(provider);
+    deadTimestamps.set(provider, Date.now());
+  }
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -340,10 +357,8 @@ export async function routeModelWithFallback(
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       errors.push({ provider: config.provider, error: msg.slice(0, 200) });
-      // Audit #8: only mark dead on infra errors, not content filter/rate limit
-      if (/ECONNREFUSED|ETIMEDOUT|ENETUNREACH|5\d\d|auth|unauthorized|invalid.*key/i.test(msg)) {
-        markProviderDead(config.provider);
-      }
+      // M6: classify into durable health (dead/degraded) + in-memory skip.
+      noteProviderFailure(config.provider, msg);
     }
   }
 
