@@ -88,3 +88,10 @@ Refactor in place via new module (not parallel swarm system). Reuse patterns fro
 ## Out of scope
 
 TRADER, Telegram changes, Python swarm rewrite, deploy/PR.
+
+## Integration status (2026-07-24)
+
+- Merged to `feat/arsenal-wiring` via fast-forward (`c0ee359` + `aa54237`)
+- Canonical artifact: `src/research-swarm/artifact.ts` schema v1; `swarm-logger.ts` legacy shim
+- Perspective providers validated at runtime via `perspective-config.ts` (registry + availability; no static config rewrite)
+- Live proof deferred to M6; verdict remains **RESEARCH_ONLY_LIMITED**
