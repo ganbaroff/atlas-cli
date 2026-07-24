@@ -1,0 +1,16 @@
+{
+  "handId": "local-readonly",
+  "purpose": "Free, read-only, unattended-capable local inspection hand — file read, grep, read-only git, read-only shell commands. No writes, no deploys, no mutations, no credentials, ever.",
+  "capabilities": ["read-file", "grep", "git-readonly", "command-readonly"],
+  "trustLevel": "low",
+  "allowedEnvironments": ["local-foreground", "local-unattended"],
+  "allowedActions": ["read-file", "grep", "git-readonly", "command-readonly"],
+  "disallowedActions": ["write", "deploy", "mutation", "credential-access"],
+  "costClass": "FREE",
+  "autonomy": "read-only-unattended",
+  "inputContract": "A DelegationBrief (see ./contract.ts): objective, allowedActions subset of this hand's allowedActions, a falsifiable expectedResult, timeoutMs, riskClass.",
+  "timeoutMs": 120000,
+  "retryPolicy": "none",
+  "abortPolicy": "On timeout, the delegating adapter call (abortHandTask) moves the task to 'blocked' — never silently 'verified'. Read-only work has no side effects to roll back.",
+  "escalationCondition": "Objective implies any write/mutating/credential action -> escalate to ceo; this hand must never be asked to do more than read."
+}

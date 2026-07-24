@@ -27,7 +27,7 @@
  * hand as a falsy-but-present value. `parseHandSpec()`/`validateRegistry()`
  * throw on schema violation; this module never silently coerces a bad spec.
  *
- * Security: THREE HANDS in V0, all deliberately narrow:
+ * Security: TWO STATIC HANDS in V0 (+ manifest overlay for file-search, local-readonly):
  *   - 'sonnet-foreground'  — CEO-supervised, foreground-only, can write
  *     scoped code. Because 'write-scoped-code' is in its allowedActions,
  *     ./risk.ts's classifyRisk() (fed hand.allowedActions as the
@@ -110,30 +110,6 @@ export const REGISTRY: Readonly<Record<string, HandSpec>> = Object.freeze({
       'Objective is ambiguous, expectedResult cannot be independently falsified, or the work '
       + "would require an action outside this hand's allowedActions -> escalate to ceo, don't "
       + 'silently widen scope.',
-  }),
-  'local-readonly': handSpecSchema.parse({
-    handId: 'local-readonly',
-    purpose:
-      'Free, read-only, unattended-capable local inspection hand — file read, grep, read-only '
-      + 'git, read-only shell commands. No writes, no deploys, no mutations, no credentials, ever.',
-    capabilities: ['read-file', 'grep', 'git-readonly', 'command-readonly'],
-    trustLevel: 'low',
-    allowedEnvironments: ['local-foreground', 'local-unattended'],
-    allowedActions: ['read-file', 'grep', 'git-readonly', 'command-readonly'],
-    disallowedActions: ['write', 'deploy', 'mutation', 'credential-access'],
-    costClass: 'FREE',
-    autonomy: 'read-only-unattended',
-    inputContract:
-      'A DelegationBrief (see ./contract.ts): objective, allowedActions subset of this '
-      + "hand's allowedActions, a falsifiable expectedResult, timeoutMs, riskClass.",
-    timeoutMs: 120_000,
-    retryPolicy: 'none',
-    abortPolicy:
-      "On timeout, the delegating adapter call (abortHandTask) moves the task to 'blocked' — "
-      + "never silently 'verified'. Read-only work has no side effects to roll back.",
-    escalationCondition:
-      'Objective implies any write/mutating/credential action -> escalate to ceo; this hand '
-      + 'must never be asked to do more than read.',
   }),
   'browser-foreground': handSpecSchema.parse({
     handId: 'browser-foreground',

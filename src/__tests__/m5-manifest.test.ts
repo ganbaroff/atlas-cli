@@ -81,6 +81,19 @@ describe('M5 manifest SDK', () => {
     ).toThrow(/deploy/);
   });
 
+  it('local-readonly hand is available via manifest without REGISTRY literal', () => {
+    delete process.env.ATLAS_HAND_MANIFEST_DIR;
+    resetManifestCacheForTests();
+    const hand = getHand('local-readonly');
+    expect(hand.handId).toBe('local-readonly');
+    expect(hand.autonomy).toBe('read-only-unattended');
+    expect(listHands().some((h) => h.handId === 'local-readonly')).toBe(true);
+
+    const registrySrc = readFileSync(REGISTRY_SRC, 'utf8');
+    expect(registrySrc).not.toMatch(/'local-readonly'\s*:/);
+    expect(registrySrc).not.toMatch(/handId:\s*'local-readonly'/);
+  });
+
   it('file-search hand is available via default manifests without REGISTRY literal', () => {
     delete process.env.ATLAS_HAND_MANIFEST_DIR;
     resetManifestCacheForTests();
