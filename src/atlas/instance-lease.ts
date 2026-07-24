@@ -118,8 +118,34 @@ export function releaseInstanceLease(instanceId: string): void {
   } catch { /* ignore */ }
 }
 
+const heartbeatTimers = new Map<string, NodeJS.Timeout>();
+
+/** Periodic heartbeat so long-idle writers keep the lease (closes M4-ADV-02). */
+export function startInstanceLeaseHeartbeat(
+  instanceId: string,
+  intervalMs = Math.floor(DEFAULT_LEASE_TTL_MS / 3),
+): void {
+  stopInstanceLeaseHeartbeat(instanceId);
+  const timer = setInterval(() => {
+    heartbeatInstanceLease(instanceId);
+  }, intervalMs);
+  // Don't keep process alive solely for heartbeat in tests/CLI short commands.
+  if (typeof timer.unref === 'function') timer.unref();
+  heartbeatTimers.set(instanceId, timer);
+}
+
+export function stopInstanceLeaseHeartbeat(instanceId: string): void {
+  const timer = heartbeatTimers.get(instanceId);
+  if (timer) {
+    clearInterval(timer);
+    heartbeatTimers.delete(instanceId);
+  }
+}
+
 /** Test helper — clear lease file. */
 export function clearInstanceLeaseForTests(): void {
+  stopInstanceLeaseHeartbeat('inst-hb');
+  for (const id of [...heartbeatTimers.keys()]) stopInstanceLeaseHeartbeat(id);
   const path = leasePath();
   if (existsSync(path)) unlinkSync(path);
 }

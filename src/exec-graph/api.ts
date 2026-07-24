@@ -20,6 +20,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { assertWritable } from '../atlas/readonly-guard.js';
 import {
   type Goal,
   type Task,
@@ -76,6 +77,7 @@ export interface CreateGoalInput {
 }
 
 export function createGoal(input: CreateGoalInput): Goal {
+  assertWritable('exec-graph.createGoal');
   const ts = input.ts ?? nowIso();
   const actor = input.actor ?? 'atlas';
   const goal = goalSchema.parse({
@@ -114,6 +116,7 @@ function deriveIdempotencyKey(source: SourceRef): string {
 }
 
 export function createTask(input: CreateTaskInput): CreateTaskResult {
+  assertWritable('exec-graph.createTask');
   const owner = input.owner ?? 'atlas';
   // No legitimate flow creates a hand-owned task at creation — hand:
   // ownership is only ever reached through assignHand()'s reassignOwner
@@ -197,6 +200,7 @@ export interface MoveTaskInput extends Omit<ApplyTransitionOptions, 'ts'> {
 }
 
 export function moveTask(input: MoveTaskInput): Task {
+  assertWritable('exec-graph.moveTask');
   const graph = readGraph();
   let task = graph.tasks[input.taskId];
   if (!task) {

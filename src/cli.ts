@@ -26,8 +26,8 @@ import { runHealthCheck, formatHealthReport } from './atlas/health-check.js';
 import type { ModelRole } from './model-router.js';
 import * as readline from 'node:readline';
 import { capture, shutdown } from './analytics.js';
-import { acquireInstanceLease } from './atlas/instance-lease.js';
-import { writeSessionBreadcrumb } from './atlas/write-back-hook.js';
+import { acquireInstanceLease, startInstanceLeaseHeartbeat } from './atlas/instance-lease.js';
+import { writeSessionBreadcrumb, assertBreadcrumbBeforeExit } from './atlas/write-back-hook.js';
 
 // CWD-FIX: resolve .env from module dir, not process.cwd()
 import { parse as dotenvParse } from 'dotenv';
@@ -1376,6 +1376,17 @@ if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith
   if (instanceLease.mode === 'readonly') {
     console.error(`[atlas] READ-ONLY MODE: ${instanceLease.reason ?? 'another instance holds the lease'}`);
     process.env.ATLAS_READONLY = '1';
+  } else {
+    startInstanceLeaseHeartbeat(instanceLease.instanceId);
   }
+  const exit = process.exit.bind(process);
+  process.exit = ((code?: number) => {
+    if (!assertBreadcrumbBeforeExit().ok) {
+      try {
+        writeSessionBreadcrumb(`auto-exit:${process.argv.slice(2).join(' ').slice(0, 120)}`);
+      } catch { /* ignore */ }
+    }
+    return exit(code);
+  }) as typeof process.exit;
   program.parse();
 }
