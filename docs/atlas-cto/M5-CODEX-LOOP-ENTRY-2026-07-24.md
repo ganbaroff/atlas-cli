@@ -29,5 +29,5 @@ npm test -- --run src/__tests__/m5-manifest.test.ts src/__tests__/m5-m4-debt.tes
 - createRequire not used; top-level import of manifest from registry
 
 ## 6. Commit hash + counts
-- Tip: (fill)
+- Tip: `1fb8c1a`
 - vitest: 800 passed, 2 skipped
