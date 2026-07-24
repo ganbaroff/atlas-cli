@@ -27,7 +27,8 @@
  * hand as a falsy-but-present value. `parseHandSpec()`/`validateRegistry()`
  * throw on schema violation; this module never silently coerces a bad spec.
  *
- * Security: TWO STATIC HANDS in V0 (+ manifest overlay for file-search, local-readonly, browser-foreground):
+ * Security: ONE STATIC HAND in V0 (+ manifest overlay for file-search, local-readonly,
+ * browser-foreground, swarm-local):
  *   - 'sonnet-foreground'  — CEO-supervised, foreground-only, can write
  *     scoped code. Because 'write-scoped-code' is in its allowedActions,
  *     ./risk.ts's classifyRisk() (fed hand.allowedActions as the
@@ -110,33 +111,6 @@ export const REGISTRY: Readonly<Record<string, HandSpec>> = Object.freeze({
       'Objective is ambiguous, expectedResult cannot be independently falsified, or the work '
       + "would require an action outside this hand's allowedActions -> escalate to ceo, don't "
       + 'silently widen scope.',
-  }),
-  'swarm-local': handSpecSchema.parse({
-    handId: 'swarm-local',
-    purpose:
-      'Foreground, CEO-supervised multi-perspective swarm analysis (see ../swarm.ts) — '
-      + 'decomposes a task into perspectives, runs parallel LLM workers, synthesizes findings '
-      + 'into one report. Produces analysis text only; never writes files, never runs unattended.',
-    capabilities: ['swarm-run', 'analyze', 'read-file'],
-    trustLevel: 'medium',
-    allowedEnvironments: ['local-foreground'],
-    allowedActions: ['swarm-run', 'analyze', 'read-file'],
-    disallowedActions: ['scheduler', 'daemon', 'unattended', 'write-scoped-code', 'deploy', 'credential-access'],
-    costClass: 'FOREGROUND-CEO-SUPERVISED',
-    autonomy: 'foreground-only',
-    inputContract:
-      'A DelegationBrief (see ./contract.ts): objective, allowedActions subset of this '
-      + "hand's allowedActions, a falsifiable expectedResult, timeoutMs, riskClass.",
-    timeoutMs: 300_000,
-    retryPolicy: 'none',
-    abortPolicy:
-      "On timeout or CEO-interrupt, the delegating adapter call (abortHandTask) moves the "
-      + "task to 'blocked' — never silently 'verified'. Swarm runs are billable model calls, "
-      + 'so there is no automatic retry; a CEO reviews blocked state by hand.',
-    escalationCondition:
-      'Objective is ambiguous, expectedResult cannot be independently falsified, or the work '
-      + "would require an action outside this hand's allowedActions (e.g. a file write) -> "
-      + "escalate to ceo, don't silently widen scope.",
   }),
 });
 

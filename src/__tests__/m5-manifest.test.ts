@@ -108,6 +108,19 @@ describe('M5 manifest SDK', () => {
     expect(registrySrc).not.toMatch(/handId:\s*'browser-foreground'/);
   });
 
+  it('swarm-local hand is available via manifest without REGISTRY literal', () => {
+    delete process.env.ATLAS_HAND_MANIFEST_DIR;
+    resetManifestCacheForTests();
+    const hand = getHand('swarm-local');
+    expect(hand.handId).toBe('swarm-local');
+    expect(hand.allowedActions).toContain('swarm-run');
+    expect(listHands().some((h) => h.handId === 'swarm-local')).toBe(true);
+
+    const registrySrc = readFileSync(REGISTRY_SRC, 'utf8');
+    expect(registrySrc).not.toMatch(/'swarm-local'\s*:/);
+    expect(registrySrc).not.toMatch(/handId:\s*'swarm-local'/);
+  });
+
   it('file-search hand is available via default manifests without REGISTRY literal', () => {
     delete process.env.ATLAS_HAND_MANIFEST_DIR;
     resetManifestCacheForTests();
