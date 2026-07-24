@@ -38,10 +38,17 @@ function git(cwd: string, args: string[]): string {
 export function gatherGitDrift(cwd: string = process.cwd()): DriftInputs['git'] {
   try {
     const branch = git(cwd, ['rev-parse', '--abbrev-ref', 'HEAD']);
-    const counts = git(cwd, ['rev-list', '--left-right', '--count', '@{u}...HEAD']);
-    const [behindRemote, aheadRemote] = counts.split(/\s+/).map((n) => parseInt(n, 10));
-    if (!Number.isFinite(aheadRemote) || !Number.isFinite(behindRemote)) return null;
-    return { branch, aheadRemote, behindRemote };
+    try {
+      const counts = git(cwd, ['rev-list', '--left-right', '--count', '@{u}...HEAD']);
+      const [behindRemote, aheadRemote] = counts.split(/\s+/).map((n) => parseInt(n, 10));
+      if (!Number.isFinite(aheadRemote) || !Number.isFinite(behindRemote)) {
+        return { branch, aheadRemote: 0, behindRemote: 0 };
+      }
+      return { branch, aheadRemote, behindRemote };
+    } catch {
+      // No upstream (worktrees / local-only branches) — branch still observable.
+      return { branch, aheadRemote: 0, behindRemote: 0 };
+    }
   } catch {
     return null;
   }
