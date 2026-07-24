@@ -24,7 +24,8 @@ Independent verifier re-ran full suite under Git Bash; receipt: `GITBASH-AUDIT-R
 ### Sprint C — Swarm honest diversity — CLOSED
 M6 provider health wired through research-swarm routing; receipt: `SWARM-HONESTY-RECEIPT-2026-07-25.md`.
 
-## Parked
+### Sprint D — Live product loop — CLOSED (PASS-WITH-EXCEPTION)
+Receipt: `LIVE-PRODUCT-LOOP-RECEIPT-2026-07-25.md`. Fixed dist/manifests copy bug; goal state persists; Railway bot ok (redeploy pending).
 - OPSBOARD remote push (CEO deferred)
 - G-ATLAS-USER external distribution
 - VOLAURA product code from atlas-builder lane

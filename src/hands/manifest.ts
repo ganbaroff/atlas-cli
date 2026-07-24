@@ -14,7 +14,15 @@ export class ManifestValidationError extends Error {
   }
 }
 
-const DEFAULT_MANIFEST_DIR = join(dirname(fileURLToPath(import.meta.url)), 'manifests');
+const DEFAULT_MANIFEST_DIR = resolveDefaultManifestDir();
+
+function resolveDefaultManifestDir(): string {
+  const bundled = join(dirname(fileURLToPath(import.meta.url)), 'manifests');
+  if (existsSync(bundled)) return bundled;
+  const fromSrc = join(process.cwd(), 'src/hands/manifests');
+  if (existsSync(fromSrc)) return fromSrc;
+  return bundled;
+}
 
 let cached: Map<string, HandSpec> | null = null;
 

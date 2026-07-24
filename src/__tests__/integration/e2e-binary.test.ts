@@ -40,9 +40,9 @@ describe('E2E: atlas binary', () => {
   beforeAll(() => {
     // Build the binary — this is the first real test
     console.log('[e2e] Building atlas-cli with tsup...');
-    execSync('npx tsup src/cli.ts --format esm --dts --clean', {
+    execSync('npm run build', {
       cwd: ROOT,
-      timeout: 30_000,
+      timeout: 60_000,
       encoding: 'utf-8',
       stdio: 'pipe',
     });
@@ -51,6 +51,11 @@ describe('E2E: atlas binary', () => {
 
   it('tsup produces dist/cli.js', () => {
     expect(existsSync(DIST)).toBe(true);
+  });
+
+  it('build copies hand manifests into dist/manifests', () => {
+    expect(existsSync(resolve(ROOT, 'dist/manifests/local-readonly.json'))).toBe(true);
+    expect(existsSync(resolve(ROOT, 'dist/manifests/sonnet-foreground.json'))).toBe(true);
   });
 
   it('atlas --version prints semver', () => {

@@ -36,7 +36,7 @@
   ],
   "scripts": {
     "dev": "tsx src/cli.ts",
-    "build": "tsup src/cli.ts --format esm --dts --clean",
+    "build": "tsup src/cli.ts --format esm --dts --clean && node scripts/copy-manifests.mjs",
     "start": "node dist/cli.js",
     "test": "vitest",
     "typecheck": "tsc --noEmit"
