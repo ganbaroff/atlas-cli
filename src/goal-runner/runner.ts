@@ -27,6 +27,7 @@ import { getHand } from '../hands/registry.js';
 import { deriveEffectsFromHand, hasRedLine, redLineReason, isExternalTarget } from './red-line.js';
 import {
   createBudget,
+  loadBudget,
   saveBudget,
   checkBudget,
   recordAttempt,
@@ -47,6 +48,8 @@ export interface GoalRunnerInput {
   handId?: string;
   taskPlans?: TaskPlan[];
   browserActions?: BrowserAction[];
+  /** Resume after process death — load persisted budget for this goal id. */
+  resumeGoalId?: string;
   /** Injectable for testing — avoids real Telegram sends. */
   notifyCeo?: (kind: 'important', msg: string) => Promise<NotifyOutcome>;
 }
@@ -74,33 +77,68 @@ export async function runGoal(input: GoalRunnerInput): Promise<GoalReport> {
   const config: GoalRunnerConfig = { ...DEFAULT_GOAL_RUNNER_CONFIG, ...input.config };
   const notify = input.notifyCeo ?? ((kind: 'important', msg: string) => notifyCeoResult(kind, msg));
 
-  const goal = createGoal({
-    title: input.objective,
-    source: { kind: 'exec-graph', ref: 'goal-runner' },
-    actor: 'goal-runner',
-  });
+  const resumeGoalId = input.resumeGoalId;
+  let goalId: string;
+  let budget;
 
-  if (!acquireLease(goal.id)) {
-    return {
-      goalId: goal.id,
-      objective: input.objective,
-      status: 'failed',
-      tasksTotal: 0, tasksVerified: 0, tasksFailed: 0, tasksEscalated: 0,
-      wallTimeMs: 0,
-      details: [],
-    };
+  if (resumeGoalId) {
+    const loaded = loadBudget(resumeGoalId);
+    if (!loaded) {
+      return {
+        goalId: resumeGoalId,
+        objective: input.objective,
+        status: 'failed',
+        tasksTotal: 0, tasksVerified: 0, tasksFailed: 0, tasksEscalated: 0,
+        wallTimeMs: 0,
+        details: [],
+      };
+    }
+    if (!acquireLease(resumeGoalId)) {
+      return {
+        goalId: resumeGoalId,
+        objective: input.objective,
+        status: 'failed',
+        tasksTotal: 0, tasksVerified: 0, tasksFailed: 0, tasksEscalated: 0,
+        wallTimeMs: 0,
+        details: [],
+      };
+    }
+    goalId = resumeGoalId;
+    budget = loaded;
+    // Config frozen at first run — do not reset budgets on resume (M4).
+    budget.config = { ...budget.config, ...config };
+  } else {
+    const goal = createGoal({
+      title: input.objective,
+      source: { kind: 'exec-graph', ref: 'goal-runner' },
+      actor: 'goal-runner',
+    });
+    goalId = goal.id;
+
+    if (!acquireLease(goalId)) {
+      return {
+        goalId,
+        objective: input.objective,
+        status: 'failed',
+        tasksTotal: 0, tasksVerified: 0, tasksFailed: 0, tasksEscalated: 0,
+        wallTimeMs: 0,
+        details: [],
+      };
+    }
+    budget = createBudget(goalId, config);
   }
 
-  const budget = createBudget(goal.id, config);
   const startTime = Date.now();
   const taskReports: TaskReport[] = [];
 
   try {
     const handId = input.handId ?? 'browser-foreground';
     const plans = input.taskPlans ?? decomposeObjective(input.objective, handId);
-    budget.decompositionRounds = 1;
-    budget.totalTasksCreated = plans.length;
-    saveBudget(budget);
+    if (!resumeGoalId) {
+      budget.decompositionRounds = 1;
+      budget.totalTasksCreated = plans.length;
+      saveBudget(budget);
+    }
 
     // Acceptance/proof spec frozen before first execution (Round 16 item 2).
     const frozenAcceptance = plans.map(p => ({ title: p.taskTitle, criteria: p.acceptanceCriteria }));
@@ -109,7 +147,7 @@ export async function runGoal(input: GoalRunnerInput): Promise<GoalReport> {
       // ── Effective control re-check (M7: pause arriving mid-goal prevents next action) ──
       if (effectivelyPaused()) {
         const { task } = createTask({
-          goalId: goal.id, title: plan.taskTitle,
+          goalId: goalId, title: plan.taskTitle,
           riskClass: 'low',
           source: { kind: 'exec-graph', ref: 'goal-runner' },
           actor: 'goal-runner',
@@ -128,7 +166,7 @@ export async function runGoal(input: GoalRunnerInput): Promise<GoalReport> {
       // ── Red-line check ────────────────────────────────────────
       if (hasRedLine(plan.effects)) {
         const { task } = createTask({
-          goalId: goal.id,
+          goalId,
           title: plan.taskTitle,
           riskClass: 'irreversible',
           source: { kind: 'exec-graph', ref: 'goal-runner' },
@@ -158,7 +196,7 @@ export async function runGoal(input: GoalRunnerInput): Promise<GoalReport> {
         );
         if (externalNav) {
           const { task } = createTask({
-            goalId: goal.id, title: plan.taskTitle,
+            goalId: goalId, title: plan.taskTitle,
             riskClass: 'irreversible',
             source: { kind: 'exec-graph', ref: 'goal-runner' },
             actor: 'goal-runner',
@@ -180,7 +218,7 @@ export async function runGoal(input: GoalRunnerInput): Promise<GoalReport> {
 
       // ── Create exec-graph task ────────────────────────────────
       const { task } = createTask({
-        goalId: goal.id, title: plan.taskTitle,
+        goalId: goalId, title: plan.taskTitle,
         riskClass: 'low',
         source: { kind: 'exec-graph', ref: 'goal-runner' },
         actor: 'goal-runner',
@@ -281,11 +319,11 @@ export async function runGoal(input: GoalRunnerInput): Promise<GoalReport> {
     else status = 'failed';
 
     return {
-      goalId: goal.id, objective: input.objective, status,
+      goalId, objective: input.objective, status,
       tasksTotal: taskReports.length, tasksVerified, tasksFailed, tasksEscalated,
       wallTimeMs, details: taskReports,
     };
   } finally {
-    releaseLease(goal.id);
+    releaseLease(goalId);
   }
 }

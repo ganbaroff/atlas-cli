@@ -8,7 +8,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, rmSync, readFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
@@ -199,6 +199,53 @@ describe('2. Budgets & circuit breaker', () => {
     expect(acquireLease('gol_test00000000000008')).toBe(true);
     expect(acquireLease('gol_test00000000000008')).toBe(true);
     releaseLease('gol_test00000000000008');
+  });
+
+  it('2h. stale lease from dead pid allows a different goal to acquire (M4 resume)', () => {
+    writeFileSync(
+      join(budgetDir, 'active-lease.json'),
+      JSON.stringify({ goalId: 'gol_stale0000000000001', startedAt: NOW, pid: 999_999_999 }),
+    );
+    expect(acquireLease('gol_test00000000000009')).toBe(true);
+    releaseLease('gol_test00000000000009');
+  });
+
+  it('2i. kill-and-resume: persisted budget survives simulated process death', async () => {
+    const tight = {
+      maxAttemptsPerTask: 1, maxTotalAttempts: 5, maxTotalTasks: 2,
+      maxDecompositionRounds: 1, maxGraphDepth: 1, maxWallTimeMs: 30_000,
+    };
+    const report1 = await runGoal({
+      objective: 'M4 kill-resume budget test',
+      handId: 'sonnet-foreground',
+      config: tight,
+      notifyCeo: async () => ({ result: 'NOT_CONFIGURED' }),
+    });
+    const before = loadBudget(report1.goalId);
+    expect(before).not.toBeNull();
+    const attemptsBefore = before!.totalAttempts;
+    recordAttempt(before!, 'tsk_simulated_kill', attemptFingerprint('tsk_simulated_kill', 'plan', 'kill'));
+    saveBudget(before!);
+    writeFileSync(
+      join(budgetDir, 'active-lease.json'),
+      JSON.stringify({ goalId: report1.goalId, startedAt: NOW, pid: 999_999_999 }),
+    );
+
+    expect(acquireLease(report1.goalId)).toBe(true);
+    const reloaded = loadBudget(report1.goalId)!;
+    expect(reloaded.totalAttempts).toBe(attemptsBefore + 1);
+    expect(reloaded.goalId).toBe(report1.goalId);
+    releaseLease(report1.goalId);
+  });
+
+  it('2j. resumeGoalId without budget file returns failed report', async () => {
+    const report = await runGoal({
+      objective: 'missing budget',
+      resumeGoalId: 'gol_nonexistent00000001',
+      notifyCeo: async () => ({ result: 'NOT_CONFIGURED' }),
+    });
+    expect(report.status).toBe('failed');
+    expect(report.tasksTotal).toBe(0);
   });
 });
 

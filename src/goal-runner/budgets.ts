@@ -107,12 +107,28 @@ interface GoalLease {
   pid: number;
 }
 
+/** Returns true if pid appears to be a live process (platform-specific). */
+export function isProcessAlive(pid: number): boolean {
+  if (!Number.isFinite(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err: unknown) {
+    const code = (err as NodeJS.ErrnoException)?.code;
+    if (code === 'EPERM') return true;
+    return false;
+  }
+}
+
 export function acquireLease(goalId: string): boolean {
   const leasePath = join(budgetDir(), LEASE_FILE);
   if (existsSync(leasePath)) {
     try {
       const existing: GoalLease = JSON.parse(readFileSync(leasePath, 'utf8'));
-      if (existing.goalId && existing.goalId !== goalId) return false;
+      if (existing.goalId && existing.goalId !== goalId) {
+        if (isProcessAlive(existing.pid)) return false;
+        // Stale lease from dead process — allow takeover (M4 resume).
+      }
     } catch { /* corrupt lease = acquirable */ }
   }
   writeAtomic(leasePath, JSON.stringify({ goalId, startedAt: new Date().toISOString(), pid: process.pid }));
