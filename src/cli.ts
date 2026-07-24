@@ -492,12 +492,14 @@ goalCmd
   .option('--hand <handId>', 'Hand to use for execution', 'browser-foreground')
   .option('--max-attempts <n>', 'Max attempts per task', '3')
   .option('--max-wall-time <ms>', 'Max wall time in milliseconds', '300000')
+  .option('--resume <goalId>', 'Resume a previously started goal after process death')
   .action(async (objectiveParts: string[], opts) => {
     try {
       const { runGoal } = await import('./goal-runner/runner.js');
       const report = await runGoal({
         objective: objectiveParts.join(' '),
         handId: opts.hand,
+        resumeGoalId: opts.resume,
         config: {
           maxAttemptsPerTask: parseInt(opts.maxAttempts, 10) || 3,
           maxWallTimeMs: parseInt(opts.maxWallTime, 10) || 300_000,

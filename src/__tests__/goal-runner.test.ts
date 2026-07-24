@@ -247,6 +247,38 @@ describe('2. Budgets & circuit breaker', () => {
     expect(report.status).toBe('failed');
     expect(report.tasksTotal).toBe(0);
   });
+
+  it('2k. resumeGoalId reuses terminal exec-graph task without duplicate creation', async () => {
+    const tight = {
+      maxAttemptsPerTask: 1, maxTotalAttempts: 5, maxTotalTasks: 2,
+      maxDecompositionRounds: 1, maxGraphDepth: 1, maxWallTimeMs: 30_000,
+    };
+    const report1 = await runGoal({
+      objective: 'M4 resume exec-graph reuse',
+      handId: 'sonnet-foreground',
+      config: tight,
+      notifyCeo: async () => ({ result: 'NOT_CONFIGURED' }),
+    });
+    expect(report1.status).toBe('escalated');
+    const taskIdFirst = report1.details[0]!.taskId;
+
+    writeFileSync(
+      join(budgetDir, 'active-lease.json'),
+      JSON.stringify({ goalId: report1.goalId, startedAt: NOW, pid: 999_999_999 }),
+    );
+
+    const report2 = await runGoal({
+      objective: 'M4 resume exec-graph reuse',
+      handId: 'sonnet-foreground',
+      resumeGoalId: report1.goalId,
+      config: tight,
+      notifyCeo: async () => ({ result: 'NOT_CONFIGURED' }),
+    });
+    expect(report2.status).toBe('escalated');
+    expect(report2.tasksTotal).toBe(1);
+    expect(report2.details[0]!.taskId).toBe(taskIdFirst);
+    expect(report2.details[0]!.finalStatus).toBe('escalated');
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════

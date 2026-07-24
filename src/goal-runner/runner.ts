@@ -16,7 +16,8 @@
  */
 
 import { createHash } from 'node:crypto';
-import { createGoal, createTask, moveTask } from '../exec-graph/api.js';
+import { createGoal, createTask, moveTask, listTasks } from '../exec-graph/api.js';
+import type { Task, TaskStatus } from '../exec-graph/contracts.js';
 import {
   assignHand,
   submitReceipt,
@@ -56,6 +57,35 @@ export interface GoalRunnerInput {
 
 function planHash(plan: TaskPlan): string {
   return createHash('sha256').update(JSON.stringify(plan)).digest('hex').slice(0, 16);
+}
+
+const TERMINAL_TASK_STATUSES = new Set<TaskStatus>([
+  'verified', 'rejected', 'escalated', 'closed', 'blocked',
+]);
+
+function taskStatusToFinalStatus(status: TaskStatus): string {
+  if (status === 'verified') return 'verified';
+  if (status === 'rejected') return 'rejected';
+  if (status === 'escalated') return 'escalated';
+  if (status === 'blocked') return 'blocked';
+  if (status === 'closed') return 'verified';
+  return 'failed';
+}
+
+function findExistingTaskForPlan(goalId: string, plan: TaskPlan): Task | undefined {
+  return listTasks({ goalId }).find((t) => t.title === plan.taskTitle);
+}
+
+function resumeTaskReport(task: Task, plan: TaskPlan, budget: ReturnType<typeof loadBudget>): TaskReport {
+  const lastTransition = task.transitions.at(-1);
+  return {
+    taskId: task.id,
+    title: plan.taskTitle,
+    handId: plan.handId,
+    finalStatus: taskStatusToFinalStatus(task.status),
+    attempts: budget?.taskAttempts[task.id] ?? 0,
+    verifierReason: lastTransition?.note,
+  };
 }
 
 /**
@@ -144,6 +174,14 @@ export async function runGoal(input: GoalRunnerInput): Promise<GoalReport> {
     const frozenAcceptance = plans.map(p => ({ title: p.taskTitle, criteria: p.acceptanceCriteria }));
 
     for (const plan of plans) {
+      if (resumeGoalId) {
+        const existing = findExistingTaskForPlan(goalId, plan);
+        if (existing && TERMINAL_TASK_STATUSES.has(existing.status)) {
+          taskReports.push(resumeTaskReport(existing, plan, budget));
+          continue;
+        }
+      }
+
       // ── Effective control re-check (M7: pause arriving mid-goal prevents next action) ──
       if (effectivelyPaused()) {
         const { task } = createTask({
@@ -216,15 +254,24 @@ export async function runGoal(input: GoalRunnerInput): Promise<GoalReport> {
         }
       }
 
-      // ── Create exec-graph task ────────────────────────────────
-      const { task } = createTask({
-        goalId: goalId, title: plan.taskTitle,
-        riskClass: 'low',
-        source: { kind: 'exec-graph', ref: 'goal-runner' },
-        actor: 'goal-runner',
-      });
-      moveTask({ taskId: task.id, to: 'accepted', actor: 'goal-runner' });
-      moveTask({ taskId: task.id, to: 'planned', actor: 'goal-runner' });
+      // ── Create or reuse exec-graph task ───────────────────────
+      let task: Task;
+      const reusable = resumeGoalId ? findExistingTaskForPlan(goalId, plan) : undefined;
+      if (reusable && !TERMINAL_TASK_STATUSES.has(reusable.status)) {
+        task = reusable;
+      } else {
+        const created = createTask({
+          goalId: goalId, title: plan.taskTitle,
+          riskClass: 'low',
+          source: { kind: 'exec-graph', ref: 'goal-runner' },
+          actor: 'goal-runner',
+        });
+        task = created.task;
+        budget.totalTasksCreated += 1;
+        saveBudget(budget);
+        moveTask({ taskId: task.id, to: 'accepted', actor: 'goal-runner' });
+        moveTask({ taskId: task.id, to: 'planned', actor: 'goal-runner' });
+      }
 
       // ── Budget check ──────────────────────────────────────────
       const budgetCheck = checkBudget(budget, task.id);
