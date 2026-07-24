@@ -355,3 +355,24 @@ export async function routeModelWithFallback(
 export function listAvailableModels(): ModelConfig[] {
   return MODEL_REGISTRY.filter((m) => isAvailable(m.provider));
 }
+
+export function isKnownProvider(name: string): name is ProviderName {
+  return MODEL_REGISTRY.some((m) => m.provider === name);
+}
+
+export function isProviderConfigured(provider: ProviderName): boolean {
+  return isAvailable(provider);
+}
+
+export function providerSupportsWorkerRole(provider: ProviderName): boolean {
+  return MODEL_REGISTRY.some((m) => m.provider === provider && m.roles.includes('WORKER'));
+}
+
+/** Distinct WORKER providers that pass isAvailable() right now. */
+export function listAvailableWorkerProviders(): ProviderName[] {
+  const seen = new Set<ProviderName>();
+  for (const m of MODEL_REGISTRY) {
+    if (m.roles.includes('WORKER') && isAvailable(m.provider)) seen.add(m.provider);
+  }
+  return [...seen];
+}

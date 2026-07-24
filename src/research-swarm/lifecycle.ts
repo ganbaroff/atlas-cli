@@ -20,6 +20,10 @@ import {
   ProviderRoutingError,
   routeWorkerProvider,
 } from './provider-routing.js';
+import {
+  auditPerspectiveConfig,
+  validateDeclaredWorkerProvider,
+} from './perspective-config.js';
 import { runJudge } from './synthesis.js';
 import {
   isPastDeadline,
@@ -54,6 +58,22 @@ async function runWorkerBounded(
 ): Promise<WorkerEvidence> {
   const t0 = Date.now();
   const declared = subtask.provider;
+
+  const preflight = validateDeclaredWorkerProvider(declared);
+  if (!preflight.ok) {
+    return {
+      id: subtask.id,
+      perspective: subtask.perspective,
+      declaredProvider: declared,
+      actualProvider: declared ?? 'none',
+      actualModelId: 'none',
+      modelFamily: 'none',
+      status: preflight.status,
+      output: '',
+      durationMs: Date.now() - t0,
+      error: preflight.error.slice(0, 200),
+    };
+  }
 
   let route;
   try {
@@ -224,6 +244,51 @@ export async function runResearchSwarm(
   const runId = newRunId();
   const deadline = Date.now() + timeouts.globalMs;
   const memoryState = await probeMemoryState();
+
+  const configAudit = auditPerspectiveConfig(PERSPECTIVES);
+  for (const issue of configAudit.issues) {
+    console.warn(
+      `[research-swarm] perspective '${issue.perspective}' provider=${issue.provider}: ${issue.code} — ${issue.message}`,
+    );
+  }
+  console.log(
+    `[research-swarm] worker providers available: ${configAudit.availableWorkerProviders.join(', ') || 'none'}`,
+  );
+
+  if (configAudit.availableWorkerProviders.length === 0) {
+    const completedAt = new Date().toISOString();
+    const durationMs = Date.parse(completedAt) - Date.parse(startedAt);
+    const artifact = buildArtifact({
+      runId,
+      taskHash: taskHash(task),
+      task,
+      startedAt,
+      completedAt,
+      durationMs,
+      status: 'MULTIMODEL_UNAVAILABLE',
+      exitReason: 'no_worker_providers_available',
+      memoryState,
+      workers: [],
+      judge: null,
+      claims: [],
+      dissent: configAudit.issues.map((i) => ({
+        text: `[${i.perspective}] ${i.code}: ${i.message}`,
+        sources: [],
+        dissent: true,
+      })),
+      diversity: evaluateDiversity([]),
+      consensus: null,
+      synthesis:
+        'No WORKER providers are configured and available on this machine. Fix API keys or perspectives config.',
+      bridgeSource: opts.bridgeSource ?? 'typescript',
+    });
+    await writeArtifact(artifact);
+    return {
+      artifact,
+      synthesis: artifact.synthesis,
+      exitCode: exitCodeForStatus('MULTIMODEL_UNAVAILABLE'),
+    };
+  }
 
   const subtasks = decomposeWithPerspectives(task);
   console.log(`[research-swarm] runId=${runId.slice(0, 8)} perspectives=${subtasks.length}`);

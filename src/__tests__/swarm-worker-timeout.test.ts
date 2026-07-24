@@ -60,6 +60,18 @@ vi.mock('../atlas/control-plane.js', () => ({
 
 vi.mock('../atlas/spend-policy.js', () => ({
   isPaused: vi.fn(() => false),
+  isPaidProvider: vi.fn(() => false),
+  paidAllowed: vi.fn(() => false),
+}));
+
+vi.mock('../research-swarm/perspective-config.js', () => ({
+  auditPerspectiveConfig: vi.fn(() => ({
+    issues: [],
+    availableWorkerProviders: ['nvidia'],
+    declaredCount: 0,
+    routableDeclaredCount: 0,
+  })),
+  validateDeclaredWorkerProvider: vi.fn(() => ({ ok: true })),
 }));
 
 describe('swarm — per-worker timeout (ATLAS_SWARM_WORKER_TIMEOUT_MS)', () => {
