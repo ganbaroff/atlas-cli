@@ -1,19 +1,55 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Isolated from swarm.test.ts on purpose: that file leaves runSwarm's real network path
-// alone (gated behind it.skipIf(!process.env.NVIDIA_API_KEY)). Here we fully mock every
-// swarm.ts dependency that would otherwise make a real model call or touch the real
-// memory-root filesystem, so runSwarmDetailed()/runSwarm() can be exercised deterministically
-// with NO real network/LLM call and no writes outside the mock.
+let generateDelayMs = 0;
+
+vi.mock('@mastra/core/agent', () => ({
+  Agent: vi.fn().mockImplementation(() => ({
+    generate: vi.fn(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(
+            () => resolve({ text: 'mock worker output with enough content for validation' }),
+            generateDelayMs,
+          );
+        }),
+    ),
+  })),
+}));
+
+vi.mock('../research-swarm/provider-routing.js', () => ({
+  routeWorkerProvider: vi.fn(() => ({
+    provider: 'nvidia',
+    modelId: 'mock-model',
+    model: {},
+    costTier: 0,
+  })),
+  routeJudgeProvider: vi.fn(() => ({
+    provider: 'nvidia',
+    modelId: 'mock-judge',
+    model: {},
+    costTier: 0,
+  })),
+  ProviderRoutingError: class extends Error { name = 'ProviderRoutingError'; },
+}));
+
+vi.mock('../atlas/brain-planner.js', () => ({
+  buildAtlasBrainPlan: vi.fn(async () => ({ systemPrompt: 'mock' })),
+}));
 
 vi.mock('../agent.js', () => ({
-  createAtlasAgentWithRoute: vi.fn(async () => ({
-    agent: {
-      generate: vi.fn(async () => ({ text: 'mock synthesis output' })),
-    },
-    route: { provider: 'nvidia', modelId: 'mock-model' },
-  })),
   recordAgentSpend: vi.fn(),
+}));
+
+vi.mock('../research-swarm/memory-state.js', () => ({
+  probeMemoryState: vi.fn(async () => 'LOCAL_ONLY'),
+}));
+
+vi.mock('../research-swarm/artifact.js', () => ({
+  buildArtifact: vi.fn((a: unknown) => a),
+  exitCodeForStatus: vi.fn((s: string) => (s === 'SUCCESS' ? 0 : 1)),
+  newRunId: vi.fn(() => 'test-run'),
+  taskHash: vi.fn(() => 'hash'),
+  writeArtifact: vi.fn(async () => '/tmp/mock-artifact.json'),
 }));
 
 vi.mock('../atlas/swarm-logger.js', () => ({
@@ -30,6 +66,12 @@ vi.mock('../atlas/spend-policy.js', () => ({
 }));
 
 describe('swarm — runSwarmDetailed / runSwarm (fully mocked, no network)', () => {
+  beforeEach(() => {
+    generateDelayMs = 5;
+    process.env.ATLAS_SWARM_WORKER_TIMEOUT_MS = '5000';
+    process.env.ATLAS_SWARM_JUDGE_TIMEOUT_MS = '5000';
+  });
+
   it('runSwarmDetailed returns subtasks[], results[], string synthesis, numeric durationMs, and jidokaViolation (string|null)', async () => {
     const { runSwarmDetailed } = await import('../swarm.js');
     const detail = await runSwarmDetailed('mock task for detailed run');
@@ -38,47 +80,26 @@ describe('swarm — runSwarmDetailed / runSwarm (fully mocked, no network)', () 
     expect(detail.subtasks.length).toBeGreaterThan(0);
     expect(Array.isArray(detail.results)).toBe(true);
     expect(detail.results.length).toBe(detail.subtasks.length);
-
     expect(typeof detail.synthesis).toBe('string');
     expect(detail.synthesis.length).toBeGreaterThan(0);
-
     expect(typeof detail.durationMs).toBe('number');
     expect(Number.isFinite(detail.durationMs)).toBe(true);
-
     expect(detail.jidokaViolation === null || typeof detail.jidokaViolation === 'string').toBe(true);
   });
 
-  it('runSwarm still returns the synthesis string — same value as runSwarmDetailed(...).synthesis under the same mock', async () => {
+  it('runSwarm returns synthesis string', async () => {
     const { runSwarm, runSwarmDetailed } = await import('../swarm.js');
-
     const detail = await runSwarmDetailed('regression task', false);
     const synthesis = await runSwarm('regression task', false);
-
     expect(typeof synthesis).toBe('string');
     expect(synthesis).toBe(detail.synthesis);
   });
 
-  it("WorkerResult.provider reports the real routed provider (route.provider from the mock), not the perspective's declared provider label", async () => {
+  it('WorkerResult.provider reports actual routed provider (nvidia from mock)', async () => {
     const { runSwarmDetailed } = await import('../swarm.js');
     const detail = await runSwarmDetailed('mock task — honest provider check');
-
-    // The mocked createAtlasAgentWithRoute always resolves route.provider = 'nvidia',
-    // regardless of what each perspective declares in its own `provider` field. Every
-    // WorkerResult must report that real routed provider — never the perspective's
-    // declared label, which can name a provider that was never actually called (e.g.
-    // "anthropic", since anthropic is excluded from the model router before routing).
     for (const r of detail.results) {
       expect(r.provider).toBe('nvidia');
-    }
-
-    // Strongest proof: if the loaded perspectives declare a provider other than the
-    // mocked route's provider for at least one subtask, confirm the corresponding
-    // result did NOT inherit that dishonest declared label.
-    const mismatched = detail.subtasks.find((s) => s.provider && s.provider !== 'nvidia');
-    if (mismatched) {
-      const result = detail.results.find((r) => r.id === mismatched.id);
-      expect(result?.provider).toBe('nvidia');
-      expect(result?.provider).not.toBe(mismatched.provider);
     }
   });
 });

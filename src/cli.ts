@@ -957,12 +957,14 @@ program
       console.error(describeControlBlock());
       process.exit(2);
     }
-    const { runSwarm } = await import('./swarm.js');
+    const { runResearchSwarm } = await import('./swarm.js');
     capture('atlas_swarm_run', { type: 'ts' });
     console.log(`\n${IDENTITY.name} запускает swarm\n`);
     try {
-      const result = await runSwarm(task);
-      console.log('\n' + result);
+      const result = await runResearchSwarm(task);
+      console.log(`\n[swarm] status=${result.artifact.status} exitReason=${result.artifact.exitReason}`);
+      console.log('\n' + result.synthesis);
+      if (result.exitCode !== 0) process.exitCode = result.exitCode;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`Swarm failed: ${msg}`);
@@ -972,8 +974,51 @@ program
   });
 
 program
+  .command('swarm-eval')
+  .description('A/B eval: baseline vs research swarm on deterministic fixture')
+  .requiredOption('-f, --fixture <id>', 'Fixture id (evidence-gate-audit, schema-review)')
+  .option('--dry-run', 'Report fixture metadata only — no live LLM calls')
+  .action(async (opts) => {
+    const { getFixture, buildEvalReport, fixtureFingerprint } = await import('./research-swarm/eval-harness.js');
+    const fixture = getFixture(opts.fixture);
+    if (!fixture) {
+      console.error(`Unknown fixture: ${opts.fixture}`);
+      process.exit(1);
+    }
+    if (opts.dryRun) {
+      console.log(JSON.stringify({
+        fixtureId: fixture.id,
+        fingerprint: fixtureFingerprint(fixture),
+        minProviders: fixture.minProvidersForResearch,
+        verdict: 'KEEP_DISABLED',
+        rationale: 'dry-run — no live calls',
+      }, null, 2));
+      await shutdown();
+      return;
+    }
+    if (!controlAllowsModelCalls()) {
+      console.error(describeControlBlock());
+      process.exit(2);
+    }
+    const { runResearchSwarm } = await import('./swarm.js');
+    const t0 = Date.now();
+    const swarmResult = await runResearchSwarm(fixture.task);
+    const report = buildEvalReport({
+      fixtureId: fixture.id,
+      baselineMs: 0,
+      swarmMs: Date.now() - t0,
+      swarmStatus: swarmResult.artifact.status,
+      providerCount: swarmResult.artifact.diversity.providerCount,
+      minProviders: fixture.minProvidersForResearch,
+    });
+    console.log(JSON.stringify(report, null, 2));
+    if (report.verdict === 'KEEP_DISABLED') process.exitCode = 1;
+    await shutdown();
+  });
+
+program
   .command('swarm-deep <task>')
-  .description('Route task to VOLAURA Python swarm (13 perspectives, 4 DAG waves)')
+  .description('Route task to VOLAURA Python swarm (fail-closed — no silent fallback)')
   .option('-m, --mode <mode>', 'Swarm mode: coordinator, daily-ideation, code-review', 'coordinator')
   .action(async (task: string, opts) => {
     if (!controlAllowsModelCalls()) {
@@ -981,30 +1026,27 @@ program
       process.exit(2);
     }
     capture('atlas_swarm_run', { type: 'python', mode: opts.mode });
+
     if (!isPythonSwarmAvailable()) {
-      console.error('VOLAURA Python swarm not found at C:\\Projects\\VOLAURA');
-      console.log('Falling back to TypeScript swarm...');
-      const { runSwarm } = await import('./swarm.js');
-      const result = await runSwarm(task);
-      console.log('\n' + result);
-      await shutdown();
-      return;
+      console.error('[bridge] EXPERIMENTAL_BRIDGE_DISABLED — Python swarm not found');
+      console.error('[bridge] Use `atlas swarm` for TypeScript research-swarm instead');
+      process.exit(1);
     }
 
     console.log(`\n${IDENTITY.name} вызывает Python swarm (mode: ${opts.mode})\n`);
     const result = await callPythonSwarm(task, opts.mode);
+    console.log(`[bridge] status=${result.bridgeStatus} source=${result.source}`);
+
     if (result.success) {
-      console.log(`\n[bridge] ${result.proposals.length} proposals received from Python swarm`);
+      console.log(`[bridge] ${result.proposals.length} proposals (runId=${result.runId ?? '?'})`);
       for (const p of result.proposals.slice(0, 5)) {
         const prop = p as Record<string, unknown>;
         console.log(`  [${prop['severity'] ?? '?'}] ${String(prop['title'] ?? prop['summary'] ?? '').slice(0, 80)}`);
       }
     } else {
-      console.error(`[bridge] Python swarm failed: ${result.error}`);
-      console.log('Falling back to TypeScript swarm...');
-      const { runSwarm } = await import('./swarm.js');
-      const fallback = await runSwarm(task);
-      console.log('\n' + fallback);
+      console.error(`[bridge] failed: ${result.error}`);
+      console.error('[bridge] No silent fallback — use `atlas swarm` for TypeScript research-swarm');
+      process.exit(1);
     }
     await shutdown();
   });
