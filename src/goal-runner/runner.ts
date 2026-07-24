@@ -42,6 +42,7 @@ import { effectivelyPaused } from '../atlas/control-plane.js';
 import { DEFAULT_GOAL_RUNNER_CONFIG, type GoalRunnerConfig, type GoalReport, type TaskReport, type TaskPlan } from './types.js';
 import type { BrowserAction } from '../hands/browser-actions.js';
 import { BrowserSession } from '../hands/browser-adapter.js';
+import { writeGoalTerminalClaim } from './evidence-writeback.js';
 
 export interface GoalRunnerInput {
   objective: string;
@@ -365,11 +366,13 @@ export async function runGoal(input: GoalRunnerInput): Promise<GoalReport> {
     else if (tasksVerified > 0) status = 'partial';
     else status = 'failed';
 
-    return {
+    const report: GoalReport = {
       goalId, objective: input.objective, status,
       tasksTotal: taskReports.length, tasksVerified, tasksFailed, tasksEscalated,
       wallTimeMs, details: taskReports,
     };
+    writeGoalTerminalClaim(report, input.handId ?? taskReports[0]?.handId ?? 'unknown');
+    return report;
   } finally {
     releaseLease(goalId);
   }

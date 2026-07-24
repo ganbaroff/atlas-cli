@@ -18,8 +18,8 @@ _Last written: 2026-07-25 by proof-closure M6→M10. Read this FIRST on resume._
 - **M9 OPSBOARD integration — CLOSED** `5448b6d` / independent verifier PASS
 - **M10-internal install/upgrade/rollback — CLOSED** (see M10-VERIFIER-RECEIPT-2026-07-25)
 - **Integration tip:** `main` @ **`ae79bf2`** (PR #13 merged, Railway + Supabase live)
-- **Roadmap:** [`POST-M10-ROADMAP.md`](POST-M10-ROADMAP.md) — Sprint A manifest migration in progress
-- **NEXT:** Sprint E goal evidence write-back → Railway redeploy from tip
+- **Roadmap:** [`POST-M10-ROADMAP.md`](POST-M10-ROADMAP.md) — **Sprints A–E CLOSED** @ `9f0a831`
+- **NEXT:** Railway redeploy from tip · G-ATLAS-USER (parked) · VOLAURA codex-loop append (CEO gate)
 
 ## VERIFIED 2026-07-25 (proof-closure)
 - Full suite: **814 passed, 2 skipped** (incl. M10 lifecycle)

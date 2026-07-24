@@ -26,9 +26,15 @@ M6 provider health wired through research-swarm routing; receipt: `SWARM-HONESTY
 
 ### Sprint D — Live product loop — CLOSED (PASS-WITH-EXCEPTION)
 Receipt: `LIVE-PRODUCT-LOOP-RECEIPT-2026-07-25.md`. Fixed dist/manifests copy bug; goal state persists; Railway bot ok (redeploy pending).
+
+### Sprint E — Goal → Evidence write-back — CLOSED
+Receipt: `GOAL-EVIDENCE-RECEIPT-2026-07-25.md`. Terminal goals append M8 ledger claim; fail-open.
+
+## Parked
 - OPSBOARD remote push (CEO deferred)
 - G-ATLAS-USER external distribution
 - VOLAURA product code from atlas-builder lane
+- Railway redeploy from latest `main` tip
 
 ## Verify
 ```
