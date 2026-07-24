@@ -7,7 +7,7 @@
  * fixture e2e through goal-runner → browser-foreground → hub71-fake-form.html.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -448,14 +448,14 @@ describe('4. Submit-click hardening', () => {
   const fixtureUrl = `file://${fixturePath.replace(/\\/g, '/')}`;
   let session: BrowserSession;
 
-  beforeEach(async () => {
+  beforeAll(async () => {
     session = new BrowserSession();
     await session.launch();
-  }, 30_000);
+  }, 60_000);
 
-  afterEach(async () => {
+  afterAll(async () => {
     await session.close();
-  });
+  }, 30_000);
 
   it('4a. explicit type=submit button click is DENIED', async () => {
     await session.execute({ kind: 'navigate', url: fixtureUrl });
