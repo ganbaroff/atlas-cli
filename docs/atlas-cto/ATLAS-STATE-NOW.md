@@ -17,10 +17,8 @@ _Last written: 2026-07-25 by proof-closure M6→M10. Read this FIRST on resume._
 - **M8 Evidence audit — CLOSED** `26820ea` / independent verifier PASS
 - **M9 OPSBOARD integration — CLOSED** `5448b6d` / independent verifier PASS
 - **M10-internal install/upgrade/rollback — CLOSED** (see M10-VERIFIER-RECEIPT-2026-07-25)
-- **Integration tip:** `feat/arsenal-wiring` (pushed origin)
-- **Independent stack receipt:** `docs/atlas-cto/M6-M9-VERIFIER-RECEIPT-2026-07-25.md` → **PASS-WITH-EXCEPTION** @ `5448b6d`
-- **Codex consolidated:** `docs/atlas-cto/M4-M9-CODEX-LOOP-CONSOLIDATED-2026-07-25.md`
-- **NEXT:** merge `feat/arsenal-wiring` → `main` (PR #13); live Supabase `llm_spend` apply; Atlas product hardening — **NOT OPSBOARD**
+- **Integration tip:** `main` @ **`16645b5`** (merged PR #13); Railway redeployed 2026-07-25
+- **NEXT:** Atlas product — manifest hands migration, Git-Bash audit debt, swarm live diversity (honest)
 
 ## VERIFIED 2026-07-25 (proof-closure)
 - Full suite: **814 passed, 2 skipped** (incl. M10 lifecycle)
@@ -29,7 +27,7 @@ _Last written: 2026-07-25 by proof-closure M6→M10. Read this FIRST on resume._
 - M10: install / upgrade / rollback child-process E2E PASS-WITH-EXCEPTION
 
 ## OPEN / CEO GATES
-1. **b1 Supabase** — apply `db/apply-llm-spend.ps1` + live smoke (`M6-LIVE-SMOKE-GATE.md`) — **OPEN**
+1. **b1 Supabase** — **CLOSED** 2026-07-25 (`M6-LIVE-SMOKE-RECEIPT-2026-07-25.md`)
 2. **OPSBOARD remote push** — deferred (CEO: Atlas focus, not OPSBOARD)
 3. **VOLAURA codex-loop append** — consolidated block ready; CEO/verifier-lane writes `codex-loop.md`
 4. **Git-Bash audit debt (M2+M3)** — codex-verifier seat
