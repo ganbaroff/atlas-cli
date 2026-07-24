@@ -26,6 +26,7 @@ import { runHealthCheck, formatHealthReport } from './atlas/health-check.js';
 import type { ModelRole } from './model-router.js';
 import * as readline from 'node:readline';
 import { capture, shutdown } from './analytics.js';
+import { acquireInstanceLease } from './atlas/instance-lease.js';
 
 // CWD-FIX: resolve .env from module dir, not process.cwd()
 import { parse as dotenvParse } from 'dotenv';
@@ -1367,5 +1368,10 @@ assistCmd
   });
 
 if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith('cli.js')) {
+  const instanceLease = acquireInstanceLease();
+  if (instanceLease.mode === 'readonly') {
+    console.error(`[atlas] READ-ONLY MODE: ${instanceLease.reason ?? 'another instance holds the lease'}`);
+    process.env.ATLAS_READONLY = '1';
+  }
   program.parse();
 }
