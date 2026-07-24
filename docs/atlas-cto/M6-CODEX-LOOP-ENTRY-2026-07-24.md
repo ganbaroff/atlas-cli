@@ -30,6 +30,6 @@ npm test -- --run src/__tests__/m6-*.test.ts → PASS
 - Supabase insert may 400 until correlation_id column applied — non-blocking
 
 ## 6. Commit hash + counts
-- Tip: (fill on push)
+- Tip: `7d73cc9`
 - Windows / PowerShell / Node
 - vitest: 792 passed, 2 skipped
