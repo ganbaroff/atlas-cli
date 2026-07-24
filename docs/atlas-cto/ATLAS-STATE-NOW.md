@@ -10,7 +10,7 @@ _Last written: 2026-07-25 by proof-closure M6→M10. Read this FIRST on resume._
 - **M2 Browser Hand — CLOSED** `b21228b` (Git-Bash audit debt)
 - **M3 Goal Runner — CLOSED** `0983154` (Git-Bash audit debt)
 - **M7 Control+Notify+Supervised-Assist — CLOSED** `8456289`
-- **Research-swarm — INTEGRATED** `4c25cac` (RESEARCH_ONLY_LIMITED)
+- **Research-swarm — INTEGRATED** `4c25cac` (RESEARCH_ONLY_LIMITED · M6-health wired — `SWARM-HONESTY-RECEIPT-2026-07-25.md`)
 - **M4 Durable memory — CLOSED** `8815b3f` / verifier PASS-WITH-EXCEPTION
 - **M6 Provider health+spend — CLOSED** `41312f5` / independent verifier PASS-WITH-EXCEPTION
 - **M5 Manifest SDK + M4 debt — CLOSED** `a7675e2` / independent verifier PASS

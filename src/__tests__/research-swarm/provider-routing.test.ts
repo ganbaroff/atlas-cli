@@ -1,13 +1,27 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { routeWorkerProvider, ProviderRoutingError } from '../../research-swarm/provider-routing.js';
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { routeWorkerProvider, routeJudgeProvider, ProviderRoutingError } from '../../research-swarm/provider-routing.js';
+import { clearProviderHealthForTests, markProviderDead } from '../../atlas/provider-health.js';
 
 describe('research-swarm provider-routing', () => {
+  let healthDir: string;
+
   beforeEach(() => {
+    healthDir = mkdtempSync(join(tmpdir(), 'atlas-swarm-route-'));
+    process.env.ATLAS_PROVIDER_HEALTH_DIR = healthDir;
+    clearProviderHealthForTests();
     vi.unstubAllEnvs();
     vi.stubEnv('NVIDIA_API_KEY', 'test-nvidia');
     vi.stubEnv('GROQ_API_KEY', 'test-groq');
     vi.stubEnv('ATLAS_PREFERRED_PROVIDER', '');
     vi.stubEnv('ATLAS_ALLOW_PAID', '');
+  });
+
+  afterEach(() => {
+    delete process.env.ATLAS_PROVIDER_HEALTH_DIR;
+    rmSync(healthDir, { recursive: true, force: true });
   });
 
   it('routes worker to preferred provider without mutating ATLAS_PREFERRED_PROVIDER', () => {
@@ -37,5 +51,22 @@ describe('research-swarm provider-routing', () => {
   it('falls back to default when no preference given', () => {
     const route = routeWorkerProvider({});
     expect(route.provider).toBe('nvidia');
+  });
+
+  it('M6 honesty: dead preferred provider is not assignable to swarm worker', () => {
+    markProviderDead('nvidia', 'simulated auth failure', 60_000);
+    expect(() => routeWorkerProvider({ preferred: 'nvidia' })).toThrow(ProviderRoutingError);
+    expect(() => routeWorkerProvider({ preferred: 'nvidia' })).toThrow(/dead\/cooldown/);
+  });
+
+  it('M6 honesty: healthy provider proceeds for swarm worker', () => {
+    const route = routeWorkerProvider({ preferred: 'groq' });
+    expect(route.provider).toBe('groq');
+  });
+
+  it('M6 honesty: judge route never assigns a dead provider', () => {
+    markProviderDead('nvidia', 'simulated death', 60_000);
+    const route = routeJudgeProvider();
+    expect(route.provider).not.toBe('nvidia');
   });
 });
