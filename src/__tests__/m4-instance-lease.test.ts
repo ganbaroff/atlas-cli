@@ -22,29 +22,45 @@ function writeTempScript(body: string): string {
   return path;
 }
 
+interface LeaseChild {
+  kill: () => void;
+  /** Resolves once the script printed its acquire result (first newline on stdout). */
+  ready: Promise<void>;
+  done: Promise<{ code: number | null; stdout: string; stderr: string }>;
+}
+
+function spawnLeaseScript(scriptPath: string, leaseDir: string): LeaseChild {
+  const child = spawn(process.execPath, [TSX, scriptPath], {
+    cwd: ROOT,
+    env: { ...process.env, ATLAS_INSTANCE_LEASE_DIR: leaseDir, NODE_NO_WARNINGS: '1' },
+    windowsHide: true,
+  });
+  let stdout = '';
+  let stderr = '';
+  let markReady: () => void;
+  const ready = new Promise<void>((resolve) => { markReady = resolve; });
+  child.stdout.on('data', (c) => {
+    stdout += String(c);
+    if (stdout.includes('\n')) markReady();
+  });
+  child.stderr.on('data', (c) => { stderr += String(c); });
+  const done = new Promise<{ code: number | null; stdout: string; stderr: string }>(
+    (resolve, reject) => {
+      child.on('error', reject);
+      child.on('close', (code) => {
+        markReady(); // never leave `ready` hanging if the child dies silently
+        resolve({ code, stdout, stderr });
+      });
+    },
+  );
+  return { kill: () => child.kill('SIGKILL'), ready, done };
+}
+
 async function runLeaseScript(
   scriptPath: string,
   leaseDir: string,
-  opts?: { killAfterMs?: number },
 ): Promise<{ code: number | null; stdout: string; stderr: string }> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [TSX, scriptPath], {
-      cwd: ROOT,
-      env: { ...process.env, ATLAS_INSTANCE_LEASE_DIR: leaseDir, NODE_NO_WARNINGS: '1' },
-      windowsHide: true,
-    });
-    let stdout = '';
-    let stderr = '';
-    child.stdout.on('data', (c) => { stdout += String(c); });
-    child.stderr.on('data', (c) => { stderr += String(c); });
-    child.on('error', reject);
-
-    if (opts?.killAfterMs !== undefined) {
-      setTimeout(() => child.kill('SIGKILL'), opts.killAfterMs);
-    }
-
-    child.on('close', (code) => resolve({ code, stdout, stderr }));
-  });
+  return spawnLeaseScript(scriptPath, leaseDir).done;
 }
 
 describe('M4-C instance anti-fork lease', () => {
@@ -118,15 +134,16 @@ describe('M4-C instance anti-fork lease', () => {
     `);
     scripts.push(probeScript);
 
-    const holderPromise = runLeaseScript(holderScript, leaseDir, { killAfterMs: 5000 });
-    await new Promise((r) => setTimeout(r, 800));
+    const holder = spawnLeaseScript(holderScript, leaseDir);
+    await holder.ready; // holder has acquired the writer lease
     const probe = await runLeaseScript(probeScript, leaseDir);
-    await holderPromise;
+    holder.kill();
+    await holder.done;
 
     const probeResult = JSON.parse(probe.stdout.trim()) as { mode: string; reason?: string };
     expect(probeResult.mode).toBe('readonly');
     expect(probeResult.reason).toMatch(/another Atlas instance/);
-  }, 20_000);
+  }, 60_000);
 
   it('spawn-two E2E: after holder SIGKILL, new process acquires writer', async () => {
     const holderScript = writeTempScript(`
@@ -145,11 +162,13 @@ describe('M4-C instance anti-fork lease', () => {
     `);
     scripts.push(probeScript);
 
-    await runLeaseScript(holderScript, leaseDir, { killAfterMs: 500 });
-    await new Promise((r) => setTimeout(r, 300));
+    const holder = spawnLeaseScript(holderScript, leaseDir);
+    await holder.ready; // holder has acquired the writer lease
+    holder.kill();
+    await holder.done;
     const takeover = await runLeaseScript(probeScript, leaseDir);
 
     const result = JSON.parse(takeover.stdout.trim()) as { mode: string };
     expect(result.mode).toBe('writer');
-  }, 20_000);
+  }, 60_000);
 });

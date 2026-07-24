@@ -20,6 +20,9 @@ jobs:
       - name: Install dependencies (clean clone)
         run: npm ci --legacy-peer-deps
 
+      - name: Install Playwright Chromium (browser-hand tests)
+        run: npx playwright install --with-deps chromium
+
       - name: Build
         run: npm run build
       - run: npx tsc --noEmit

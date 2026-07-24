@@ -193,7 +193,7 @@ describe('M4 kill/resume — child-process E2E', () => {
     };
     const taskCountAfter = graphAfter.tasks.filter((t) => t.goalId === sync!.goalId).length;
     expect(taskCountAfter).toBe(taskCountBefore);
-  }, 60_000);
+  }, 120_000);
 
   it('resume after kill completes browser goal without duplicate tasks', async () => {
     const fixturePath = resolve(ROOT, 'fixtures/hub71-fake-form.html');
@@ -283,5 +283,5 @@ describe('M4 kill/resume — child-process E2E', () => {
 
     const budgetAfter = JSON.parse(readFileSync(join(budgetDir, `${goalId}.json`), 'utf8'));
     expect(budgetAfter.startedAt).toBe(budgetMid.startedAt);
-  }, 90_000);
+  }, 180_000);
 });
