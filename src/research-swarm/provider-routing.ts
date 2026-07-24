@@ -36,7 +36,8 @@ export function routeWorkerProvider(
 
   const route = routeModel({
     role,
-    preferredProvider,
+    preferredProvider: pref.required ?? pref.preferred,
+    ignoreEnvPreference: true,
     excludeProviders,
   });
 
@@ -50,5 +51,7 @@ export function routeWorkerProvider(
 }
 
 export function routeJudgeProvider(): RouteResult {
-  return routeModel({ role: 'JUDGE', excludeProviders: ['anthropic'] });
+  const route = routeModel({ role: 'JUDGE', excludeProviders: ['anthropic'], ignoreEnvPreference: true });
+  assertProviderAllowed(route.provider, 'research-swarm-judge');
+  return route;
 }

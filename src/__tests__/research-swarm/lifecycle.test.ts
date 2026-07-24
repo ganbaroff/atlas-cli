@@ -38,7 +38,7 @@ vi.mock('../../research-swarm/memory-state.js', () => ({
 }));
 
 vi.mock('../../research-swarm/artifact.js', () => ({
-  buildArtifact: vi.fn((a: unknown) => a),
+  buildArtifact: vi.fn((a: unknown) => ({ ...(a as object), secretScan: { clean: true, findings: [] } })),
   exitCodeForStatus: vi.fn((s: string) => (s === 'SUCCESS' ? 0 : 1)),
   newRunId: vi.fn(() => 'test-run-id-1234'),
   taskHash: vi.fn(() => 'abcd1234'),

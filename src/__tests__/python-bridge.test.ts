@@ -3,6 +3,7 @@ import {
   isPythonSwarmAvailable,
   loadHiveProfiles,
   parseStdoutProtocol,
+  validateProposalsFile,
 } from '../atlas/python-bridge.js';
 
 describe('python-bridge', () => {
@@ -39,5 +40,11 @@ describe('python-bridge', () => {
   it('parseStdoutProtocol rejects stale non-protocol stdout', () => {
     const stdout = 'Running swarm...\nDone.\n';
     expect(parseStdoutProtocol(stdout)).toBeNull();
+  });
+
+  it('validateProposalsFile rejects file without matching runId', async () => {
+    const result = await validateProposalsFile('expected-run-id', Date.now());
+    expect(result.ok).toBe(false);
+    expect(result.reason).toBeTruthy();
   });
 });

@@ -233,7 +233,9 @@ export async function runResearchSwarm(
     subtasks.map((st) => runWorkerBounded(st, workerMs, timeouts.routingMs)),
   );
 
-  const okCount = workers.filter((w) => w.status === 'ok' && w.output.trim()).length;
+  const okCount = workers.filter(
+    (w) => w.status === 'ok' && w.output.trim() && !(w.error?.startsWith('jidoka:')),
+  ).length;
   const allTimedOut = workers.length > 0 && workers.every((w) => w.status === 'timeout');
   const globalTimedOut = isPastDeadline(deadline);
 
@@ -304,6 +306,12 @@ export async function runResearchSwarm(
     bridgeSource: opts.bridgeSource ?? 'typescript',
   });
 
+  if (!artifact.secretScan.clean) {
+    artifact.status = 'PROVIDER_FAILURE';
+    artifact.exitReason = 'secret_scan_failed';
+    artifact.synthesis = '[REDACTED: artifact failed secret scan]';
+  }
+
   const artifactPath = await writeArtifact(artifact);
   if (artifactPath) {
     console.log(`[research-swarm] artifact: ${artifactPath}`);
@@ -315,8 +323,8 @@ export async function runResearchSwarm(
 
   return {
     artifact,
-    synthesis: finalSynthesis,
-    exitCode: exitCodeForStatus(status),
+    synthesis: artifact.secretScan.clean ? finalSynthesis : artifact.synthesis,
+    exitCode: exitCodeForStatus(artifact.status),
   };
 }
 

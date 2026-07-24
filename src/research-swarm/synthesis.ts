@@ -171,7 +171,30 @@ export async function runJudge(input: SynthesisInput): Promise<SynthesisOutput> 
 
   recordAgentSpend(outcome.value, route, 'research-swarm-judge');
   const text = outcome.value.text;
-  const okCount = input.workers.filter((w) => w.status === 'ok' && w.output.trim()).length;
+  const okCount = input.workers.filter(
+    (w) => w.status === 'ok' && w.output.trim() && !(w.error?.startsWith('jidoka:')),
+  ).length;
+
+  // Post-check: judge must not invent findings when no deduped claims exist
+  if (claims.length === 0 || okCount === 0) {
+    return {
+      synthesis: 'Insufficient worker evidence — judge output rejected (no grounded claims).',
+      judge: {
+        provider: route.provider,
+        modelId: route.modelId,
+        modelFamily: family,
+        status: 'provider_error',
+        output: text.slice(0, 500),
+        durationMs,
+        error: 'judge_ungrounded_no_claims',
+        independent: false,
+      },
+      claims,
+      dissent,
+      consensus: null,
+    };
+  }
+
   const consensus = okCount >= 2 ? text.slice(0, 500) : null;
 
   return {

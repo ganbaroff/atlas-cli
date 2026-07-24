@@ -240,13 +240,22 @@ export interface RouterOptions {
   role?: ModelRole;
   maxCostTier?: number;
   preferredProvider?: ProviderName;
+  /** When true, ATLAS_PREFERRED_PROVIDER env is ignored (research-swarm workers). */
+  ignoreEnvPreference?: boolean;
   /** Providers the swarm must never use (canon: "never Claude as swarm agent"). */
   excludeProviders?: ProviderName[];
 }
 
 export function routeModel(opts: RouterOptions = {}): RouteResult {
   const envPref = process.env['ATLAS_PREFERRED_PROVIDER'] as ProviderName | undefined;
-  const { role = 'WORKER', maxCostTier = 3, preferredProvider = envPref, excludeProviders } = opts;
+  const {
+    role = 'WORKER',
+    maxCostTier = 3,
+    preferredProvider: explicitPref,
+    ignoreEnvPreference = false,
+    excludeProviders,
+  } = opts;
+  const preferredProvider = ignoreEnvPreference ? explicitPref : (explicitPref ?? envPref);
 
   const candidates = MODEL_REGISTRY.filter(
     (m) =>

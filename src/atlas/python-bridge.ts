@@ -76,8 +76,8 @@ export async function validateProposalsFile(
     }
     const raw = await readFile(PROPOSALS_PATH, 'utf-8');
     const data = JSON.parse(raw) as Record<string, unknown>;
-    if (data['runId'] && data['runId'] !== runId) {
-      return { ok: false, proposals: [], reason: 'runId_mismatch' };
+    if (typeof data['runId'] !== 'string' || data['runId'] !== runId) {
+      return { ok: false, proposals: [], reason: 'runId_missing_or_mismatch' };
     }
     const proposals = Array.isArray(data) ? data : (data['proposals'] as unknown[]) ?? [];
     return { ok: true, proposals };

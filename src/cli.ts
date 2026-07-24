@@ -980,42 +980,47 @@ program
   .requiredOption('-f, --fixture <id>', 'Fixture id (evidence-gate-audit, schema-review)')
   .option('--dry-run', 'Report fixture metadata only — no live LLM calls')
   .action(async (opts) => {
-    const { getFixture, buildEvalReport, fixtureFingerprint } = await import('./research-swarm/eval-harness.js');
-    const fixture = getFixture(opts.fixture);
-    if (!fixture) {
-      console.error(`Unknown fixture: ${opts.fixture}`);
+    try {
+      const { getFixture, buildEvalReport, fixtureFingerprint } = await import('./research-swarm/eval-harness.js');
+      const fixture = getFixture(opts.fixture);
+      if (!fixture) {
+        console.error(`Unknown fixture: ${opts.fixture}`);
+        process.exit(1);
+      }
+      if (opts.dryRun) {
+        console.log(JSON.stringify({
+          fixtureId: fixture.id,
+          fingerprint: fixtureFingerprint(fixture),
+          minProviders: fixture.minProvidersForResearch,
+          verdict: 'KEEP_DISABLED',
+          rationale: 'dry-run — no live calls',
+        }, null, 2));
+        await Promise.race([shutdown(), new Promise((r) => setTimeout(r, 3000))]);
+        process.exit(0);
+      }
+      if (!controlAllowsModelCalls()) {
+        console.error(describeControlBlock());
+        process.exit(2);
+      }
+      const { runResearchSwarm } = await import('./swarm.js');
+      const t0 = Date.now();
+      const swarmResult = await runResearchSwarm(fixture.task);
+      const report = buildEvalReport({
+        fixtureId: fixture.id,
+        baselineMs: 0,
+        swarmMs: Date.now() - t0,
+        swarmStatus: swarmResult.artifact.status,
+        providerCount: swarmResult.artifact.diversity.providerCount,
+        minProviders: fixture.minProvidersForResearch,
+      });
+      console.log(JSON.stringify(report, null, 2));
+      if (report.verdict === 'KEEP_DISABLED') process.exitCode = 1;
+      await Promise.race([shutdown(), new Promise((r) => setTimeout(r, 3000))]);
+      process.exit(process.exitCode ?? 0);
+    } catch (err) {
+      console.error(`swarm-eval error: ${err instanceof Error ? err.message : String(err)}`);
       process.exit(1);
     }
-    if (opts.dryRun) {
-      console.log(JSON.stringify({
-        fixtureId: fixture.id,
-        fingerprint: fixtureFingerprint(fixture),
-        minProviders: fixture.minProvidersForResearch,
-        verdict: 'KEEP_DISABLED',
-        rationale: 'dry-run — no live calls',
-      }, null, 2));
-      await Promise.race([shutdown(), new Promise((r) => setTimeout(r, 3000))]);
-      process.exit(0);
-    }
-    if (!controlAllowsModelCalls()) {
-      console.error(describeControlBlock());
-      process.exit(2);
-    }
-    const { runResearchSwarm } = await import('./swarm.js');
-    const t0 = Date.now();
-    const swarmResult = await runResearchSwarm(fixture.task);
-    const report = buildEvalReport({
-      fixtureId: fixture.id,
-      baselineMs: 0,
-      swarmMs: Date.now() - t0,
-      swarmStatus: swarmResult.artifact.status,
-      providerCount: swarmResult.artifact.diversity.providerCount,
-      minProviders: fixture.minProvidersForResearch,
-    });
-    console.log(JSON.stringify(report, null, 2));
-    if (report.verdict === 'KEEP_DISABLED') process.exitCode = 1;
-    await Promise.race([shutdown(), new Promise((r) => setTimeout(r, 3000))]);
-    process.exit(process.exitCode ?? 0);
   });
 
 program
@@ -1023,35 +1028,40 @@ program
   .description('Route task to VOLAURA Python swarm (fail-closed — no silent fallback)')
   .option('-m, --mode <mode>', 'Swarm mode: coordinator, daily-ideation, code-review', 'coordinator')
   .action(async (task: string, opts) => {
-    if (!controlAllowsModelCalls()) {
-      console.error(describeControlBlock());
-      process.exit(2);
-    }
-    capture('atlas_swarm_run', { type: 'python', mode: opts.mode });
-
-    if (!isPythonSwarmAvailable()) {
-      console.error('[bridge] EXPERIMENTAL_BRIDGE_DISABLED — Python swarm not found');
-      console.error('[bridge] Use `atlas swarm` for TypeScript research-swarm instead');
-      process.exit(1);
-    }
-
-    console.log(`\n${IDENTITY.name} вызывает Python swarm (mode: ${opts.mode})\n`);
-    const result = await callPythonSwarm(task, opts.mode);
-    console.log(`[bridge] status=${result.bridgeStatus} source=${result.source}`);
-
-    if (result.success) {
-      console.log(`[bridge] ${result.proposals.length} proposals (runId=${result.runId ?? '?'})`);
-      for (const p of result.proposals.slice(0, 5)) {
-        const prop = p as Record<string, unknown>;
-        console.log(`  [${prop['severity'] ?? '?'}] ${String(prop['title'] ?? prop['summary'] ?? '').slice(0, 80)}`);
+    try {
+      if (!controlAllowsModelCalls()) {
+        console.error(describeControlBlock());
+        process.exit(2);
       }
-    } else {
-      console.error(`[bridge] failed: ${result.error}`);
-      console.error('[bridge] No silent fallback — use `atlas swarm` for TypeScript research-swarm');
+      capture('atlas_swarm_run', { type: 'python', mode: opts.mode });
+
+      if (!isPythonSwarmAvailable()) {
+        console.error('[bridge] EXPERIMENTAL_BRIDGE_DISABLED — Python swarm not found');
+        console.error('[bridge] Use `atlas swarm` for TypeScript research-swarm instead');
+        process.exit(1);
+      }
+
+      console.log(`\n${IDENTITY.name} вызывает Python swarm (mode: ${opts.mode})\n`);
+      const result = await callPythonSwarm(task, opts.mode);
+      console.log(`[bridge] status=${result.bridgeStatus} source=${result.source}`);
+
+      if (result.success) {
+        console.log(`[bridge] ${result.proposals.length} proposals (runId=${result.runId ?? '?'})`);
+        for (const p of result.proposals.slice(0, 5)) {
+          const prop = p as Record<string, unknown>;
+          console.log(`  [${prop['severity'] ?? '?'}] ${String(prop['title'] ?? prop['summary'] ?? '').slice(0, 80)}`);
+        }
+      } else {
+        console.error(`[bridge] failed: ${result.error}`);
+        console.error('[bridge] No silent fallback — use `atlas swarm` for TypeScript research-swarm');
+        process.exit(1);
+      }
+      await Promise.race([shutdown(), new Promise((r) => setTimeout(r, 3000))]);
+      process.exit(process.exitCode ?? 0);
+    } catch (err) {
+      console.error(`swarm-deep error: ${err instanceof Error ? err.message : String(err)}`);
       process.exit(1);
     }
-    await Promise.race([shutdown(), new Promise((r) => setTimeout(r, 3000))]);
-    process.exit(process.exitCode ?? 0);
   });
 
 program
