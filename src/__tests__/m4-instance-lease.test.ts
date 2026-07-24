@@ -13,7 +13,10 @@ import {
 } from '../atlas/instance-lease.js';
 
 const ROOT = resolve(fileURLToPath(new URL('../..', import.meta.url)));
-const TSX = join(ROOT, 'node_modules', 'tsx', 'dist', 'cli.mjs');
+// Single-process launch: `node --import tsx script.ts`. The tsx CLI wrapper
+// re-spawns node as a grandchild, so SIGKILL to the wrapper orphans the real
+// script on POSIX and `close` never fires (lease stays held by a live pid).
+const TSX_IMPORT = pathToFileURL(join(ROOT, 'node_modules', 'tsx', 'dist', 'loader.mjs')).href;
 const LEASE_MODULE = pathToFileURL(join(ROOT, 'src/atlas/instance-lease.ts')).href;
 
 function writeTempScript(body: string): string {
@@ -30,7 +33,7 @@ interface LeaseChild {
 }
 
 function spawnLeaseScript(scriptPath: string, leaseDir: string): LeaseChild {
-  const child = spawn(process.execPath, [TSX, scriptPath], {
+  const child = spawn(process.execPath, ['--import', TSX_IMPORT, scriptPath], {
     cwd: ROOT,
     env: { ...process.env, ATLAS_INSTANCE_LEASE_DIR: leaseDir, NODE_NO_WARNINGS: '1' },
     windowsHide: true,

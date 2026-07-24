@@ -14,7 +14,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 const ROOT = resolve(fileURLToPath(new URL('../..', import.meta.url)));
-const TSX = join(ROOT, 'node_modules', 'tsx', 'dist', 'cli.mjs');
+// Single-process launch: `node --import tsx script.ts`. The tsx CLI wrapper
+// re-spawns node as a grandchild, so SIGKILL to the wrapper orphans the real
+// script on POSIX and `close` never fires.
+const TSX_IMPORT = pathToFileURL(join(ROOT, 'node_modules', 'tsx', 'dist', 'loader.mjs')).href;
 const RUNNER_MODULE = pathToFileURL(join(ROOT, 'src/goal-runner/runner.ts')).href;
 
 interface ChildResult {
@@ -34,7 +37,7 @@ function spawnScript(
   scriptPath: string,
   env: Record<string, string>,
 ): ChildProcessWithoutNullStreams {
-  return spawn(process.execPath, [TSX, scriptPath], {
+  return spawn(process.execPath, ['--import', TSX_IMPORT, scriptPath], {
     cwd: ROOT,
     env: { ...process.env, ...env, NODE_NO_WARNINGS: '1' },
     windowsHide: true,
