@@ -27,29 +27,16 @@
  * hand as a falsy-but-present value. `parseHandSpec()`/`validateRegistry()`
  * throw on schema violation; this module never silently coerces a bad spec.
  *
- * Security: ONE STATIC HAND in V0 (+ manifest overlay for file-search, local-readonly,
- * browser-foreground, swarm-local):
- *   - 'sonnet-foreground'  — CEO-supervised, foreground-only, can write
- *     scoped code. Because 'write-scoped-code' is in its allowedActions,
- *     ./risk.ts's classifyRisk() (fed hand.allowedActions as the
- *     "capabilities" half of a delegation brief — see exec-graph-adapter.ts)
- *     will ALWAYS classify a sonnet-foreground delegation as at least
- *     'data-mutation' risk, regardless of the task's own wording. This is
- *     intentional, not incidental: risk is derived from what the hand CAN
- *     do, not just what the task claims it will do, so a sonnet-foreground
- *     delegation always gets refuter scrutiny (see ./risk.ts, ./refuter.ts).
- *   - 'local-readonly'     — FREE, read-only, unattended-capable. No write
- *     action anywhere in its allowlist, so it classifies 'low' risk by
- *     default and the refuter is suppressed for it (see ./risk.ts).
- *   - 'swarm-local'        — CEO-supervised, foreground-only, multi-agent
- *     swarm analysis (see ../swarm.ts). Makes real model calls, so it is
- *     never unattended, but its allowedActions carry no write/mutation verb
- *     — it only produces analysis text, never file writes.
- *   No openmanus/browser/voice/cloud/paid providers are registered here — V0
- *   is deliberately narrow; widening the registry is a follow-up mission,
- *   not this one. `isSafeKey()` rejects dunder-key lookups defense-in-depth
- *   against prototype pollution, mirroring `exec-graph/ledger.ts`'s
- *   `isSafeKey()`.
+ * Security: ALL product hands load from JSON manifests in ./manifests/ (M5 factory).
+ * Static REGISTRY is intentionally empty — new hands register via manifest files only.
+ *   - 'sonnet-foreground'  — CEO-supervised, foreground-only, can write scoped code.
+ *   - 'local-readonly'     — FREE, read-only, unattended-capable.
+ *   - 'browser-foreground' — Playwright fixture/local pages only.
+ *   - 'swarm-local'        — multi-perspective swarm analysis (see ../swarm.ts).
+ *   - 'file-search'        — read-only file search.
+ *   No openmanus/voice/cloud/paid providers — V0 is deliberately narrow.
+ *   `isSafeKey()` rejects dunder-key lookups defense-in-depth against prototype
+ *   pollution, mirroring `exec-graph/ledger.ts`'s `isSafeKey()`.
  *
  * Tests: src/__tests__/hands.test.ts — schema validation (handSpecSchema /
  * validateRegistry), dunder-key rejection, getHand()/listHands() behavior,
@@ -84,35 +71,7 @@ export {
 
 // ── The registry ────────────────────────────────────────────────────────
 
-export const REGISTRY: Readonly<Record<string, HandSpec>> = Object.freeze({
-  'sonnet-foreground': handSpecSchema.parse({
-    handId: 'sonnet-foreground',
-    purpose:
-      'Foreground, CEO-supervised Sonnet/Opus coding session — reads, greps, runs tests, '
-      + 'and makes scoped code writes under direct human observation. No unattended '
-      + 'execution, no deploy, no credential access.',
-    capabilities: ['read-file', 'grep', 'run-tests', 'git-readonly', 'write-scoped-code'],
-    trustLevel: 'medium',
-    allowedEnvironments: ['local-foreground'],
-    allowedActions: ['read-file', 'grep', 'run-tests', 'git-readonly', 'write-scoped-code'],
-    disallowedActions: ['scheduler', 'daemon', 'unattended', 'deploy', 'credential-access'],
-    costClass: 'FOREGROUND-CEO-SUPERVISED',
-    autonomy: 'foreground-only',
-    inputContract:
-      'A DelegationBrief (see ./contract.ts): objective, allowedActions subset of this '
-      + "hand's allowedActions, a falsifiable expectedResult, timeoutMs, riskClass.",
-    timeoutMs: 900_000,
-    retryPolicy: 'once',
-    abortPolicy:
-      "On timeout or CEO-interrupt, the delegating adapter call (abortHandTask) moves the "
-      + "task to 'blocked' — never silently 'verified'. No partial-write auto-rollback in V0; "
-      + 'a CEO reviews blocked state by hand.',
-    escalationCondition:
-      'Objective is ambiguous, expectedResult cannot be independently falsified, or the work '
-      + "would require an action outside this hand's allowedActions -> escalate to ceo, don't "
-      + 'silently widen scope.',
-  }),
-});
+export const REGISTRY: Readonly<Record<string, HandSpec>> = Object.freeze({});
 
 const DUNDER_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 function isSafeKey(key: string): boolean {
@@ -127,7 +86,6 @@ export function getHand(handId: string): HandSpec {
   if (Object.prototype.hasOwnProperty.call(REGISTRY, handId)) {
     return REGISTRY[handId];
   }
-  // M5: manifests overlay — second hand lands here without editing REGISTRY literals.
   const fromManifest = getManifestHands().get(handId);
   if (fromManifest) return fromManifest;
   throw new HandNotFoundError(`hands: unknown hand '${handId}'`);

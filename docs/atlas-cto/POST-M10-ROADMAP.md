@@ -13,8 +13,10 @@ Migrate static REGISTRY hands → JSON manifests one at a time; zero behavior ch
 - [x] file-search
 - [x] local-readonly
 - [x] browser-foreground
-- [ ] swarm-local
-- [ ] sonnet-foreground
+- [x] swarm-local
+- [x] sonnet-foreground
+
+**Sprint A CLOSED** — static REGISTRY empty; all hands via manifests.
 
 ### Sprint B — Git-Bash audit debt (M2+M3)
 Independent verifier re-runs full suite under Git Bash; document counts in receipt.

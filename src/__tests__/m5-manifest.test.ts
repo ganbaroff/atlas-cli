@@ -121,6 +121,20 @@ describe('M5 manifest SDK', () => {
     expect(registrySrc).not.toMatch(/handId:\s*'swarm-local'/);
   });
 
+  it('sonnet-foreground hand is available via manifest without REGISTRY literal', () => {
+    delete process.env.ATLAS_HAND_MANIFEST_DIR;
+    resetManifestCacheForTests();
+    const hand = getHand('sonnet-foreground');
+    expect(hand.handId).toBe('sonnet-foreground');
+    expect(hand.allowedActions).toContain('write-scoped-code');
+    expect(listHands().some((h) => h.handId === 'sonnet-foreground')).toBe(true);
+
+    const registrySrc = readFileSync(REGISTRY_SRC, 'utf8');
+    expect(registrySrc).not.toMatch(/'sonnet-foreground'\s*:/);
+    expect(registrySrc).not.toMatch(/handId:\s*'sonnet-foreground'/);
+    expect(registrySrc).toMatch(/REGISTRY.*Object\.freeze\(\{\}\)/);
+  });
+
   it('file-search hand is available via default manifests without REGISTRY literal', () => {
     delete process.env.ATLAS_HAND_MANIFEST_DIR;
     resetManifestCacheForTests();

@@ -1,0 +1,16 @@
+{
+  "handId": "sonnet-foreground",
+  "purpose": "Foreground, CEO-supervised Sonnet/Opus coding session — reads, greps, runs tests, and makes scoped code writes under direct human observation. No unattended execution, no deploy, no credential access.",
+  "capabilities": ["read-file", "grep", "run-tests", "git-readonly", "write-scoped-code"],
+  "trustLevel": "medium",
+  "allowedEnvironments": ["local-foreground"],
+  "allowedActions": ["read-file", "grep", "run-tests", "git-readonly", "write-scoped-code"],
+  "disallowedActions": ["scheduler", "daemon", "unattended", "deploy", "credential-access"],
+  "costClass": "FOREGROUND-CEO-SUPERVISED",
+  "autonomy": "foreground-only",
+  "inputContract": "A DelegationBrief (see ./contract.ts): objective, allowedActions subset of this hand's allowedActions, a falsifiable expectedResult, timeoutMs, riskClass.",
+  "timeoutMs": 900000,
+  "retryPolicy": "once",
+  "abortPolicy": "On timeout or CEO-interrupt, the delegating adapter call (abortHandTask) moves the task to 'blocked' — never silently 'verified'. No partial-write auto-rollback in V0; a CEO reviews blocked state by hand.",
+  "escalationCondition": "Objective is ambiguous, expectedResult cannot be independently falsified, or the work would require an action outside this hand's allowedActions -> escalate to ceo, don't silently widen scope."
+}
