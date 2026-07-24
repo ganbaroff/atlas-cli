@@ -1390,6 +1390,44 @@ program
     process.exitCode = 0;
   });
 
+program
+  .command('opsboard')
+  .description('M9 OPSBOARD exchange tools')
+  .command('drain')
+  .description('Process pending OPSBOARD goal requests into receipts')
+  .action(async () => {
+    const {
+      listPendingRequests,
+      readGoalRequest,
+      processGoalRequest,
+    } = await import('./opsboard/goal-request-port.js');
+    const { runGoal } = await import('./goal-runner/runner.js');
+    const paths = listPendingRequests();
+    for (const p of paths) {
+      const req = readGoalRequest(p);
+      const receipt = await processGoalRequest(req, {
+        run: async ({ objective, handId, timeoutMs }) => {
+          const report = await runGoal({
+            objective,
+            handId,
+            browserActions: [],
+            config: {
+              maxAttemptsPerTask: 1,
+              maxTotalAttempts: 1,
+              maxTotalTasks: 5,
+              maxDecompositionRounds: 1,
+              maxGraphDepth: 3,
+              maxWallTimeMs: timeoutMs,
+            },
+            notifyCeo: async () => ({ result: 'SUPPRESSED' }),
+          });
+          return { status: report.status, goalId: report.goalId, report };
+        },
+      });
+      console.log(JSON.stringify(receipt));
+    }
+  });
+
 if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith('cli.js')) {
   const instanceLease = acquireInstanceLease();
   if (instanceLease.mode === 'readonly') {
