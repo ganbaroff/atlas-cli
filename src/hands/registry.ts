@@ -56,41 +56,30 @@
  * never cites the exec-graph API module's import path.
  */
 
-import { z } from 'zod';
+import {
+  handSpecSchema,
+  parseHandSpec,
+  type HandSpec,
+  HandsError,
+  HandNotFoundError,
+  trustLevelSchema,
+  costClassSchema,
+  autonomySchema,
+  retryPolicySchema,
+} from './hand-spec.js';
+import { getManifestHands } from './manifest.js';
 
-export const trustLevelSchema = z.enum(['low', 'medium', 'high']);
-export const costClassSchema = z.enum(['FREE', 'FOREGROUND-CEO-SUPERVISED', 'PAID-APPROVAL-ONLY']);
-export const autonomySchema = z.enum(['foreground-only', 'read-only-unattended']);
-export const retryPolicySchema = z.enum(['none', 'once']);
-
-export const handSpecSchema = z.object({
-  handId: z.string().min(1),
-  purpose: z.string().min(1),
-  capabilities: z.array(z.string().min(1)).min(1),
-  trustLevel: trustLevelSchema,
-  allowedEnvironments: z.array(z.string().min(1)).min(1),
-  allowedActions: z.array(z.string().min(1)).min(1),
-  disallowedActions: z.array(z.string().min(1)),
-  costClass: costClassSchema,
-  autonomy: autonomySchema,
-  inputContract: z.string().min(1),
-  timeoutMs: z.number().int().positive(),
-  retryPolicy: retryPolicySchema,
-  abortPolicy: z.string().min(1),
-  escalationCondition: z.string().min(1),
-});
-export type HandSpec = z.infer<typeof handSpecSchema>;
-
-export function parseHandSpec(input: unknown): HandSpec {
-  return handSpecSchema.parse(input);
-}
-
-// ── Typed errors (mirrors exec-graph/transitions.ts's base+subclass style) ─
-
-export class HandsError extends Error {}
-
-/** getHand() called with an id that isn't in REGISTRY (or is an unsafe key). */
-export class HandNotFoundError extends HandsError {}
+export {
+  handSpecSchema,
+  parseHandSpec,
+  type HandSpec,
+  HandsError,
+  HandNotFoundError,
+  trustLevelSchema,
+  costClassSchema,
+  autonomySchema,
+  retryPolicySchema,
+};
 
 // ── The registry ────────────────────────────────────────────────────────
 
@@ -207,14 +196,28 @@ function isSafeKey(key: string): boolean {
 
 /** Throws HandNotFoundError for an unknown or unsafe (dunder-key) hand id — never returns undefined. */
 export function getHand(handId: string): HandSpec {
-  if (!isSafeKey(handId) || !Object.prototype.hasOwnProperty.call(REGISTRY, handId)) {
+  if (!isSafeKey(handId)) {
     throw new HandNotFoundError(`hands: unknown hand '${handId}'`);
   }
-  return REGISTRY[handId];
+  if (Object.prototype.hasOwnProperty.call(REGISTRY, handId)) {
+    return REGISTRY[handId];
+  }
+  // M5: manifests overlay — second hand lands here without editing REGISTRY literals.
+  const fromManifest = getManifestHands().get(handId);
+  if (fromManifest) return fromManifest;
+  throw new HandNotFoundError(`hands: unknown hand '${handId}'`);
 }
 
 export function listHands(): HandSpec[] {
-  return Object.values(REGISTRY);
+  const merged = new Map<string, HandSpec>();
+  for (const h of Object.values(REGISTRY)) merged.set(h.handId, h);
+  for (const h of getManifestHands().values()) {
+    if (merged.has(h.handId)) {
+      throw new HandsError(`hands: manifest handId '${h.handId}' collides with static REGISTRY`);
+    }
+    merged.set(h.handId, h);
+  }
+  return [...merged.values()];
 }
 
 /**
