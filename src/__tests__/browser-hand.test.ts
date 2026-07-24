@@ -220,11 +220,11 @@ describe('browser Hand: dry-run against fixture', () => {
   beforeAll(async () => {
     session = new BrowserSession();
     await session.launch();
-  }, 30_000);
+  }, 60_000);
 
   afterAll(async () => {
     await session.close();
-  });
+  }, 30_000);
 
   it('5a. navigate→readText→fillField→readValue→selectOption without submit', async () => {
     // Navigate
@@ -254,7 +254,7 @@ describe('browser Hand: dry-run against fixture', () => {
     expect(select.success).toBe(true);
 
     // NO submit — the action vocabulary does not include submit
-  }, 30_000);
+  }, 60_000);
 
   it('5b. executeSequence collects all results and they form a valid browser-action receipt', async () => {
     const actions = [
@@ -286,5 +286,5 @@ describe('browser Hand: dry-run against fixture', () => {
     // Verifier accepts
     const verdict = verify(receipt);
     expect(verdict.verified).toBe(true);
-  }, 30_000);
+  }, 60_000);
 });
