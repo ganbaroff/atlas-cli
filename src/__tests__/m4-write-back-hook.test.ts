@@ -25,7 +25,7 @@ describe('M4-D write-back breadcrumb hook', () => {
   it('blocks exit when no breadcrumb written', () => {
     const check = assertBreadcrumbBeforeExit();
     expect(check.ok).toBe(false);
-    expect(check.message).toMatch(/no session breadcrumb/);
+    if (!check.ok) expect(check.message).toMatch(/no session breadcrumb/);
   });
 
   it('allows exit after writeSessionBreadcrumb', () => {
