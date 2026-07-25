@@ -27,7 +27,7 @@ if (-not (gcloud secrets describe $SecretName --project=$ProjectId 2>$null)) {
   Write-Host "Creating Secret Manager secret $SecretName (value not printed)"
   $Key | gcloud secrets create $SecretName --project=$ProjectId --data-file=- --replication-policy=automatic
 } else {
-  Write-Host "Secret $SecretName already exists — reusing latest version"
+  Write-Host "Secret $SecretName already exists - reusing latest version"
 }
 
 Write-Host "Building image $Image ..."
