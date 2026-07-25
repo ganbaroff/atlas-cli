@@ -15,15 +15,15 @@
 apiVersion: serving.knative.dev/v1
 kind: Service
 metadata:
-  name: atlas-learning-api
+  name: atlas-learning-api-staging
   annotations:
     run.googleapis.com/ingress: all
 spec:
   template:
     metadata:
       annotations:
-        autoscaling.knative.dev/minScale: "1"
-        autoscaling.knative.dev/maxScale: "3"
+        autoscaling.knative.dev/minScale: "0"
+        autoscaling.knative.dev/maxScale: "2"
     spec:
       containerConcurrency: 20
       timeoutSeconds: 60
