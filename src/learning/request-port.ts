@@ -26,6 +26,7 @@ import {
   type LearningReceipt,
   type LearningRequest,
 } from './contracts.js';
+import { createLearningReceiptStore } from './receipt-store.js';
 
 export function resolveLearningExchangeDir(): string {
   const dir = process.env.ATLAS_LEARNING_EXCHANGE_DIR;
@@ -54,14 +55,6 @@ function writeReceiptAtomic(dir: string, receipt: LearningReceipt, path?: string
   const tmp = `${dest}.${process.pid}.tmp`;
   writeFileSync(tmp, JSON.stringify(receipt, null, 2), 'utf8');
   renameSync(tmp, dest);
-}
-
-function readCompletedReceipt(dir: string, idempotencyKey: string): LearningReceipt | null {
-  const path = receiptPath(dir, idempotencyKey);
-  if (!existsSync(path)) return null;
-  const receipt = JSON.parse(readFileSync(path, 'utf8')) as LearningReceipt;
-  if (receipt.status === 'completed') return receipt;
-  return null;
 }
 
 function makeClaimId(): string {
@@ -106,8 +99,6 @@ export function listPendingLearningRequests(dir = resolveLearningExchangeDir()):
     .filter((f) => f.endsWith('.json'))
     .map((f) => join(reqDir, f));
 }
-
-const seen = new Set<string>();
 
 function auditDecision(
   idempotencyKey: string,
@@ -169,7 +160,7 @@ function auditOutcome(
 
 async function processDecide(
   req: Extract<LearningRequest, { kind: 'decide' }>,
-  dir: string,
+  _dir: string,
   now: () => string,
 ): Promise<LearningReceipt> {
   assertWritable('learning.processDecide');
@@ -197,7 +188,7 @@ async function processDecide(
     correlationId: spendCorrelationId,
   });
 
-  const receipt: LearningReceipt = {
+  return {
     ...buildReceiptBase(req, now()),
     status: 'completed',
     updatedAt: now(),
@@ -207,14 +198,11 @@ async function processDecide(
     spendCorrelationId,
     evidenceClaimId: claimId,
   };
-  seen.add(req.idempotencyKey);
-  writeReceiptAtomic(dir, receipt);
-  return receipt;
 }
 
 async function processOutcome(
   req: Extract<LearningRequest, { kind: 'outcome' }>,
-  dir: string,
+  _dir: string,
   now: () => string,
 ): Promise<LearningReceipt> {
   assertWritable('learning.processOutcome');
@@ -231,16 +219,13 @@ async function processOutcome(
     correlationId: spendCorrelationId,
   });
 
-  const receipt: LearningReceipt = {
+  return {
     ...buildReceiptBase(req, now()),
     status: 'completed',
     updatedAt: now(),
     spendCorrelationId,
     evidenceClaimId: claimId,
   };
-  seen.add(req.idempotencyKey);
-  writeReceiptAtomic(dir, receipt);
-  return receipt;
 }
 
 /** Process one learning request → write receipt. Idempotent on idempotencyKey. */
@@ -250,6 +235,7 @@ export async function processLearningRequest(
 ): Promise<LearningReceipt> {
   const dir = opts?.exchangeDir ?? resolveLearningExchangeDir();
   const now = () => (opts?.now ? opts.now() : new Date()).toISOString();
+  const store = createLearningReceiptStore(dir);
 
   if (isAtlasReadonly()) {
     const receipt: LearningReceipt = {
@@ -262,25 +248,33 @@ export async function processLearningRequest(
     return receipt;
   }
 
-  const existing = readCompletedReceipt(dir, req.idempotencyKey);
+  const existing = await store.readCompleted(req.idempotencyKey);
   if (existing) {
     return { ...existing, status: 'completed', requestId: req.requestId };
   }
 
-  if (seen.has(req.idempotencyKey)) {
-    const receipt: LearningReceipt = {
+  const claimed = await store.tryClaim(req, now());
+  if (!claimed) {
+    const raced = await store.readCompleted(req.idempotencyKey);
+    if (raced) {
+      return { ...raced, status: 'completed', requestId: req.requestId };
+    }
+    return {
       ...buildReceiptBase(req, now()),
       status: 'duplicate',
       updatedAt: now(),
-      error: 'idempotencyKey already processed in this process',
+      error: 'idempotencyKey already processed',
     };
-    return receipt;
   }
 
   try {
-    if (req.kind === 'decide') return await processDecide(req, dir, now);
-    return await processOutcome(req, dir, now);
+    const receipt = req.kind === 'decide'
+      ? await processDecide(req, dir, now)
+      : await processOutcome(req, dir, now);
+    await store.writeCompleted(receipt);
+    return receipt;
   } catch (err) {
+    await store.releaseClaim(req.idempotencyKey);
     const msg = err instanceof Error ? err.message : String(err);
     const receipt: LearningReceipt = {
       ...buildReceiptBase(req, now()),
@@ -288,7 +282,6 @@ export async function processLearningRequest(
       updatedAt: now(),
       error: msg.slice(0, 500),
     };
-    // Failed receipts go to receipts/failed/{requestId} — do not block idempotencyKey retry.
     writeReceiptAtomic(dir, {
       ...receipt,
       idempotencyKey: `failed-${req.requestId}`,
@@ -297,9 +290,9 @@ export async function processLearningRequest(
   }
 }
 
-/** Test helper. */
+/** Test helper — no-op; durable store replaced in-process seen set. */
 export function resetLearningRequestSeenForTests(): void {
-  seen.clear();
+  /* retained for test compatibility */
 }
 
 export { LearningRequestParseError };

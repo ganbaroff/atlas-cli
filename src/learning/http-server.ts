@@ -92,15 +92,19 @@ function buildLearningRequest(
   kind: 'decide' | 'outcome',
   idempotencyKey?: string,
 ): LearningRequest {
+  const resolvedKey = idempotencyKey ?? (typeof body.idempotencyKey === 'string' ? body.idempotencyKey : undefined);
   if (body.kind === kind && body.payload) {
-    return parseLearningRequest(body);
+    return parseLearningRequest({
+      ...body,
+      idempotencyKey: resolvedKey ?? body.idempotencyKey,
+    });
   }
   const now = new Date().toISOString();
   return parseLearningRequest({
     schemaVersion: '1.0',
     kind,
     requestId: body.requestId ?? `req_${randomUUID().replace(/-/g, '').slice(0, 12)}`,
-    idempotencyKey: idempotencyKey ?? body.idempotencyKey,
+    idempotencyKey: resolvedKey ?? body.idempotencyKey,
     createdAt: body.createdAt ?? now,
     issuedBy: body.issuedBy ?? 'volaura',
     payload: extractPayload(body),
