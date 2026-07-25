@@ -22,10 +22,23 @@ $Image = "gcr.io/$ProjectId/$ServiceName"
 Write-Host "Enabling required APIs..."
 gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com secretmanager.googleapis.com --project=$ProjectId --quiet
 
-if (-not (gcloud secrets describe $SecretName --project=$ProjectId 2>$null)) {
-  $Key = [Convert]::ToBase64String((1..32 | ForEach-Object { Get-Random -Maximum 256 }))
+$secretExists = $false
+try {
+  gcloud secrets describe $SecretName --project=$ProjectId --quiet 2>$null | Out-Null
+  $secretExists = $true
+} catch {
+  $secretExists = $false
+}
+
+if (-not $secretExists) {
+  $KeyBytes = New-Object byte[] 32
+  [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($KeyBytes)
+  $Key = [Convert]::ToBase64String($KeyBytes)
+  $tmp = Join-Path $env:TEMP "atlas-staging-key.txt"
+  [IO.File]::WriteAllText($tmp, $Key)
   Write-Host "Creating Secret Manager secret $SecretName (value not printed)"
-  $Key | gcloud secrets create $SecretName --project=$ProjectId --data-file=- --replication-policy=automatic
+  gcloud secrets create $SecretName --project=$ProjectId --data-file=$tmp --replication-policy=automatic
+  Remove-Item $tmp -Force
 } else {
   Write-Host "Secret $SecretName already exists - reusing latest version"
 }

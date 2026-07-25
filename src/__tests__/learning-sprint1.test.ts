@@ -25,7 +25,7 @@ import { readGraph } from '../exec-graph/ledger.js';
 
 const NOW = '2026-07-25T12:00:00.000Z';
 
-function decideReq(partial: Partial<LearningRequest> = {}): LearningRequest {
+function decideReq(partial: Partial<Extract<LearningRequest, { kind: 'decide' }>> = {}): LearningRequest {
   return {
     schemaVersion: LEARNING_SCHEMA_VERSION,
     requestId: partial.requestId ?? 'req_sigmoid_001',

@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import type { AddressInfo } from 'node:net';
 import { createServer } from 'node:http';
+import type { LearningReceipt } from '../learning/contracts.js';
 import {
   createLearningHttpHandler,
   resetLearningRequestSeenForTests,
@@ -44,7 +45,7 @@ describe('learning HTTP API', () => {
     delete process.env.ATLAS_LEARNING_API_KEY;
   });
 
-  async function post(path: string, body: unknown, headers: Record<string, string> = {}) {
+  async function post(path: string, body: unknown, headers: Record<string, string> = {}): Promise<{ status: number; json: LearningReceipt }> {
     const res = await fetch(`${baseUrl}${path}`, {
       method: 'POST',
       headers: {
@@ -54,7 +55,7 @@ describe('learning HTTP API', () => {
       },
       body: JSON.stringify(body),
     });
-    const json = await res.json();
+    const json = (await res.json()) as LearningReceipt;
     return { status: res.status, json };
   }
 
