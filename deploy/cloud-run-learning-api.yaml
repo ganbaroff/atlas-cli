@@ -1,0 +1,47 @@
+# Cloud Run — Atlas learning HTTP API (Sprint 3)
+# Deploy:
+#   gcloud builds submit --tag gcr.io/$PROJECT_ID/atlas-learning-api -f Dockerfile.learning-api
+#   gcloud run deploy atlas-learning-api \
+#     --image gcr.io/$PROJECT_ID/atlas-learning-api \
+#     --region us-central1 \
+#     --allow-unauthenticated=false \
+#     --set-secrets=ATLAS_LEARNING_API_KEY=atlas-learning-api-key:latest \
+#     --set-env-vars=ATLAS_LEARNING_STATE_DIR=/tmp/atlas-learning \
+#     --min-instances=1 \
+#     --memory=512Mi \
+#     --timeout=60s \
+#     --port=8080
+
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: atlas-learning-api
+  annotations:
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "1"
+        autoscaling.knative.dev/maxScale: "3"
+    spec:
+      containerConcurrency: 20
+      timeoutSeconds: 60
+      containers:
+        - image: gcr.io/PROJECT_ID/atlas-learning-api
+          ports:
+            - containerPort: 8080
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: ATLAS_LEARNING_STATE_DIR
+              value: /tmp/atlas-learning
+            - name: ATLAS_LEARNING_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: atlas-learning-api-key
+                  key: latest
+          resources:
+            limits:
+              memory: 512Mi
+              cpu: "1"
