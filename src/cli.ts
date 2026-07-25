@@ -1391,6 +1391,25 @@ program
   });
 
 program
+  .command('learning')
+  .description('Sprint 1 VOLAURA learning NBA exchange tools')
+  .command('drain')
+  .description('Process pending VOLAURA learning requests into receipts')
+  .action(async () => {
+    const {
+      listPendingLearningRequests,
+      readLearningRequest,
+      processLearningRequest,
+    } = await import('./learning/request-port.js');
+    const paths = listPendingLearningRequests();
+    for (const p of paths) {
+      const req = readLearningRequest(p);
+      const receipt = await processLearningRequest(req);
+      console.log(JSON.stringify(receipt));
+    }
+  });
+
+program
   .command('opsboard')
   .description('M9 OPSBOARD exchange tools')
   .command('drain')
