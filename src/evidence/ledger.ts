@@ -80,6 +80,8 @@ export function appendClaim(claimInput: unknown, dir = resolveEvidenceDir()): Ev
   assertWritable('evidence.appendClaim');
   const claim = parseTypedClaim(claimInput);
   const entries = readLedgerEntries(dir);
+  const existing = entries.find((e) => e.claim.claimId === claim.claimId);
+  if (existing) return existing;
   const chain = verifyLedgerChain(entries);
   if (!chain.ok) {
     throw new Error(`evidence: refuse append — chain broken: ${chain.reason}`);

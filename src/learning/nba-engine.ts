@@ -11,7 +11,7 @@ import type {
   LearningDecision,
   ScoreBreakdown,
 } from './contracts.js';
-import { applyReviewPolicy } from './review-policy.js';
+import { applyReviewPolicy, type LearningDecisionDraft } from './review-policy.js';
 
 const MATH_VISUAL_CONCEPTS = new Set(['sigmoid', 'derivative', 'gradient', 'matrix']);
 
@@ -150,7 +150,7 @@ export function rankCandidates(
 export function decideNextAction(
   input: LearningDecideInput,
   candidates: LearningCandidate[],
-): LearningDecision {
+): LearningDecisionDraft {
   const ranked = rankCandidates(input, candidates);
   const winner = ranked[0]!;
   const alternatives = ranked.slice(1, 3).map((r) => r.action);

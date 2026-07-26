@@ -36,8 +36,9 @@
   ],
   "scripts": {
     "dev": "tsx src/cli.ts",
-    "build": "tsup src/cli.ts --format esm --dts --clean && node scripts/copy-manifests.mjs",
+    "build": "tsup src/cli.ts src/learning-api.ts --format esm --dts --clean && node scripts/copy-manifests.mjs",
     "start": "node dist/cli.js",
+    "start:learning-api": "node dist/learning-api.js",
     "test": "vitest",
     "typecheck": "tsc --noEmit"
   },
@@ -46,6 +47,7 @@
     "@ai-sdk/openai": "^3.0.53",
     "@ai-sdk/openai-compatible": "^2.0.41",
     "@anthropic-ai/sdk": "^0.91.1",
+    "@google-cloud/storage": "^7.21.0",
     "@mastra/core": "latest",
     "@openrouter/ai-sdk-provider": "^2.8.1",
     "commander": "^12.0.0",

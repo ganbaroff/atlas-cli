@@ -1,47 +1,48 @@
 /**
  * Sprint 1 — VOLAURA ↔ Atlas file-exchange port for learning decisions.
- * Pattern mirrors src/opsboard/goal-request-port.ts (M9).
+ * Sprint 3 — GCS claim state machine for crash-safe idempotency.
  */
 
-import { randomUUID } from 'node:crypto';
 import {
   existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync, renameSync,
 } from 'node:fs';
 import { join } from 'node:path';
 import { assertWritable, isAtlasReadonly } from '../atlas/readonly-guard.js';
-import { recordSpend } from '../atlas/spend-tracker.js';
-import { createGoal } from '../exec-graph/api.js';
-import { appendClaim } from '../evidence/ledger.js';
-import { generateCandidates } from './candidate-generator.js';
-import { decideNextAction, finalizeDecision } from './nba-engine.js';
 import {
   LEARNING_SCHEMA_VERSION,
   LearningRequestParseError,
   formatLearningRequestError,
   parseLearningRequest,
   resolveRequestCorrelationId,
-  type LearningDecideInput,
-  type LearningDecision,
-  type LearningOutcomeInput,
+  type LearningProofBundle,
   type LearningReceipt,
   type LearningRequest,
 } from './contracts.js';
+import {
+  buildProofBundle,
+  newOperationOwner,
+} from './claim-contract.js';
+import { createLearningClaimStore } from './claim-store.js';
+import { generateCandidates } from './candidate-generator.js';
+import { decideNextAction, finalizeDecision } from './nba-engine.js';
+import {
+  deterministicDecisionId,
+  deterministicEvidenceClaimId,
+  deterministicGoalId,
+  deterministicSpendCorrelationId,
+  applyLearningProjections,
+} from './projections.js';
 
 export function resolveLearningExchangeDir(): string {
   const dir = process.env.ATLAS_LEARNING_EXCHANGE_DIR;
   if (!dir) throw new Error('ATLAS_LEARNING_EXCHANGE_DIR not set');
   mkdirSync(join(dir, 'requests'), { recursive: true });
-  mkdirSync(join(dir, 'receipts'), { recursive: true });
+  mkdirSync(join(dir, 'claims'), { recursive: true });
   return dir;
 }
 
 function receiptPath(dir: string, idempotencyKey: string): string {
   return join(dir, 'receipts', `${sanitizeFileKey(idempotencyKey)}.json`);
-}
-
-function failedReceiptPath(dir: string, requestId: string): string {
-  mkdirSync(join(dir, 'receipts', 'failed'), { recursive: true });
-  return join(dir, 'receipts', 'failed', `${sanitizeFileKey(requestId)}.json`);
 }
 
 function sanitizeFileKey(key: string): string {
@@ -56,22 +57,6 @@ function writeReceiptAtomic(dir: string, receipt: LearningReceipt, path?: string
   renameSync(tmp, dest);
 }
 
-function readCompletedReceipt(dir: string, idempotencyKey: string): LearningReceipt | null {
-  const path = receiptPath(dir, idempotencyKey);
-  if (!existsSync(path)) return null;
-  const receipt = JSON.parse(readFileSync(path, 'utf8')) as LearningReceipt;
-  if (receipt.status === 'completed') return receipt;
-  return null;
-}
-
-function makeClaimId(): string {
-  return `clm_${randomUUID().replace(/-/g, '').slice(0, 16)}`;
-}
-
-function makeDecisionId(): string {
-  return `dec_${randomUUID().replace(/-/g, '').slice(0, 16)}`;
-}
-
 function buildReceiptBase(req: LearningRequest, now: string): Pick<
   LearningReceipt,
   'schemaVersion' | 'requestId' | 'idempotencyKey' | 'createdAt' | 'correlationId' | 'kind'
@@ -84,6 +69,12 @@ function buildReceiptBase(req: LearningRequest, now: string): Pick<
     correlationId: resolveRequestCorrelationId(req),
     kind: req.kind,
   };
+}
+
+interface OperationArtifacts {
+  receipt: LearningReceipt;
+  evidencePayload: Record<string, unknown>;
+  artifactHashes: Record<string, string>;
 }
 
 export function readLearningRequest(path: string): LearningRequest {
@@ -107,149 +98,131 @@ export function listPendingLearningRequests(dir = resolveLearningExchangeDir()):
     .map((f) => join(reqDir, f));
 }
 
-const seen = new Set<string>();
-
-function auditDecision(
-  idempotencyKey: string,
-  decisionId: string,
-  input: LearningDecideInput,
-  decision: LearningDecision,
-  goalId: string,
-): string {
-  const claimId = makeClaimId();
-  appendClaim({
-    claimId,
-    claim: JSON.stringify({
-      kind: 'learning-nba-decision',
-      idempotencyKey,
-      decisionId,
-      learnerId: input.learnerId,
-      concept: input.concept,
-      masterySnapshot: input.mastery,
-      decision,
-      goalId,
-    }),
-    type: 'narrative',
-    path: `learning://${idempotencyKey}`,
-    confidence: 0,
-    source: 'learning-nba',
-    sourceRef: decisionId,
-    ts: new Date().toISOString(),
-  });
-  return claimId;
-}
-
-function auditOutcome(
-  idempotencyKey: string,
-  input: LearningOutcomeInput,
-): string {
-  const claimId = makeClaimId();
-  appendClaim({
-    claimId,
-    claim: JSON.stringify({
-      kind: 'learning-outcome',
-      idempotencyKey,
-      decisionCorrelationId: input.decisionCorrelationId,
-      learnerId: input.learnerId,
-      concept: input.concept,
-      completed: input.completed,
-      correct: input.correct,
-      responseTimeSec: input.responseTimeSec,
-      selfReportedConfidence: input.selfReportedConfidence,
-    }),
-    type: 'narrative',
-    path: `learning://outcome/${idempotencyKey}`,
-    confidence: 0,
-    source: 'learning-nba',
-    sourceRef: input.decisionCorrelationId,
-    ts: new Date().toISOString(),
-  });
-  return claimId;
-}
-
-async function processDecide(
+/** Pure computation — no local side effects (durable claim CAS fences writes). */
+async function computeDecideArtifacts(
   req: Extract<LearningRequest, { kind: 'decide' }>,
-  dir: string,
   now: () => string,
-): Promise<LearningReceipt> {
+): Promise<OperationArtifacts> {
   assertWritable('learning.processDecide');
   const input = req.payload;
   const candidates = await generateCandidates(input);
   const scored = decideNextAction(input, candidates);
-  const decisionId = makeDecisionId();
+  const decisionId = deterministicDecisionId(req.idempotencyKey);
   const decision = finalizeDecision(scored, decisionId);
+  const goalId = deterministicGoalId(req.idempotencyKey);
+  const evidenceClaimId = deterministicEvidenceClaimId(req.idempotencyKey, 'decide');
+  const spendCorrelationId = deterministicSpendCorrelationId(req.idempotencyKey, 'decide');
 
-  const goal = createGoal({
-    title: `NBA: ${input.concept} → ${decision.action}`,
-    source: { kind: 'volaura-work-queue', ref: req.idempotencyKey },
-    actor: 'learning-nba',
-  });
-
-  const claimId = auditDecision(req.idempotencyKey, decisionId, input, decision, goal.id);
-
-  const spendCorrelationId = randomUUID();
-  recordSpend({
-    provider: 'atlas-local',
-    model: 'nba-engine-v1',
-    tokensIn: 0,
-    tokensOut: 0,
-    caller: 'learning-nba',
-    correlationId: spendCorrelationId,
-  });
+  const evidencePayload = {
+    kind: 'learning-nba-decision',
+    idempotencyKey: req.idempotencyKey,
+    decisionId,
+    learnerId: input.learnerId,
+    concept: input.concept,
+    masterySnapshot: input.mastery,
+    decision,
+    goalId,
+  };
 
   const receipt: LearningReceipt = {
     ...buildReceiptBase(req, now()),
     status: 'completed',
     updatedAt: now(),
     decisionId,
-    goalId: goal.id,
+    goalId,
     decision,
     spendCorrelationId,
-    evidenceClaimId: claimId,
+    evidenceClaimId,
   };
-  seen.add(req.idempotencyKey);
-  writeReceiptAtomic(dir, receipt);
-  return receipt;
+
+  return {
+    receipt,
+    evidencePayload,
+    artifactHashes: { goalId, spendCorrelationId, evidenceClaimId },
+  };
 }
 
-async function processOutcome(
+async function computeOutcomeArtifacts(
   req: Extract<LearningRequest, { kind: 'outcome' }>,
-  dir: string,
   now: () => string,
-): Promise<LearningReceipt> {
+): Promise<OperationArtifacts> {
   assertWritable('learning.processOutcome');
   const input = req.payload;
-  const claimId = auditOutcome(req.idempotencyKey, input);
+  const evidenceClaimId = deterministicEvidenceClaimId(req.idempotencyKey, 'outcome');
+  const spendCorrelationId = deterministicSpendCorrelationId(req.idempotencyKey, 'outcome');
 
-  const spendCorrelationId = randomUUID();
-  recordSpend({
-    provider: 'atlas-local',
-    model: 'nba-outcome-v1',
-    tokensIn: 0,
-    tokensOut: 0,
-    caller: 'learning-nba',
-    correlationId: spendCorrelationId,
-  });
+  const evidencePayload = {
+    kind: 'learning-outcome',
+    idempotencyKey: req.idempotencyKey,
+    decisionCorrelationId: input.decisionCorrelationId,
+    learnerId: input.learnerId,
+    concept: input.concept,
+    completed: input.completed,
+    correct: input.correct,
+    responseTimeSec: input.responseTimeSec,
+    selfReportedConfidence: input.selfReportedConfidence,
+  };
 
   const receipt: LearningReceipt = {
     ...buildReceiptBase(req, now()),
     status: 'completed',
     updatedAt: now(),
     spendCorrelationId,
-    evidenceClaimId: claimId,
+    evidenceClaimId,
   };
-  seen.add(req.idempotencyKey);
-  writeReceiptAtomic(dir, receipt);
-  return receipt;
+
+  return {
+    receipt,
+    evidencePayload,
+    artifactHashes: { spendCorrelationId, evidenceClaimId },
+  };
 }
 
-/** Process one learning request → write receipt. Idempotent on idempotencyKey. */
+function completedReceiptFromProof(
+  proof: LearningProofBundle,
+  requestId: string,
+): LearningReceipt {
+  return { ...proof.receipt, proof, requestId, status: 'completed' };
+}
+
+function deliverCompletedFromProof(
+  req: LearningRequest,
+  proof: LearningProofBundle,
+  dir: string,
+  writeReceipt: (d: string, r: LearningReceipt) => void,
+): Promise<LearningReceipt> {
+  const receipt = completedReceiptFromProof(proof, req.requestId);
+  return applyLearningProjections(req, proof)
+    .catch((projErr) => {
+      console.error('[learning] projection reconcile failed (non-fatal):', projErr);
+    })
+    .then(() => {
+      try {
+        if (!existsSync(receiptPath(dir, req.idempotencyKey))) {
+          writeReceipt(dir, receipt);
+        }
+      } catch (projErr) {
+        console.error('[learning] receipt reconcile failed (non-fatal):', projErr);
+      }
+      return receipt;
+    });
+}
+
+/** Process one learning request with durable claim CAS. Idempotent on idempotencyKey + payload hash. */
 export async function processLearningRequest(
   req: LearningRequest,
-  opts?: { exchangeDir?: string; now?: () => Date },
+  opts?: {
+    exchangeDir?: string;
+    now?: () => Date;
+    owner?: string;
+    receiptWriter?: (dir: string, receipt: LearningReceipt) => void;
+  },
 ): Promise<LearningReceipt> {
   const dir = opts?.exchangeDir ?? resolveLearningExchangeDir();
   const now = () => (opts?.now ? opts.now() : new Date()).toISOString();
+  const store = createLearningClaimStore(dir);
+  const owner = opts?.owner ?? newOperationOwner();
+  const writeReceipt = opts?.receiptWriter ?? ((d: string, r: LearningReceipt) => writeReceiptAtomic(d, r));
 
   if (isAtlasReadonly()) {
     const receipt: LearningReceipt = {
@@ -262,44 +235,113 @@ export async function processLearningRequest(
     return receipt;
   }
 
-  const existing = readCompletedReceipt(dir, req.idempotencyKey);
-  if (existing) {
-    return { ...existing, status: 'completed', requestId: req.requestId };
+  const begin = await store.beginOperation(req, owner, now());
+
+  if (begin.outcome === 'completed') {
+    return deliverCompletedFromProof(req, begin.proof, dir, writeReceipt);
   }
 
-  if (seen.has(req.idempotencyKey)) {
-    const receipt: LearningReceipt = {
+  if (begin.outcome === 'conflict') {
+    return {
+      ...buildReceiptBase(req, now()),
+      status: 'rejected',
+      updatedAt: now(),
+      error: begin.message,
+    };
+  }
+
+  if (begin.outcome === 'in_flight') {
+    return {
       ...buildReceiptBase(req, now()),
       status: 'duplicate',
       updatedAt: now(),
-      error: 'idempotencyKey already processed in this process',
+      error: 'operation in flight',
     };
-    return receipt;
   }
 
+  if (begin.outcome === 'stale_owner') {
+    return {
+      ...buildReceiptBase(req, now()),
+      status: 'duplicate',
+      updatedAt: now(),
+      error: 'stale owner',
+    };
+  }
+
+  const { claim, generation } = begin;
+  let durableProof: LearningProofBundle | null = null;
+
   try {
-    if (req.kind === 'decide') return await processDecide(req, dir, now);
-    return await processOutcome(req, dir, now);
+    const artifacts = req.kind === 'decide'
+      ? await computeDecideArtifacts(req, now)
+      : await computeOutcomeArtifacts(req, now);
+
+    const proof: LearningProofBundle = buildProofBundle(
+      req,
+      artifacts.receipt,
+      artifacts.evidencePayload,
+      artifacts.artifactHashes,
+      claim.createdAt,
+    );
+
+    const complete = await store.completeOperation(
+      req.idempotencyKey,
+      owner,
+      generation,
+      proof,
+      now(),
+    );
+
+    if (complete === 'stale_owner') {
+      const durable = await store.readProof(req.idempotencyKey);
+      if (durable) return deliverCompletedFromProof(req, durable, dir, writeReceipt);
+      return {
+        ...buildReceiptBase(req, now()),
+        status: 'duplicate',
+        updatedAt: now(),
+        error: 'stale owner lost race',
+      };
+    }
+
+    if (complete !== 'ok') {
+      const durable = await store.readProof(req.idempotencyKey);
+      if (durable) return deliverCompletedFromProof(req, durable, dir, writeReceipt);
+      throw new Error('claim CAS lost after operation');
+    }
+
+    durableProof = proof;
+
+    try {
+      await applyLearningProjections(req, proof);
+    } catch (projErr) {
+      console.error('[learning] projection failed (non-fatal):', projErr);
+    }
+
+    try {
+      writeReceipt(dir, { ...artifacts.receipt, proof });
+    } catch (projErr) {
+      console.error('[learning] receipt projection failed (non-fatal):', projErr);
+    }
+
+    return { ...artifacts.receipt, proof };
   } catch (err) {
+    if (durableProof) {
+      return deliverCompletedFromProof(req, durableProof, dir, writeReceipt);
+    }
     const msg = err instanceof Error ? err.message : String(err);
-    const receipt: LearningReceipt = {
+    await store.failOperation(req.idempotencyKey, owner, generation, msg, req.requestId, now());
+    return {
       ...buildReceiptBase(req, now()),
       status: 'failed',
       updatedAt: now(),
       error: msg.slice(0, 500),
     };
-    // Failed receipts go to receipts/failed/{requestId} — do not block idempotencyKey retry.
-    writeReceiptAtomic(dir, {
-      ...receipt,
-      idempotencyKey: `failed-${req.requestId}`,
-    }, failedReceiptPath(dir, req.requestId));
-    return receipt;
   }
 }
 
-/** Test helper. */
+/** Test helper — no-op (claim store is durable). */
 export function resetLearningRequestSeenForTests(): void {
-  seen.clear();
+  /* retained for test compatibility */
 }
 
 export { LearningRequestParseError };

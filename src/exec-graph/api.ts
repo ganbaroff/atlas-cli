@@ -74,14 +74,20 @@ export interface CreateGoalInput {
   source?: SourceRef;
   actor?: string;
   ts?: string;
+  /** Optional deterministic id (learning projections). Must match goalIdSchema. */
+  id?: string;
 }
 
 export function createGoal(input: CreateGoalInput): Goal {
   assertWritable('exec-graph.createGoal');
+  if (input.id) {
+    const existing = readGraph().goals[input.id];
+    if (existing) return existing;
+  }
   const ts = input.ts ?? nowIso();
   const actor = input.actor ?? 'atlas';
   const goal = goalSchema.parse({
-    id: newGoalId(),
+    id: input.id ?? newGoalId(),
     title: input.title,
     source: input.source ?? { kind: 'exec-graph', ref: 'cli' },
     status: 'open',

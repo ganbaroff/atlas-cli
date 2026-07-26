@@ -1,0 +1,39 @@
+# Cloud Run — Atlas learning HTTP API (Sprint 3 STAGING)
+# Auth: public ingress + app-level Bearer (ATLAS_LEARNING_API_KEY via Secret Manager).
+# Idempotency: GCS bucket (ATLAS_LEARNING_RECEIPTS_BUCKET) + maxScale=1/concurrency=1 staging containment.
+
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: atlas-learning-api-staging
+  annotations:
+    run.googleapis.com/ingress: all
+spec:
+  template:
+    metadata:
+      annotations:
+        autoscaling.knative.dev/minScale: "0"
+        autoscaling.knative.dev/maxScale: "1"
+    spec:
+      containerConcurrency: 1
+      timeoutSeconds: 60
+      containers:
+        - image: gcr.io/PROJECT_ID/atlas-learning-api-staging
+          ports:
+            - containerPort: 8080
+          env:
+            - name: NODE_ENV
+              value: production
+            - name: ATLAS_LEARNING_STATE_DIR
+              value: /tmp/atlas-learning
+            - name: ATLAS_LEARNING_RECEIPTS_BUCKET
+              value: atlas-learning-receipts-staging
+            - name: ATLAS_LEARNING_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: atlas-learning-api-key-staging
+                  key: latest
+          resources:
+            limits:
+              memory: 512Mi
+              cpu: "1"

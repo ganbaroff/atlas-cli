@@ -29,3 +29,48 @@ jobs:
 
       - name: Test
         run: npx vitest run
+
+      - name: Build learning API bundle
+        run: test -f dist/learning-api.js
+
+  learning-http-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci --legacy-peer-deps
+      - run: npm run build
+
+      - name: Start learning API
+        env:
+          ATLAS_LEARNING_API_KEY: ci-test-key
+          ATLAS_LEARNING_STATE_DIR: /tmp/atlas-learning-ci
+          PORT: '8089'
+        run: |
+          node dist/learning-api.js &
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8089/health && exit 0
+            sleep 0.5
+          done
+          echo "learning API failed to start" >&2
+          exit 1
+
+      - name: Contract smoke (decide + outcome)
+        env:
+          ATLAS_LEARNING_API_KEY: ci-test-key
+        run: |
+          curl -sf -X POST http://127.0.0.1:8089/v1/learning/decide \
+            -H "Authorization: Bearer ci-test-key" \
+            -H "Content-Type: application/json" \
+            -d '{"idempotencyKey":"ci_decide_1","payload":{"learnerId":"1","concept":"sigmoid","mastery":0.35,"lastAnswers":[false,true,false],"responseTimeSec":28,"energy":"medium"}}' \
+            | grep -q VISUAL_EXPLANATION
+          curl -sf -X POST http://127.0.0.1:8089/v1/learning/outcome \
+            -H "Authorization: Bearer ci-test-key" \
+            -H "Content-Type: application/json" \
+            -d '{"idempotencyKey":"ci_outcome_1","payload":{"learnerId":"1","concept":"sigmoid","decisionCorrelationId":"ci_decide_1","completed":true,"correct":true,"responseTimeSec":10}}' \
+            | grep -q completed
