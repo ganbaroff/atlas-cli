@@ -14,6 +14,7 @@ import {
   createLearningHttpHandler,
   resetLearningRequestSeenForTests as resetHttpSeen,
 } from '../learning/http-server.js';
+import { isolateLearningTestEnv } from '../learning/test-isolation.js';
 
 const NOW = '2026-07-25T12:00:00.000Z';
 
@@ -42,6 +43,7 @@ describe('learning idempotency hardening', () => {
 
   beforeEach(() => {
     stateDir = mkdtempSync(join(tmpdir(), 'atlas-idem-'));
+    isolateLearningTestEnv(stateDir);
     resetLearningRequestSeenForTests();
   });
 
@@ -84,6 +86,7 @@ describe('learning HTTP header idempotency', () => {
 
   beforeEach(async () => {
     stateDir = mkdtempSync(join(tmpdir(), 'atlas-http-idem-'));
+    isolateLearningTestEnv(stateDir);
     process.env.ATLAS_LEARNING_API_KEY = apiKey;
     process.env.NODE_ENV = 'test';
     resetHttpSeen();

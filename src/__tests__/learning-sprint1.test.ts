@@ -19,6 +19,7 @@ import {
   readLearningRequest,
   resetLearningRequestSeenForTests,
 } from '../learning/request-port.js';
+import { isolateLearningTestEnv } from '../learning/test-isolation.js';
 import { readLedgerEntries } from '../evidence/ledger.js';
 import { readSpendReceipts } from '../atlas/spend-tracker.js';
 import { readGraph } from '../exec-graph/ledger.js';
@@ -99,20 +100,11 @@ describe('learning Sprint 1 — sigmoid NBA', () => {
 });
 
 describe('learning Sprint 1 — hardening', () => {
-  let exchangeDir: string;
-  let evidenceDir: string;
-  let execGraphDir: string;
-  let spendReceiptDir: string;
+  let stateDir: string;
 
   beforeEach(() => {
-    exchangeDir = mkdtempSync(join(tmpdir(), 'atlas-learning-xchg-'));
-    evidenceDir = mkdtempSync(join(tmpdir(), 'atlas-learning-ev-'));
-    execGraphDir = mkdtempSync(join(tmpdir(), 'atlas-learning-graph-'));
-    spendReceiptDir = mkdtempSync(join(tmpdir(), 'atlas-learning-spend-'));
-    process.env.ATLAS_LEARNING_EXCHANGE_DIR = exchangeDir;
-    process.env.ATLAS_EVIDENCE_DIR = evidenceDir;
-    process.env.ATLAS_EXEC_GRAPH_DIR = execGraphDir;
-    process.env.ATLAS_SPEND_RECEIPT_DIR = spendReceiptDir;
+    stateDir = mkdtempSync(join(tmpdir(), 'atlas-learning-'));
+    isolateLearningTestEnv(stateDir);
     process.env.SUPABASE_URL = '';
     process.env.SUPABASE_SERVICE_ROLE_KEY = '';
     delete process.env.ATLAS_READONLY;
@@ -120,26 +112,24 @@ describe('learning Sprint 1 — hardening', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     delete process.env.ATLAS_LEARNING_EXCHANGE_DIR;
+    delete process.env.ATLAS_LEARNING_STATE_DIR;
     delete process.env.ATLAS_EVIDENCE_DIR;
     delete process.env.ATLAS_EXEC_GRAPH_DIR;
     delete process.env.ATLAS_SPEND_RECEIPT_DIR;
-    delete process.env.ATLAS_READONLY;
-    rmSync(exchangeDir, { recursive: true, force: true });
-    rmSync(evidenceDir, { recursive: true, force: true });
-    rmSync(execGraphDir, { recursive: true, force: true });
-    rmSync(spendReceiptDir, { recursive: true, force: true });
+    rmSync(stateDir, { recursive: true, force: true });
   });
 
   it('repeat request with same idempotencyKey does not create a second decision', async () => {
-    const first = await processLearningRequest(decideReq(), { exchangeDir });
+    const first = await processLearningRequest(decideReq(), { exchangeDir: stateDir });
     expect(first.status).toBe('completed');
     expect(first.decisionId).toMatch(/^dec_/);
 
     resetLearningRequestSeenForTests();
     const retry = await processLearningRequest(
       decideReq({ requestId: 'req_sigmoid_retry_002' }),
-      { exchangeDir },
+      { exchangeDir: stateDir },
     );
 
     expect(retry.status).toBe('completed');
@@ -147,14 +137,14 @@ describe('learning Sprint 1 — hardening', () => {
     expect(retry.goalId).toBe(first.goalId);
     expect(retry.decision?.action).toBe('VISUAL_EXPLANATION');
 
-    const ledger = readLedgerEntries(evidenceDir);
+    const ledger = readLedgerEntries(join(stateDir, 'evidence'));
     expect(ledger.length).toBe(1);
     expect(Object.keys(readGraph().goals).length).toBe(1);
   });
 
   it('invalid JSON returns a readable validation error', () => {
-    mkdirSync(join(exchangeDir, 'requests'), { recursive: true });
-    const badPath = join(exchangeDir, 'requests', 'bad.json');
+    mkdirSync(join(stateDir, 'requests'), { recursive: true });
+    const badPath = join(stateDir, 'requests', 'bad.json');
     writeFileSync(badPath, '{ not-json');
 
     expect(() => readLearningRequest(badPath)).toThrow(LearningRequestParseError);
@@ -179,51 +169,49 @@ describe('learning Sprint 1 — hardening', () => {
   });
 
   it('crash before receipt write → safe retry produces one decision', async () => {
-    const { createGoal } = await import('../exec-graph/api.js');
-    const goalSpy = vi.spyOn(await import('../exec-graph/api.js'), 'createGoal')
-      .mockImplementationOnce(() => {
+    const genMod = await import('../learning/candidate-generator.js');
+    const realGenerate = genMod.generateCandidates;
+    const genSpy = vi.spyOn(genMod, 'generateCandidates')
+      .mockImplementationOnce(async () => {
         throw new Error('simulated Atlas crash mid-decide');
       })
-      .mockImplementation((...args) => createGoal(...args));
+      .mockImplementation((input, opts) => realGenerate(input, opts));
 
     const crashed = await processLearningRequest(
       decideReq({ requestId: 'req_crash_001' }),
-      { exchangeDir },
+      { exchangeDir: stateDir },
     );
     expect(crashed.status).toBe('failed');
     expect(crashed.error).toMatch(/simulated Atlas crash/);
 
-    goalSpy.mockRestore();
+    genSpy.mockRestore();
     resetLearningRequestSeenForTests();
 
-    expect(existsSync(join(exchangeDir, 'receipts', 'idem_sigmoid_123.json'))).toBe(false);
+    const claimPath = join(stateDir, 'claims', 'idem_sigmoid_123.json');
+    expect(existsSync(claimPath)).toBe(true);
+    const failedClaim = JSON.parse(readFileSync(claimPath, 'utf8'));
+    expect(failedClaim.state).toBe('failed');
+    expect(failedClaim.failureReason).toMatch(/simulated Atlas crash/);
+    expect(existsSync(join(stateDir, 'receipts', 'idem_sigmoid_123.json'))).toBe(false);
 
     const recovered = await processLearningRequest(
       decideReq({ requestId: 'req_crash_002' }),
-      { exchangeDir },
+      { exchangeDir: stateDir },
     );
     expect(recovered.status).toBe('completed');
     expect(recovered.decisionId).toMatch(/^dec_/);
-    expect(readLedgerEntries(evidenceDir).length).toBe(1);
+    expect(recovered.proof?.requestHash).toBeTruthy();
+    expect(readLedgerEntries(join(stateDir, 'evidence')).length).toBe(1);
     expect(Object.keys(readGraph().goals).length).toBe(1);
   });
 });
 
 describe('learning Sprint 1 — full cycle port', () => {
-  let exchangeDir: string;
-  let evidenceDir: string;
-  let execGraphDir: string;
-  let spendReceiptDir: string;
+  let stateDir: string;
 
   beforeEach(() => {
-    exchangeDir = mkdtempSync(join(tmpdir(), 'atlas-learning-xchg-'));
-    evidenceDir = mkdtempSync(join(tmpdir(), 'atlas-learning-ev-'));
-    execGraphDir = mkdtempSync(join(tmpdir(), 'atlas-learning-graph-'));
-    spendReceiptDir = mkdtempSync(join(tmpdir(), 'atlas-learning-spend-'));
-    process.env.ATLAS_LEARNING_EXCHANGE_DIR = exchangeDir;
-    process.env.ATLAS_EVIDENCE_DIR = evidenceDir;
-    process.env.ATLAS_EXEC_GRAPH_DIR = execGraphDir;
-    process.env.ATLAS_SPEND_RECEIPT_DIR = spendReceiptDir;
+    stateDir = mkdtempSync(join(tmpdir(), 'atlas-learning-'));
+    isolateLearningTestEnv(stateDir);
     process.env.SUPABASE_URL = '';
     process.env.SUPABASE_SERVICE_ROLE_KEY = '';
     delete process.env.ATLAS_READONLY;
@@ -231,19 +219,17 @@ describe('learning Sprint 1 — full cycle port', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     delete process.env.ATLAS_LEARNING_EXCHANGE_DIR;
+    delete process.env.ATLAS_LEARNING_STATE_DIR;
     delete process.env.ATLAS_EVIDENCE_DIR;
     delete process.env.ATLAS_EXEC_GRAPH_DIR;
     delete process.env.ATLAS_SPEND_RECEIPT_DIR;
-    delete process.env.ATLAS_READONLY;
-    rmSync(exchangeDir, { recursive: true, force: true });
-    rmSync(evidenceDir, { recursive: true, force: true });
-    rmSync(execGraphDir, { recursive: true, force: true });
-    rmSync(spendReceiptDir, { recursive: true, force: true });
+    rmSync(stateDir, { recursive: true, force: true });
   });
 
   it('decide → exec-graph goal + evidence + spend receipt + decision receipt', async () => {
-    const receipt = await processLearningRequest(decideReq(), { exchangeDir });
+    const receipt = await processLearningRequest(decideReq(), { exchangeDir: stateDir });
     expect(receipt.status).toBe('completed');
     expect(receipt.decision?.action).toBe('VISUAL_EXPLANATION');
     expect(receipt.decision?.decisionScore).toBe(0.78);
@@ -253,11 +239,12 @@ describe('learning Sprint 1 — full cycle port', () => {
     expect(receipt.schemaVersion).toBe('1.0');
 
     const file = JSON.parse(
-      readFileSync(join(exchangeDir, 'receipts', 'idem_sigmoid_123.json'), 'utf8'),
+      readFileSync(join(stateDir, 'receipts', 'idem_sigmoid_123.json'), 'utf8'),
     );
     expect(file.decision.decisionScore).toBe(0.78);
+    expect(file.proof?.requestHash).toBeTruthy();
 
-    const ledger = readLedgerEntries(evidenceDir);
+    const ledger = readLedgerEntries(join(stateDir, 'evidence'));
     expect(ledger.length).toBe(1);
     expect(JSON.parse(ledger[0]!.claim.claim).kind).toBe('learning-nba-decision');
 
@@ -268,7 +255,7 @@ describe('learning Sprint 1 — full cycle port', () => {
   });
 
   it('outcome round-trip after decide', async () => {
-    await processLearningRequest(decideReq(), { exchangeDir });
+    await processLearningRequest(decideReq(), { exchangeDir: stateDir });
     resetLearningRequestSeenForTests();
 
     const outcomeReceipt = await processLearningRequest({
@@ -287,34 +274,35 @@ describe('learning Sprint 1 — full cycle port', () => {
         responseTimeSec: 15,
         selfReportedConfidence: 0.7,
       },
-    }, { exchangeDir });
+    }, { exchangeDir: stateDir });
     expect(outcomeReceipt.status).toBe('completed');
     expect(outcomeReceipt.evidenceClaimId).toMatch(/^clm_/);
 
-    const ledger = readLedgerEntries(evidenceDir);
+    const ledger = readLedgerEntries(join(stateDir, 'evidence'));
     expect(ledger.length).toBe(2);
     expect(JSON.parse(ledger[1]!.claim.claim).kind).toBe('learning-outcome');
   });
 
   it('ATLAS_READONLY → readonly', async () => {
     process.env.ATLAS_READONLY = '1';
-    const receipt = await processLearningRequest(decideReq(), { exchangeDir });
+    const receipt = await processLearningRequest(decideReq(), { exchangeDir: stateDir });
     expect(receipt.status).toBe('readonly');
   });
 
   it('file exchange: request JSON on disk → receipt JSON only artifact', async () => {
-    mkdirSync(join(exchangeDir, 'requests'), { recursive: true });
+    mkdirSync(join(stateDir, 'requests'), { recursive: true });
     writeFileSync(
-      join(exchangeDir, 'requests', 'req_file_001.json'),
+      join(stateDir, 'requests', 'req_file_001.json'),
       JSON.stringify(decideReq({ requestId: 'req_file_001' })),
     );
     const { listPendingLearningRequests } = await import('../learning/request-port.js');
-    const paths = listPendingLearningRequests(exchangeDir);
+    const paths = listPendingLearningRequests(stateDir);
     expect(paths.length).toBe(1);
     const req = readLearningRequest(paths[0]!);
-    const receipt = await processLearningRequest(req, { exchangeDir });
+    const receipt = await processLearningRequest(req, { exchangeDir: stateDir });
     expect(receipt.status).toBe('completed');
-    expect(existsSync(join(exchangeDir, 'receipts', 'idem_sigmoid_123.json'))).toBe(true);
-    expect(existsSync(join(exchangeDir, 'graph.json'))).toBe(false);
+    expect(existsSync(join(stateDir, 'receipts', 'idem_sigmoid_123.json'))).toBe(true);
+    expect(existsSync(join(stateDir, 'claims', 'idem_sigmoid_123.json'))).toBe(true);
+    expect(existsSync(join(stateDir, 'graph.json'))).toBe(false);
   });
 });

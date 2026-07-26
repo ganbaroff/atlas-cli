@@ -336,6 +336,13 @@ export function appendEvent(input: NewLedgerEvent): AppendResult {
   const dir = resolveExecGraphDir();
   const current = readGraph();
 
+  if (input.kind === 'goal-created') {
+    const goalId = input.payload.goal.id;
+    if (current.goals[goalId]) {
+      return { deduped: true, event: null, snapshot: current };
+    }
+  }
+
   if (input.kind === 'task-created') {
     const key = input.payload.task.idempotencyKey;
     const existing = Object.values(current.tasks).find((t) => t.idempotencyKey === key);

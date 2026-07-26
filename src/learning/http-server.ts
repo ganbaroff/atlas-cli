@@ -168,8 +168,9 @@ export function createLearningHttpHandler(opts?: LearningHttpServerOptions) {
 
       const status = receipt.status === 'completed' ? 200
         : receipt.status === 'duplicate' ? 409
-          : receipt.status === 'readonly' ? 503
-            : 502;
+          : receipt.status === 'rejected' ? 409
+            : receipt.status === 'readonly' ? 503
+              : 502;
       sendJson(res, status, receipt);
     } catch (err) {
       if (err instanceof LearningAuthError) {

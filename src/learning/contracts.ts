@@ -96,6 +96,16 @@ export type LearningReceiptStatus =
   | 'readonly'
   | 'rejected';
 
+/** Durable proof bundle — source of truth; local ledger/graph/spend are projections. */
+export interface LearningProofBundle {
+  requestHash: string;
+  requestId: string;
+  receipt: LearningReceipt;
+  evidencePayload: Record<string, unknown>;
+  artifactHashes: Record<string, string>;
+  timestamps: { claimedAt: string; completedAt: string };
+}
+
 export interface LearningReceipt {
   schemaVersion: typeof LEARNING_SCHEMA_VERSION;
   requestId: string;
@@ -113,6 +123,8 @@ export interface LearningReceipt {
   error?: string;
   spendCorrelationId?: string;
   evidenceClaimId?: string;
+  /** Present on completed HTTP receipts when proof bundle persisted. */
+  proof?: LearningProofBundle;
 }
 
 /** Candidate before transparent scoring. */

@@ -187,6 +187,10 @@ export function recordSpend(input: RecordSpendInput): number {
   const estCost = estimateCostUsd(input.provider, tokensIn, tokensOut);
   const correlationId = input.correlationId ?? randomUUID();
 
+  if (input.correlationId && readSpendReceipts().some((r) => r.correlationId === input.correlationId)) {
+    return 0;
+  }
+
   rollIfNewDay();
   daily.tokensIn += tokensIn;
   daily.tokensOut += tokensOut;
