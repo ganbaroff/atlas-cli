@@ -5,7 +5,12 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { runnerTick, runRunnerLoop, describeRunnerLiveness, type RunnerDeps, type RunnerTickResult } from '../atlas/atlas-runner.js';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { createHmac } from 'node:crypto';
+import { runnerTick, runRunnerLoop, describeRunnerLiveness, _resetNoKeyWarning, type RunnerDeps, type RunnerTickResult } from '../atlas/atlas-runner.js';
+import { createNonceLedger } from '../atlas/queue-auth.js';
 
 // ── Classifier kill-switch for runner tests ──────────────────────────
 // Runner tests test the runner, not the LLM classifier. Disable the
@@ -290,5 +295,182 @@ describe('describeRunnerLiveness', () => {
     const now = Date.parse('2026-07-27T14:05:10.000Z');
     const result = describeRunnerLiveness(lease, now, () => false, 60_000);
     expect(result.status).toBe('stale');
+  });
+});
+
+// ── Wave D: work-order authenticity gate in runnerTick ──────────────────
+
+const WAVE_D_TEST_KEY = 'test-fake-key-not-real-do-not-use';
+
+function signForTest(command: string, chatId: number, overrides: Partial<{
+  ts: string; nonce: string; sig: string;
+}> = {}): { sig: string; ts: string; nonce: string } {
+  const ts = overrides.ts ?? new Date().toISOString();
+  const nonce = overrides.nonce ?? `nonce-${Math.random().toString(36).slice(2)}`;
+  const canonical = JSON.stringify({ command, chat_id: chatId, ts, nonce });
+  const sig = overrides.sig ?? createHmac('sha256', WAVE_D_TEST_KEY).update(canonical).digest('hex');
+  return { sig, ts, nonce };
+}
+
+function fakeSignedCommand(command: string, id = 'cmd-s1', chatId = 123, payloadOverrides: Partial<{
+  ts: string; nonce: string; sig: string;
+}> = {}) {
+  const signed = signForTest(command, chatId, payloadOverrides);
+  return { id, command, payload: signed, chat_id: chatId, priority: 0 };
+}
+
+describe('runnerTick — Wave D: authenticity gate (key set)', () => {
+  let tempDir: string;
+
+  beforeEach(() => {
+    tempDir = mkdtempSync(join(tmpdir(), 'runner-auth-test-'));
+    _resetNoKeyWarning();
+  });
+
+  function makeAuthDeps(overrides: Partial<RunnerDeps> = {}): RunnerDeps {
+    return {
+      claim: vi.fn().mockResolvedValue(null),
+      complete: vi.fn().mockResolvedValue(undefined),
+      fail: vi.fn().mockResolvedValue(undefined),
+      runLocal: vi.fn().mockResolvedValue({ output: 'ok', exitCode: 0 }),
+      isPaused: vi.fn().mockReturnValue(false),
+      workerId: 'test-worker-auth',
+      getSigningKey: () => WAVE_D_TEST_KEY,
+      nonceLedger: createNonceLedger(tempDir),
+      ...overrides,
+    };
+  }
+
+  it('correctly signed fresh row passes to the red-line stage and completes', async () => {
+    const cmd = fakeSignedCommand('check disk space');
+    const deps = makeAuthDeps({
+      claim: vi.fn().mockResolvedValue(cmd),
+      runLocal: vi.fn().mockResolvedValue({ output: '50GB free', exitCode: 0 }),
+    });
+    const result = await runnerTick(deps);
+
+    expect(result.status).toBe('completed');
+    expect(deps.runLocal).toHaveBeenCalled();
+    expect(deps.complete).toHaveBeenCalled();
+  });
+
+  it('unsigned row => refused with reason auth-failed: unsigned', async () => {
+    const cmd = { id: 'cmd-u1', command: 'check disk', payload: {}, chat_id: 123, priority: 0 };
+    const deps = makeAuthDeps({
+      claim: vi.fn().mockResolvedValue(cmd),
+    });
+    const result = await runnerTick(deps);
+
+    expect(result.status).toBe('refused');
+    expect((result as any).reason).toContain('auth-failed: unsigned');
+    expect(deps.runLocal).not.toHaveBeenCalled();
+    expect(deps.fail).toHaveBeenCalledWith('cmd-u1', expect.stringContaining('auth-failed: unsigned'));
+  });
+
+  it('tampered command (sig mismatch) => refused with reason auth-failed: sig-mismatch', async () => {
+    // Sign for 'check disk' but claim arrives with 'rm -rf /'
+    const signed = signForTest('check disk', 123);
+    const cmd = { id: 'cmd-t1', command: 'rm -rf /', payload: signed, chat_id: 123, priority: 0 };
+    const deps = makeAuthDeps({
+      claim: vi.fn().mockResolvedValue(cmd),
+    });
+    const result = await runnerTick(deps);
+
+    expect(result.status).toBe('refused');
+    expect((result as any).reason).toContain('auth-failed: sig-mismatch');
+    expect(deps.runLocal).not.toHaveBeenCalled();
+  });
+
+  it('ts older than 24h => refused with reason auth-failed: expired', async () => {
+    const oldTs = new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString();
+    const cmd = fakeSignedCommand('check disk', 'cmd-e1', 123, { ts: oldTs });
+    const deps = makeAuthDeps({
+      claim: vi.fn().mockResolvedValue(cmd),
+    });
+    const result = await runnerTick(deps);
+
+    expect(result.status).toBe('refused');
+    expect((result as any).reason).toContain('auth-failed: expired');
+    expect(deps.runLocal).not.toHaveBeenCalled();
+  });
+
+  it('repeated nonce => refused on the second claim with reason auth-failed: nonce-reuse', async () => {
+    const fixedNonce = 'nonce-replay-test';
+    const ledger = createNonceLedger(tempDir);
+
+    // First claim: should pass
+    const cmd1 = fakeSignedCommand('check disk', 'cmd-r1', 123, { nonce: fixedNonce });
+    const deps1 = makeAuthDeps({
+      claim: vi.fn().mockResolvedValue(cmd1),
+      nonceLedger: ledger,
+    });
+    const result1 = await runnerTick(deps1);
+    expect(result1.status).toBe('completed');
+
+    // Second claim with same nonce: should be refused
+    const cmd2 = fakeSignedCommand('check disk', 'cmd-r2', 123, { nonce: fixedNonce });
+    const deps2 = makeAuthDeps({
+      claim: vi.fn().mockResolvedValue(cmd2),
+      nonceLedger: ledger,
+    });
+    const result2 = await runnerTick(deps2);
+
+    expect(result2.status).toBe('refused');
+    expect((result2 as any).reason).toContain('auth-failed: nonce-reuse');
+    expect(deps2.runLocal).not.toHaveBeenCalled();
+  });
+});
+
+describe('runnerTick — Wave D: no-key compat mode', () => {
+  beforeEach(() => {
+    _resetNoKeyWarning();
+  });
+
+  it('unsigned row is accepted (compat mode) when key is not set', async () => {
+    const cmd = { id: 'cmd-c1', command: 'check disk space', payload: null, chat_id: 123, priority: 0 };
+    const deps = makeDeps({
+      claim: vi.fn().mockResolvedValue(cmd),
+      runLocal: vi.fn().mockResolvedValue({ output: 'ok', exitCode: 0 }),
+      getSigningKey: () => undefined,
+    } as any);
+    const result = await runnerTick(deps);
+
+    expect(result.status).toBe('completed');
+    expect(deps.runLocal).toHaveBeenCalled();
+  });
+
+  it('once-per-boot warning fires when key is not set', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const cmd = { id: 'cmd-w1', command: 'check status', payload: null, chat_id: 123, priority: 0 };
+      const deps = makeDeps({
+        claim: vi.fn().mockResolvedValue(cmd),
+        runLocal: vi.fn().mockResolvedValue({ output: 'ok', exitCode: 0 }),
+        getSigningKey: () => undefined,
+      } as any);
+
+      // First tick — warning fires
+      await runnerTick(deps);
+      const authWarnings = warnSpy.mock.calls.filter(
+        (c) => typeof c[0] === 'string' && c[0].includes('ATLAS_QUEUE_SIGNING_KEY not set'),
+      );
+      expect(authWarnings.length).toBe(1);
+
+      // Second tick — warning does NOT repeat
+      const cmd2 = { id: 'cmd-w2', command: 'check again', payload: null, chat_id: 123, priority: 0 };
+      const deps2 = makeDeps({
+        claim: vi.fn().mockResolvedValue(cmd2),
+        runLocal: vi.fn().mockResolvedValue({ output: 'ok', exitCode: 0 }),
+        getSigningKey: () => undefined,
+      } as any);
+      await runnerTick(deps2);
+
+      const authWarnings2 = warnSpy.mock.calls.filter(
+        (c) => typeof c[0] === 'string' && c[0].includes('ATLAS_QUEUE_SIGNING_KEY not set'),
+      );
+      expect(authWarnings2.length).toBe(1); // still 1, not 2
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 });
