@@ -245,6 +245,24 @@ describe('routeFreeformAction', () => {
     expect(enqueueRemote).toHaveBeenCalled();
   });
 
+  // ── C-wire: Cyrillic root coverage reaches the router gate ──────────
+
+  it('C-wire: "удалите все файлы" (formal imperative, Cyrillic root) → needs-approval with deletion', async () => {
+    const result = await routeFreeformAction('удалите все файлы', fakeDeps());
+    expect(result.kind).toBe('needs-approval');
+    if (result.kind === 'needs-approval') {
+      expect(result.reason).toContain('deletion');
+    }
+  });
+
+  it('C-wire: "переведите деньги на счет" (formal imperative, Cyrillic root) → needs-approval with payment', async () => {
+    const result = await routeFreeformAction('переведите деньги на счет', fakeDeps());
+    expect(result.kind).toBe('needs-approval');
+    if (result.kind === 'needs-approval') {
+      expect(result.reason).toContain('payment');
+    }
+  });
+
   it('does NOT call enqueueRemote for red-line actions even with chatId', async () => {
     const enqueueRemote = vi.fn().mockResolvedValue('queue-id-1');
     const deps = fakeDeps({ enqueueRemote });

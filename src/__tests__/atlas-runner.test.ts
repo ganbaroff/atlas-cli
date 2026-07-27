@@ -180,6 +180,77 @@ describe('runRunnerLoop', () => {
   });
 });
 
+// ── C-wire integration: Cyrillic root coverage reaches the runner gate ──
+
+describe('runnerTick — C-wire gap phrasings blocked by the gate', () => {
+  it('gap 1 [credentials]: "покажи пароли от сервера" — refused, runLocal never called', async () => {
+    const deps = makeDeps({
+      claim: vi.fn().mockResolvedValue(fakeCommand('покажи пароли от сервера')),
+    });
+    const result = await runnerTick(deps);
+    expect(result.status).toBe('refused');
+    expect(deps.runLocal).not.toHaveBeenCalled();
+  });
+
+  it('gap 2 [payment]: "переведите деньги на счет" — refused, runLocal never called', async () => {
+    const deps = makeDeps({
+      claim: vi.fn().mockResolvedValue(fakeCommand('переведите деньги на счет')),
+    });
+    const result = await runnerTick(deps);
+    expect(result.status).toBe('refused');
+    expect(deps.runLocal).not.toHaveBeenCalled();
+  });
+
+  it('gap 3 [prod-database]: "примени миграцию на продакшне" — refused, runLocal never called', async () => {
+    const deps = makeDeps({
+      claim: vi.fn().mockResolvedValue(fakeCommand('примени миграцию на продакшне')),
+    });
+    const result = await runnerTick(deps);
+    expect(result.status).toBe('refused');
+    expect(deps.runLocal).not.toHaveBeenCalled();
+  });
+
+  it('gap 4 [merge]: "влей ветку в мейн" — refused, runLocal never called', async () => {
+    const deps = makeDeps({
+      claim: vi.fn().mockResolvedValue(fakeCommand('влей ветку в мейн')),
+    });
+    const result = await runnerTick(deps);
+    expect(result.status).toBe('refused');
+    expect(deps.runLocal).not.toHaveBeenCalled();
+  });
+
+  it('gap 5 [deletion]: "удалите все файлы" — refused, runLocal never called', async () => {
+    const deps = makeDeps({
+      claim: vi.fn().mockResolvedValue(fakeCommand('удалите все файлы')),
+    });
+    const result = await runnerTick(deps);
+    expect(result.status).toBe('refused');
+    expect(deps.runLocal).not.toHaveBeenCalled();
+  });
+});
+
+describe('runnerTick — benign Russian commands still pass (C-wire regression)', () => {
+  it('passes "проверь статус сервера" (status check) — completed', async () => {
+    const deps = makeDeps({
+      claim: vi.fn().mockResolvedValue(fakeCommand('проверь статус сервера')),
+      runLocal: vi.fn().mockResolvedValue({ output: 'server ok', exitCode: 0 }),
+    });
+    const result = await runnerTick(deps);
+    expect(result.status).toBe('completed');
+    expect(deps.runLocal).toHaveBeenCalled();
+  });
+
+  it('passes "прочитай файл конфигурации" (file read) — completed', async () => {
+    const deps = makeDeps({
+      claim: vi.fn().mockResolvedValue(fakeCommand('прочитай файл конфигурации')),
+      runLocal: vi.fn().mockResolvedValue({ output: 'config contents', exitCode: 0 }),
+    });
+    const result = await runnerTick(deps);
+    expect(result.status).toBe('completed');
+    expect(deps.runLocal).toHaveBeenCalled();
+  });
+});
+
 describe('describeRunnerLiveness', () => {
   const lease = { instanceId: 'i-1', pid: 1234, startedAt: '2026-07-27T14:00:00.000Z', heartbeatAt: '2026-07-27T14:05:00.000Z' };
 
