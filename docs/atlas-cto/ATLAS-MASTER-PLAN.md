@@ -173,9 +173,17 @@ Only after P0-P3. In value order for the charter:
 
 ---
 
-## 7. MODEL-CHOICE RULE (applied, per `master-prompt.md`)
+## 7. SEAT ROUTING (applied — full rule in [`FABLE-PROTOCOL.md`](FABLE-PROTOCOL.md) §1)
 
-Security-adjacent phases (P0, P1, P4) start on **Opus** — not after a refusal, before the first line. Mechanical phases (P2, P3, and most of P5) run on **Sonnet** executors. Planning and cross-domain synthesis stay on the orchestrator seat. Rationale: the safety filter's "adjacent topics" overlap our core domain permanently; choosing the model up front is cheaper than losing a session to a mid-run switch.
+Phases whose deliverable is a list of things to strengthen (**P0, P1, P4**) start on **Opus 5**
+(`claude-opus-5`) — before the first line, not after a declined request. Mechanical phases
+(**P2, P3**, and most of P5) run on **Sonnet 5** executors. Planning, sequencing and cross-domain
+synthesis stay on the **Fable 5** orchestrator seat.
+
+Rationale: the classifier's sensitive-adjacent band overlaps our core domain permanently, and it
+reads the whole thread — so a mid-run switch does not rescue a contaminated session, it costs the
+session. Choosing up front is strictly cheaper. Recovery ladder when a request is declined anyway:
+`FABLE-PROTOCOL.md` §3 (never reword — change seats).
 
 ---
 

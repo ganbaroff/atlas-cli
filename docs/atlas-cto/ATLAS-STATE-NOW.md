@@ -44,6 +44,14 @@ npm test -- --run src/__tests__/m10-install-lifecycle.test.ts
 node scripts/m9-live-cross-repo.mts
 ```
 
+## HOW TO WORK (protocol, read before picking up any work item)
+- [`FABLE-PROTOCOL.md`](FABLE-PROTOCOL.md) — seat routing (which model for which work class, decided
+  BEFORE the first turn), recovery ladder when a request is declined, `FABLE.GO` token grammar,
+  body registry, GOAL-MODE. Closes the reference that `ATLAS-OPERATING-CANON.md` §7 used to leave dangling.
+- [`ATLAS-OPERATING-CANON.md`](ATLAS-OPERATING-CANON.md) — portable behavior gates.
+- [`ATLAS-MASTER-PLAN.md`](ATLAS-MASTER-PLAN.md) — the one forward plan (capability charter, gap
+  table vs industry practice, phases P0–P5). No second plan doc.
+
 ## HOW TO RESUME
 1. Read this file
 2. M4–M10 internal stack CLOSED — do not re-open without CEO veto

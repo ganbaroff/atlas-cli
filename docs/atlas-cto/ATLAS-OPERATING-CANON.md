@@ -44,7 +44,8 @@ All discipline reduces to one truth (VOLAURA Session-114 meta-lesson across 22 f
 
 ## 7. Governance & safety — portable red lines
 - **Immutable governance/audit ledger** of agent decisions and vetoes (ADR-008 pattern).
-- **Forever-gated without an explicit human gate:** money movement, production-DB mutation, deletions, outbound sends/posts, credential handling, public release, force-push, external submission, legal consent (ADR-0009 A1.1 / FABLE.GO rule 4).
+- **Forever-gated without an explicit human gate:** money movement, production-DB mutation, deletions, outbound sends/posts, credential handling, public release, force-push, external submission, legal consent (ADR-0009 A1.1 / [`FABLE-PROTOCOL.md` §5 rule 4](FABLE-PROTOCOL.md#5-fablego--the-stage-token) — the token grammar and the body registry live there, not in the journal).
+- **Seat routing before the work item, not after a decline:** work whose deliverable is a list of things to strengthen starts on the top general seat; product/architecture/docs/planning runs on the planning seat. Rewording a declined request is banned — change seats ([`FABLE-PROTOCOL.md` §1–§3](FABLE-PROTOCOL.md)).
 - **Cross-instance handoff integrity:** SHA-256 sign+verify any file crossing the trust boundary between Atlas bodies (Class 23 courier gate).
 - **Never use a frontier lab's own top model AS a swarm worker** (ADR-007): free-tier / credits first, cost-ordered router with a dead-provider breaker.
 
