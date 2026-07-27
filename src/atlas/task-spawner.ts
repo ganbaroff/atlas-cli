@@ -17,13 +17,37 @@
  */
 
 import { spawn } from 'node:child_process';
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isPaused } from './spend-policy.js';
 import { controlAllowsModelCalls, describeControlBlock } from './control-plane.js';
 
-const ANUS_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+/**
+ * Repo-root resolver, same landmark-walk idiom as exec-graph/ledger.ts's
+ * resolveExecGraphDir(). A fixed '..', '..' from this module's own location
+ * assumed a stable 2-levels-deep src/atlas/ path — true when run from
+ * source (tsx), but WRONG when bundled by tsup into a single dist/cli.js
+ * sitting one level above repo root's dist/ dir, which over-corrected one
+ * directory too far (resolved to the parent of the repo, not the repo).
+ * Found live 2026-07-27: atlas-runner's first real tick against the
+ * production dist/cli.js failed every task with MODULE_NOT_FOUND because
+ * of exactly this. Walk up looking for package.json instead — works
+ * identically whether invoked from src/ or from the bundled dist/.
+ */
+function resolveAnusRoot(): string {
+  let dir = dirname(fileURLToPath(import.meta.url));
+  for (let i = 0; i < 6; i++) {
+    if (existsSync(resolve(dir, 'package.json'))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  // Last resort: the old assumption, kept as a fallback rather than a throw.
+  return resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
+}
+
+const ANUS_ROOT = resolveAnusRoot();
 
 const TASK_DIR = 'C:/Projects/ATLAS/data/task-results';
 const MAX_TIMEOUT = 10 * 60 * 1000; // 10 minutes

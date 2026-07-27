@@ -134,6 +134,26 @@ export async function deleteDeliveredCommand(id: string): Promise<void> {
   await supaFetch(`atlas_command_queue?id=eq.${id}`, { method: 'DELETE' });
 }
 
+/**
+ * Read-only operational peek at the most recent queue rows, ANY status —
+ * for diagnosing the nerve (L2), never for the runner's own claim path.
+ * Command text truncated to 80 chars; never returns secret-shaped fields.
+ */
+export async function peekQueue(limit = 10): Promise<Array<{
+  id: string; status: string; attempts: number | null; commandPreview: string; created_at: string;
+}>> {
+  const rows = await supaFetch(
+    `atlas_command_queue?select=id,status,attempts,command,created_at&order=created_at.desc&limit=${limit}`
+  );
+  return (rows ?? []).map((r: any) => ({
+    id: r.id,
+    status: r.status,
+    attempts: r.attempts ?? null,
+    commandPreview: typeof r.command === 'string' ? r.command.slice(0, 80) : `[${typeof r.command}]`,
+    created_at: r.created_at,
+  }));
+}
+
 // ── Consumer-side: claim + complete (Claude Code bridge) ──
 // Uses RPC for atomic FOR UPDATE SKIP LOCKED claim — REST can't do row-locking.
 
@@ -148,7 +168,20 @@ export async function claimNextCommand(workerId: string): Promise<{
     method: 'POST',
     body: JSON.stringify({ p_worker_id: workerId }),
   });
-  return rows?.[0] ?? rows ?? null;
+  // The RPC's PostgREST shape varies: a SETOF-style RPC returns an array
+  // (possibly empty when there's nothing to claim), some RPC return
+  // conventions hand back a single object directly instead. The old
+  // `rows?.[0] ?? rows ?? null` broke on the empty-queue case: `[][0]` is
+  // undefined, so it fell through to `?? rows`, returning the EMPTY ARRAY
+  // ITSELF as the "claimed command" — and `![]` is false in JS (arrays are
+  // truthy), so callers' `if (!claimed) return idle` never fired. Found
+  // live 2026-07-27 via atlas-runner's first real ticks against an empty
+  // queue: every tick reported a "malformed command" failure instead of
+  // idle. Explicit array-vs-object handling closes this for good.
+  if (Array.isArray(rows)) {
+    return rows.length > 0 ? rows[0] : null;
+  }
+  return rows ?? null;
 }
 
 /** Mark a claimed command as done with result. */

@@ -21,6 +21,42 @@ describe('supabase memory adapter', () => {
     expect(isSupabaseConfigured()).toBe(true);
   });
 
+  it('regression: claimNextCommand returns null (not the empty array itself) when the queue has nothing to claim', async () => {
+    // Live bug found 2026-07-27: the RPC returns [] when nothing is
+    // claimable; the old `rows?.[0] ?? rows ?? null` fell through to
+    // `?? rows`, returning the empty array AS the "claimed command" — and
+    // `![]` is false in JS, so callers' idle-check never fired, treating
+    // an empty queue as a claimed row with undefined id/command.
+    vi.stubEnv('SUPABASE_URL', 'https://example.supabase.co');
+    vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'sb_secret_test');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      text: async () => '[]',
+      json: async () => [],
+    } as Response);
+
+    const { claimNextCommand } = await import('../atlas/supabase-memory.js');
+    const result = await claimNextCommand('test-worker');
+
+    expect(result).toBeNull();
+  });
+
+  it('claimNextCommand returns the claimed row when the RPC has real work', async () => {
+    vi.stubEnv('SUPABASE_URL', 'https://example.supabase.co');
+    vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'sb_secret_test');
+    const row = { id: 'cmd-1', command: 'check disk space', payload: null, chat_id: 123, priority: 0 };
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      text: async () => JSON.stringify([row]),
+      json: async () => [row],
+    } as Response);
+
+    const { claimNextCommand } = await import('../atlas/supabase-memory.js');
+    const result = await claimNextCommand('test-worker');
+
+    expect(result).toEqual(row);
+  });
+
   it('writes journal and episode entries to atlas_learnings without exposing secrets', async () => {
     vi.stubEnv('SUPABASE_URL', 'https://example.supabase.co');
     vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'sb_secret_test');

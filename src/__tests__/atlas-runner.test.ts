@@ -118,6 +118,20 @@ describe('runnerTick', () => {
     expect(deps.complete).not.toHaveBeenCalled();
   });
 
+  it('regression: malformed claimed row (non-string command) fails cleanly, never crashes, never reaches red-line scanner', async () => {
+    // Live 2026-07-27: a claimed row with a non-string .command crashed the
+    // whole runner process (unguarded .toLowerCase() downstream). External
+    // Supabase data is not a TypeScript-shape guarantee.
+    const deps = makeDeps({
+      claim: vi.fn().mockResolvedValue({ id: 'cmd-bad', command: undefined, payload: null, chat_id: 1, priority: 0 }),
+    });
+    const result = await runnerTick(deps);
+
+    expect(result.status).toBe('failed');
+    expect(deps.runLocal).not.toHaveBeenCalled();
+    expect(deps.fail).toHaveBeenCalledWith('cmd-bad', expect.stringContaining('malformed'));
+  });
+
   it('regression: null exit code (task-spawner blocked/paused/timeout signal) is NEVER treated as success', async () => {
     // task-spawner's runTask() returns exitCode:null for emergency pause,
     // control-block, "another task already running", AND a signal-killed

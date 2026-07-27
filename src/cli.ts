@@ -1380,6 +1380,21 @@ const runnerCmd = program
   .description('L2 local-node runner — claim + execute commands from the queue');
 
 runnerCmd
+  .command('peek')
+  .description('Read-only: show the most recent atlas_command_queue rows (any status)')
+  .option('-n, --limit <n>', 'How many rows', '10')
+  .action(async (opts) => {
+    try {
+      const { peekQueue } = await import('./atlas/supabase-memory.js');
+      const rows = await peekQueue(parseInt(opts.limit, 10) || 10);
+      console.log(JSON.stringify(rows, null, 2));
+    } catch (err) {
+      console.error(`runner peek error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
+  });
+
+runnerCmd
   .command('tick')
   .description('Run exactly ONE runner tick (claim → check → execute → result as JSON)')
   .action(async () => {

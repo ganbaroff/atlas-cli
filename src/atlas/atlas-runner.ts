@@ -108,8 +108,37 @@ export async function runnerTick(deps: RunnerDeps): Promise<RunnerTickResult> {
   const commandId = claimed.id;
   const commandText = claimed.command;
 
-  // Gate 3: red-line check BEFORE execution
-  const redLine = checkRedLine(commandText);
+  // Gate 2.5: malformed-row guard. A claimed row is external data (a
+  // Supabase table any producer can write to) — TypeScript's declared
+  // shape is not a runtime guarantee. A non-string command must never
+  // reach the red-line scanner (which assumes text.toLowerCase() is
+  // safe) or be silently treated as "no red-line effects found" —
+  // either would be wrong for a safety gate. Fail it explicitly.
+  if (typeof commandText !== 'string' || commandText.trim().length === 0) {
+    const reason = 'malformed command: missing or non-string command text';
+    try {
+      await deps.fail(commandId, reason);
+    } catch { /* best-effort */ }
+    return { status: 'failed', commandId, error: reason };
+  }
+
+  // Gate 3: red-line check BEFORE execution. Wrapped defensively — this
+  // gate must never crash the process (found live 2026-07-27: an
+  // unguarded downstream .toLowerCase() on bad input took down the
+  // whole runner via a native libuv assertion, not just this tick).
+  // Any exception here is conservatively treated as a failure, never as
+  // "no red line" — a broken classifier must not silently permit execution.
+  let redLine: { blocked: boolean; reason: string };
+  try {
+    redLine = checkRedLine(commandText);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const reason = `red-line check failed (treated as blocked): ${msg}`;
+    try {
+      await deps.fail(commandId, reason);
+    } catch { /* best-effort */ }
+    return { status: 'refused', commandId, reason };
+  }
   if (redLine.blocked) {
     const reason = `needs-approval: ${redLine.reason}`;
     try {
