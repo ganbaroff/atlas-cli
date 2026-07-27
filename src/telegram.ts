@@ -246,7 +246,7 @@ async function ask(chatId: number, text: string): Promise<string> {
   // to exec-graph, gate red-lines. Wrapped so any throw falls through to brain reply.
   try {
     if (classifyIntent(text) === 'action') {
-      const routerResult = await routeFreeformAction(text, defaultActionRouterDeps());
+      const routerResult = await routeFreeformAction(text, defaultActionRouterDeps(), chatId);
       const actionReply = actionResultToReply(routerResult);
       if (actionReply) {
         addMsg(chatId, 'assistant', actionReply);
@@ -864,8 +864,16 @@ async function deliverRemoteResults(): Promise<void> {
     const chatId = parseInt(CEO_CHAT_ID, 10);
     const completed = await pollCompletedCommands(chatId);
     for (const cmd of completed) {
+      // completeCommand wraps string results as {output: "..."} — unwrap
+      // so the CEO sees the actual output text, not raw JSON.
+      const rawResult = cmd.result;
       const resultText = cmd.status === 'done'
-        ? (typeof cmd.result === 'string' ? cmd.result : JSON.stringify(cmd.result)).slice(0, 3800)
+        ? (typeof rawResult === 'string'
+            ? rawResult
+            : (rawResult && typeof rawResult === 'object' && 'output' in rawResult && typeof (rawResult as any).output === 'string')
+              ? (rawResult as any).output
+              : JSON.stringify(rawResult)
+          ).slice(0, 3800)
         : `ERROR: ${cmd.error?.slice(0, 500) ?? 'unknown'}`;
       const receipt = formatReceipt(`/remote ${cmd.command}`, resultText);
       const msg = `[remote result] ${cmd.command.slice(0, 60)}\n\n${resultText}\n\n${receipt}`;

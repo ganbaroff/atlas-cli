@@ -33,9 +33,8 @@ describe('actionResultToReply', () => {
     const reply = actionResultToReply(result);
     expect(reply).not.toBeNull();
     expect(reply).toContain('Принял');
-    expect(reply).toContain('собрать отчёт по продажам');
     expect(reply).toContain('tsk_abc123');
-    expect(reply).toContain('конвейер');
+    expect(reply).toContain('раннер');
   });
 
   it('returns a Russian reply for kind:needs-approval with reason', () => {
@@ -59,7 +58,7 @@ describe('actionResultToReply', () => {
     const reply = actionResultToReply(result);
     expect(reply).not.toBeNull();
     expect(reply).toContain('tsk_noid');
-    expect(reply).toContain('run linter');
+    expect(reply).toContain('раннер');
   });
 });
 

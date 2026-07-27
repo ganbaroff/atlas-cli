@@ -20,6 +20,7 @@ import type { TypedEffect, EffectKind } from '../goal-runner/types.js';
 import { classifyEffect, hasRedLine, redLineReason } from '../goal-runner/red-line.js';
 import { intakeCommand } from '../swarm-exec/commands.js';
 import { commitCommand } from '../swarm-exec/commands.js';
+import { queueRemoteCommand } from './supabase-memory.js';
 
 // ── Result types ────────────────────────────────────────────────────────
 
@@ -158,6 +159,8 @@ export interface ActionRouterDeps {
   commit: (draftId: string) => { taskId: string; goalId: string };
   /** Optional red-line check override. Default: deriveEffectsFromText. */
   redLineCheck?: (text: string) => { blocked: boolean; reason?: string };
+  /** Enqueue a command to the Supabase nerve for atlas-runner. Injected for testability. */
+  enqueueRemote?: (chatId: number, command: string) => Promise<string>;
 }
 
 /**
@@ -181,6 +184,7 @@ export function defaultActionRouterDeps(): ActionRouterDeps {
       }
       return { blocked: false };
     },
+    enqueueRemote: queueRemoteCommand,
   };
 }
 
@@ -196,7 +200,7 @@ export function actionResultToReply(result: ActionRouterResult): string | null {
     case 'chat':
       return null;
     case 'queued':
-      return `Принял. Задача в работе: ${result.summary} (id ${result.taskId}). Идёт через проверяемый конвейер, вернусь с результатом.`;
+      return `Принял. Задача ${result.taskId} создана и поставлена в очередь локальному раннеру — вернусь с результатом, когда он её возьмёт.`;
     case 'needs-approval':
       return `Это требует твоего явного 'да' (${result.reason}). Без подтверждения не делаю.`;
   }
@@ -212,10 +216,16 @@ export function actionResultToReply(result: ActionRouterResult): string | null {
  * - needs-approval → red-line tripped, do NOT execute, ask CEO
  *
  * Never auto-executes irreversible actions. Never touches telegram.
+ *
+ * @param chatId — optional Telegram chat ID. When provided AND deps.enqueueRemote
+ *   exists, also enqueues a work order to the Supabase nerve for atlas-runner.
+ *   Best-effort: a queue failure logs but never throws or changes the returned kind.
+ *   Omit (or pass undefined) to skip enqueue — existing callers/tests unaffected.
  */
 export async function routeFreeformAction(
   text: string,
   deps: ActionRouterDeps,
+  chatId?: number,
 ): Promise<ActionRouterResult> {
   // Step 1: classify intent.
   if (classifyIntent(text) === 'chat') {
@@ -240,6 +250,20 @@ export async function routeFreeformAction(
   // Step 3: intake + commit → tracked exec-graph task.
   const { draftId, draft } = deps.intake(text);
   const { taskId, goalId } = deps.commit(draftId);
+
+  // Step 4: best-effort enqueue to Supabase nerve (§7) for atlas-runner.
+  // The exec-graph task is already created — a queue failure must never
+  // make this function throw or change its returned kind.
+  if (chatId !== undefined && deps.enqueueRemote) {
+    try {
+      await deps.enqueueRemote(chatId, text);
+    } catch (e) {
+      console.warn(
+        `[action-router] enqueue to nerve failed (best-effort, task ${taskId} still in exec-graph):`,
+        e instanceof Error ? e.message : String(e),
+      );
+    }
+  }
 
   return {
     kind: 'queued',

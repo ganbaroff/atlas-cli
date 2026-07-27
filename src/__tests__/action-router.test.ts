@@ -8,7 +8,7 @@
  *   - All deps are faked — no real exec-graph, no filesystem, no network
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   classifyIntent,
   routeFreeformAction,
@@ -211,5 +211,46 @@ describe('routeFreeformAction', () => {
     expect(commitCalled).toBe(true);
     expect(commitReceivedDraftId).toBe('dft_abc');
     expect(result.kind).toBe('queued');
+  });
+
+  // ── chatId + enqueueRemote wiring ──────────────────────────────────────
+
+  it('calls enqueueRemote when chatId is provided and action is queued', async () => {
+    const enqueueRemote = vi.fn().mockResolvedValue('queue-id-1');
+    const deps = fakeDeps({ enqueueRemote });
+
+    const result = await routeFreeformAction('создай компонент', deps, 12345);
+    expect(result.kind).toBe('queued');
+    expect(enqueueRemote).toHaveBeenCalledWith(12345, 'создай компонент');
+  });
+
+  it('does NOT call enqueueRemote when chatId is omitted', async () => {
+    const enqueueRemote = vi.fn().mockResolvedValue('queue-id-1');
+    const deps = fakeDeps({ enqueueRemote });
+
+    const result = await routeFreeformAction('создай компонент', deps);
+    expect(result.kind).toBe('queued');
+    expect(enqueueRemote).not.toHaveBeenCalled();
+  });
+
+  it('enqueue failure does not break queued-kind return', async () => {
+    const enqueueRemote = vi.fn().mockRejectedValue(new Error('Supabase unreachable'));
+    const deps = fakeDeps({ enqueueRemote });
+
+    const result = await routeFreeformAction('запусти тесты', deps, 99999);
+    expect(result.kind).toBe('queued');
+    if (result.kind === 'queued') {
+      expect(result.taskId).toBe('tsk_fake456');
+    }
+    expect(enqueueRemote).toHaveBeenCalled();
+  });
+
+  it('does NOT call enqueueRemote for red-line actions even with chatId', async () => {
+    const enqueueRemote = vi.fn().mockResolvedValue('queue-id-1');
+    const deps = fakeDeps({ enqueueRemote });
+
+    const result = await routeFreeformAction('удали все файлы', deps, 12345);
+    expect(result.kind).toBe('needs-approval');
+    expect(enqueueRemote).not.toHaveBeenCalled();
   });
 });

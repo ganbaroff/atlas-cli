@@ -5,11 +5,27 @@ The queue is the bridge between the Atlas **brain** (this repo, Mastra/TS) and a
 commands; the executor claims, runs, and completes them; Atlas polls results and
 delivers them to the CEO in Telegram.
 
-> **Status (2026-07-17): producer-dormant.** Both in-repo producers were
-> disabled on 2026-07-10 (board P0 — ungoverned external cron removed). Nothing
-> in this repo writes to the queue today. The consumer, delivery, and sweep
-> machinery below remains in code and describes how the queue behaves when it
-> is fed. Full detail: ADR-0004's "Correction to the record" section
+> **Status (2026-07-27): producer-active (governed).** The ungoverned
+> producers were disabled on 2026-07-10 (board P0). On 2026-07-27, a governed
+> producer was re-enabled under ATLAS-ARCHITECTURE.md §7: `action-router.ts`'s
+> `routeFreeformAction()` enqueues work orders for actions that passed both the
+> intent classifier and the red-line gate. The consumer is `atlas-runner.ts`
+> (L2 ladder), which independently red-line-checks again before execution —
+> defense in depth.
+>
+> - **Producer:** `src/atlas/action-router.ts` — calls `queueRemoteCommand()`
+>   best-effort after creating an exec-graph task. Every enqueued command has
+>   already cleared the text-level red-line scan; the exec-graph task exists
+>   independently of the queue row.
+> - **Consumer:** `src/atlas/atlas-runner.ts` — resident on the operator's
+>   local machine, claims via `claimNextCommand`, red-line-checks the command
+>   text again, executes safe commands, writes results via `completeCommand` /
+>   `failCommand`. Never auto-executes irreversible actions (its own gate).
+> - **Delivery:** `deliverRemoteResults()` in `telegram.ts` — unchanged,
+>   polls completed/failed rows every 2 min, posts to Telegram via the notify
+>   chokepoint, deletes delivered rows.
+>
+> Full detail: ADR-0004's "Correction to the record" section
 > (`docs/adr/0004-legacy-task-source-cutover.md`).
 
 Table: `atlas_command_queue` (Supabase). Access via the REST/RPC helpers in
@@ -17,17 +33,14 @@ Table: `atlas_command_queue` (Supabase). Access via the REST/RPC helpers in
 
 ## Roles
 
-- **Producer (in this repo): none active since 2026-07-10.** The two historical
-  producers — the `/remote` Telegram command (`telegram.ts:512-523`) and the
-  autonomous brain-loop (`autonomousBrainLoop()`, `telegram.ts:787-797`) — were
-  both disabled on 2026-07-10 (board P0): `/remote` now only replies that it is
-  disabled, and the brain-loop body is two early-return guards. Neither calls
-  `queueRemoteCommand()` anymore. The function itself
-  (`queueRemoteCommand(chatId, command)`, `supabase-memory.ts:110`) still exists
-  as the sole write path for any future governed producer, and the historical
-  seeding rules (seed only when the queue is empty, daily
-  `ATLAS_BRAIN_QUEUE_CAP` via `spend-policy.ts` → `tryConsumeBrainQueueSlot`)
-  apply to any successor. See ADR-0004, "Correction to the record".
+- **Producer (in this repo): `src/atlas/action-router.ts` — active since
+  2026-07-27.** `routeFreeformAction()` enqueues a work order via
+  `queueRemoteCommand(chatId, text)` after creating the exec-graph task, when a
+  `chatId` is provided by the caller (Telegram path). The enqueue is best-effort:
+  a Supabase failure logs and continues — the exec-graph task exists regardless.
+  Every enqueued command has already passed the text-level red-line gate. The two
+  historical ungoverned producers (`/remote`, `autonomousBrainLoop`) remain
+  disabled (board P0, 2026-07-10). See ADR-0004.
 - **Consumer (in-repo OPTIONAL worker OR external — exactly one active):**
   claims and executes commands via `claimNextCommand` / `completeCommand` /
   `failCommand`. There are now two possible consumers, and **exactly one must be
