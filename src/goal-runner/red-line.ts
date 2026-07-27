@@ -208,6 +208,107 @@ export function classifyCommandText(text: string): {
   return { blocked: false };
 }
 
+// ── Additive LLM classifier vote (P0.2 Wave C2) ─────────────────────
+//
+// A cheap free-tier model provides a second, additive vote on commands
+// that pass the keyword floor. Strictly additive: "block" => refused;
+// "allow" => the keyword verdict stands. Transport error, timeout, or
+// unparseable reply => throw, which the gate already treats as blocked.
+//
+// Kill-switch: env ATLAS_REDLINE_LLM=0 disables the classifier entirely.
+
+/** Injectable deps for testability — tests mock callLLM, no live network. */
+export interface ClassifierDeps {
+  isEnabled: () => boolean;
+  callLLM: (text: string) => Promise<string>;
+}
+
+/** Default kill-switch reader: disabled when ATLAS_REDLINE_LLM === '0'. */
+export function isClassifierEnabled(): boolean {
+  return process.env['ATLAS_REDLINE_LLM'] !== '0';
+}
+
+const CLASSIFIER_PROMPT =
+  'You are a safety classifier for an autonomous agent. Decide whether the following command is SAFE or DANGEROUS for autonomous execution. ' +
+  'DANGEROUS means: touches production data, spends money, sends external messages, deletes data, exposes credentials, merges/pushes code, or any irreversible action. ' +
+  'Reply with exactly one word: ALLOW or BLOCK. No explanation.\n\nCommand: ';
+
+/** Parse the raw LLM response into a vote. Throws on unparseable. */
+function parseClassifierVote(raw: string): 'allow' | 'block' {
+  const normalized = raw.trim().toUpperCase();
+  if (normalized === 'ALLOW' || normalized.startsWith('ALLOW')) return 'allow';
+  if (normalized === 'BLOCK' || normalized.startsWith('BLOCK')) return 'block';
+  throw new Error(`unparseable classifier response: "${raw.slice(0, 100)}"`);
+}
+
+/**
+ * Full red-line check: keyword floor + optional classifier vote.
+ *
+ * Reason strings are machine-distinguishable:
+ *   - "Keyword floor: ..."   — deterministic keyword match
+ *   - "Classifier: ..."      — LLM voted block
+ *   - "Classifier error: ..." — LLM call failed / unparseable (treated as block)
+ */
+export async function checkRedLineWithClassifier(
+  text: string,
+  deps?: ClassifierDeps,
+): Promise<{ blocked: boolean; reason: string }> {
+  // Layer 1: keyword floor (deterministic, offline, always runs first)
+  const kwResult = classifyCommandText(text);
+  if (kwResult.blocked) {
+    return { blocked: true, reason: kwResult.reason! };
+  }
+
+  // Kill-switch check
+  const enabled = deps ? deps.isEnabled() : isClassifierEnabled();
+  if (!enabled) {
+    return { blocked: false, reason: '' };
+  }
+
+  // Layer 2: LLM classifier vote (additive only)
+  try {
+    const callFn = deps?.callLLM ?? defaultCallLLM;
+    const raw = await callFn(text);
+    const vote = parseClassifierVote(raw);
+    if (vote === 'block') {
+      return { blocked: true, reason: `Classifier: command refused by LLM safety vote` };
+    }
+    return { blocked: false, reason: '' };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { blocked: true, reason: `Classifier error: ${msg}` };
+  }
+}
+
+/**
+ * Default LLM caller — uses the existing model router with fallback.
+ * Imported lazily to avoid circular deps at module load time.
+ */
+async function defaultCallLLM(text: string): Promise<string> {
+  // Lazy import to break potential circular dependency at module-load time
+  const { routeModelWithFallback } = await import('../model-router.js');
+  const { Agent } = await import('@mastra/core/agent');
+
+  const { result } = await routeModelWithFallback(
+    { role: 'FAST', maxCostTier: 0, excludeProviders: ['anthropic'] },
+    async (route) => {
+      const agent = new Agent({
+        id: 'atlas-redline-classifier',
+        name: 'AtlasRedLineClassifier',
+        instructions: 'You are a safety classifier. Reply with exactly one word: ALLOW or BLOCK.',
+        model: route.model,
+      });
+      const messages = [{ role: 'user' as const, content: CLASSIFIER_PROMPT + text }];
+      const response =
+        route.provider === 'ollama'
+          ? await agent.generateLegacy(messages as any)
+          : await agent.generate(messages as any);
+      return response.text;
+    },
+  );
+  return result as string;
+}
+
 export function isExternalTarget(url?: string): boolean {
   if (!url) return false;
   if (url.startsWith('file://') || url.startsWith('file:///')) return false;

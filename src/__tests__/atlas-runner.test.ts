@@ -4,8 +4,22 @@
  * ALL via injected fakes — zero network, zero subprocess, zero Supabase.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { runnerTick, runRunnerLoop, describeRunnerLiveness, type RunnerDeps, type RunnerTickResult } from '../atlas/atlas-runner.js';
+
+// ── Classifier kill-switch for runner tests ──────────────────────────
+// Runner tests test the runner, not the LLM classifier. Disable the
+// classifier via the documented kill-switch so no network calls are
+// attempted. The classifier has its own dedicated test file.
+let savedLLMEnv: string | undefined;
+beforeEach(() => {
+  savedLLMEnv = process.env['ATLAS_REDLINE_LLM'];
+  process.env['ATLAS_REDLINE_LLM'] = '0';
+});
+afterEach(() => {
+  if (savedLLMEnv === undefined) delete process.env['ATLAS_REDLINE_LLM'];
+  else process.env['ATLAS_REDLINE_LLM'] = savedLLMEnv;
+});
 
 // ── Helpers ────────────────────────────────────────────────────────────
 

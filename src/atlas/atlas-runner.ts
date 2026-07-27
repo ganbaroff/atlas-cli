@@ -17,7 +17,7 @@
 
 import { hostname } from 'node:os';
 import type { TypedEffect } from '../goal-runner/types.js';
-import { classifyEffect, hasRedLine, redLineReason } from '../goal-runner/red-line.js';
+import { classifyEffect, hasRedLine, redLineReason, checkRedLineWithClassifier } from '../goal-runner/red-line.js';
 import { deriveEffectsFromText } from './action-router.js';
 import { claimNextCommand, completeCommand, failCommand } from './supabase-memory.js';
 import { runTask } from './task-spawner.js';
@@ -81,12 +81,14 @@ export function defaultRunnerDeps(): RunnerDeps {
 // effect is refused. Unknown text with no keyword hits is treated as safe
 // at this level — the Hand-level gate catches deeper risks later.
 
-function checkRedLine(commandText: string): { blocked: boolean; reason: string } {
+async function checkRedLine(commandText: string): Promise<{ blocked: boolean; reason: string }> {
+  // Layer 1: effect-based red-line check (deterministic, via action-router keywords)
   const effects: TypedEffect[] = deriveEffectsFromText(commandText);
   if (hasRedLine(effects)) {
     return { blocked: true, reason: redLineReason(effects) };
   }
-  return { blocked: false, reason: '' };
+  // Layer 2: additive classifier vote (keyword floor + optional LLM, via red-line.ts)
+  return checkRedLineWithClassifier(commandText);
 }
 
 // ── Single tick ────────────────────────────────────────────────────────
@@ -136,7 +138,7 @@ export async function runnerTick(deps: RunnerDeps): Promise<RunnerTickResult> {
   // "no red line" — a broken classifier must not silently permit execution.
   let redLine: { blocked: boolean; reason: string };
   try {
-    redLine = checkRedLine(commandText);
+    redLine = await checkRedLine(commandText);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const reason = `red-line check failed (treated as blocked): ${msg}`;

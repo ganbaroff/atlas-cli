@@ -6,13 +6,25 @@
  * compatible data contract WITHOUT any live Supabase/network calls.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   routeFreeformAction,
   deriveEffectsFromText,
   type ActionRouterDeps,
 } from '../atlas/action-router.js';
 import { runnerTick, type RunnerDeps } from '../atlas/atlas-runner.js';
+
+// Disable the LLM classifier for runner integration tests — this file
+// tests the action-router→runner contract, not the classifier.
+let savedLLMEnv: string | undefined;
+beforeEach(() => {
+  savedLLMEnv = process.env['ATLAS_REDLINE_LLM'];
+  process.env['ATLAS_REDLINE_LLM'] = '0';
+});
+afterEach(() => {
+  if (savedLLMEnv === undefined) delete process.env['ATLAS_REDLINE_LLM'];
+  else process.env['ATLAS_REDLINE_LLM'] = savedLLMEnv;
+});
 
 describe('action-router → atlas-runner integration', () => {
   it('a queued action produces a command that atlas-runner can claim, execute, and complete', async () => {
