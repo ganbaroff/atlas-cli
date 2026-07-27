@@ -77,6 +77,137 @@ export function redLineReason(effects: TypedEffect[]): string {
  * Check if a URL target is external (non-loopback, non-file:).
  * Non-loopback/non-file: browser target is external by default (Round 16).
  */
+// ── Command-text keyword floor (P0.2 Cyrillic root coverage) ──────────
+//
+// Deterministic, offline, dependency-free keyword gate. Operates on
+// word roots so that Russian inflected forms (case, tense, person,
+// number) of a listed term all match. The normalizer lowercases and
+// replaces ё with е before matching.
+//
+// Boundary behavior: pure substring match on normalized roots.
+//   - Root "удал" matches "удалённый" (remote/distant) — an acceptable
+//     safety-biased false positive (same etymological root as "удалить").
+//   - Multi-word roots like "переведи"/"перевест" are used instead of
+//     bare "перевод" to avoid matching "переводчик" (translator).
+//   - Root "стере"/"сотри" used instead of "стир" to avoid matching
+//     "стирка" (laundry).
+
+/** Normalize Russian text: lowercase + ё→е. */
+function normalizeRu(text: string): string {
+  return text.toLowerCase().replace(/ё/g, 'е');
+}
+
+interface KeywordCategory {
+  category: string;
+  effect: EffectKind;
+  roots: readonly string[];
+}
+
+const KEYWORD_CATEGORIES: readonly KeywordCategory[] = [
+  {
+    category: 'credentials',
+    effect: 'credentials',
+    roots: [
+      // English
+      'credential', 'api key', 'password', 'secret key',
+      'private key', 'auth token', 'access token',
+      // Russian roots (cover all inflected forms)
+      'секрет',      // секрет, секреты, секретный, секретов
+      'парол',       // пароль, пароля, паролю, паролем, пароли, паролей
+      'учетн',       // учетные данные, учетная запись
+    ],
+  },
+  {
+    category: 'payment',
+    effect: 'payment',
+    roots: [
+      // English
+      'payment', 'pay for', 'transfer money', 'send money',
+      'wire transfer',
+      // Russian roots
+      'оплат',       // оплата, оплатить, оплатил, оплатите, оплату
+      'платеж',      // платеж, платежа, платежи, платежом, платежей
+      'деньг',       // деньги, деньгам, деньгами, деньгах
+      'денег',       // genitive of деньги
+      'переведи',    // переведи, переведите (imperative)
+      'перевест',    // перевести (infinitive)
+    ],
+  },
+  {
+    category: 'prod-database',
+    effect: 'prod-data-write',
+    roots: [
+      // English
+      'prod db', 'production database', 'drop table', 'drop database',
+      'truncate table',
+      // Russian roots
+      'продакшн',    // продакшн, продакшне, продакшна
+      'миграци',     // миграция, миграцию, миграции, миграций
+      'боевая база', // live database (nominative)
+      'боевой базе', // live database (prepositional)
+      'боевую базу', // live database (accusative)
+    ],
+  },
+  {
+    category: 'merge',
+    effect: 'merge-to-main',
+    roots: [
+      // English
+      'merge to main', 'merge to master', 'force push',
+      'push to main', 'push to master',
+      // Russian roots
+      'мерж',        // мерж, мержить, мержим, замержи, замержить
+      'влей',        // влей (imperative of влить — merge/pour in)
+      'влить',       // влить (infinitive)
+      'запуш',       // запушить, запуши, запушил, запушь
+      'пуш в мейн',
+      'пуш в мастер',
+    ],
+  },
+  {
+    category: 'deletion',
+    effect: 'deletion',
+    roots: [
+      // English
+      'delete all', 'rm -rf', 'wipe', 'destroy', 'purge',
+      // Russian roots
+      'удал',        // удалить, удали, удалите, удаление, удалено
+      'уничтож',     // уничтожить, уничтожил, уничтожение, уничтожьте
+      'очист',       // очистить, очистил, очистка, очистите
+      'стере',       // стереть
+      'сотри',       // сотри (imperative of стереть)
+      'снес',        // снести, снес, снесли
+    ],
+  },
+];
+
+/**
+ * Classify freeform command text against the keyword floor.
+ * Returns { blocked: true, category, effect, reason } on match,
+ * or { blocked: false } when no root matches.
+ */
+export function classifyCommandText(text: string): {
+  blocked: boolean;
+  category?: string;
+  effect?: EffectKind;
+  reason?: string;
+} {
+  const normalized = normalizeRu(text);
+  for (const cat of KEYWORD_CATEGORIES) {
+    for (const root of cat.roots) {
+      if (normalized.includes(root)) {
+        return {
+          blocked: true,
+          category: cat.category,
+          effect: cat.effect,
+          reason: `Keyword floor: "${root}" matched in category "${cat.category}"`,
+        };
+      }
+    }
+  }
+  return { blocked: false };
+}
+
 export function isExternalTarget(url?: string): boolean {
   if (!url) return false;
   if (url.startsWith('file://') || url.startsWith('file:///')) return false;
