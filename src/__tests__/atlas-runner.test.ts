@@ -117,6 +117,29 @@ describe('runnerTick', () => {
     expect(deps.fail).toHaveBeenCalledWith('cmd-1', expect.stringContaining('exit 1'));
     expect(deps.complete).not.toHaveBeenCalled();
   });
+
+  it('regression: null exit code (task-spawner blocked/paused/timeout signal) is NEVER treated as success', async () => {
+    // task-spawner's runTask() returns exitCode:null for emergency pause,
+    // control-block, "another task already running", AND a signal-killed
+    // timeout — none of these mean the work completed. A race is possible
+    // where runnerTick's own isPaused() gate passes but pause flips on
+    // before runLocal actually runs; this must still never report success.
+    const deps = makeDeps({
+      claim: vi.fn().mockResolvedValue(fakeCommand('do something')),
+      runLocal: vi.fn().mockResolvedValue({
+        output: 'Emergency pause active: ATLAS_PAUSE=1',
+        exitCode: null,
+      }),
+    });
+    const result = await runnerTick(deps);
+
+    expect(result.status).toBe('failed');
+    expect(deps.complete).not.toHaveBeenCalled();
+    expect(deps.fail).toHaveBeenCalledWith(
+      'cmd-1',
+      expect.stringContaining('Emergency pause active'),
+    );
+  });
 });
 
 describe('runRunnerLoop', () => {

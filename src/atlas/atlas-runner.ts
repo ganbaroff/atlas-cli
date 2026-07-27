@@ -119,9 +119,17 @@ export async function runnerTick(deps: RunnerDeps): Promise<RunnerTickResult> {
   }
 
   // Gate 4: execute
+  //
+  // Only a genuine exitCode===0 counts as success. exitCode===null is NOT
+  // treated as success: task-spawner's runTask() returns exitCode:null for
+  // at least four distinct non-completion cases (emergency pause, control
+  // block, "another task already running", and a signal-killed timeout) —
+  // conflating any of those with "done" would report false completion to
+  // the operator for work that never actually ran. Evidence discipline:
+  // no claim of done without a real, observed success signal.
   try {
     const result = await deps.runLocal(commandText);
-    if (result.exitCode === 0 || result.exitCode === null) {
+    if (result.exitCode === 0) {
       await deps.complete(commandId, result.output);
       return { status: 'completed', commandId, output: result.output };
     } else {
