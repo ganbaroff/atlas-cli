@@ -1371,6 +1371,54 @@ assistCmd
     console.log('Final submit is left to the human.');
   });
 
+// ─── Runner (L2 local-node command executor) ─────────────────────────────────
+// Claims work from Supabase atlas_command_queue, red-line checks, executes
+// locally via task-spawner, writes results back. See §6.2 of ATLAS-ARCHITECTURE.md.
+
+const runnerCmd = program
+  .command('runner')
+  .description('L2 local-node runner — claim + execute commands from the queue');
+
+runnerCmd
+  .command('tick')
+  .description('Run exactly ONE runner tick (claim → check → execute → result as JSON)')
+  .action(async () => {
+    try {
+      const { defaultRunnerDeps, runnerTick } = await import('./atlas/atlas-runner.js');
+      const deps = defaultRunnerDeps();
+      const result = await runnerTick(deps);
+      console.log(JSON.stringify(result, null, 2));
+    } catch (err) {
+      console.error(`runner tick error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+  });
+
+runnerCmd
+  .command('start')
+  .description('Run the runner loop — claims and executes until Ctrl-C')
+  .option('-i, --interval <seconds>', 'Seconds between ticks', '15')
+  .action(async (opts) => {
+    const intervalSec = parseInt(opts.interval, 10) || 15;
+    console.log(`[runner] Starting local runner (interval ${intervalSec}s). Ctrl+C to stop.`);
+    try {
+      const { defaultRunnerDeps, runRunnerLoop } = await import('./atlas/atlas-runner.js');
+      const deps = defaultRunnerDeps();
+      console.log(`[runner] workerId=${deps.workerId}`);
+      await runRunnerLoop(deps, {
+        tickIntervalMs: intervalSec * 1000,
+        onTick: (r) => {
+          const ts = new Date().toISOString().slice(11, 19);
+          console.log(`[runner ${ts}] ${JSON.stringify(r)}`);
+        },
+      });
+      console.log('[runner] Stopped.');
+    } catch (err) {
+      console.error(`runner start error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
+    }
+  });
+
 program
   .command('evidence')
   .description('M8 evidence ledger tools')
