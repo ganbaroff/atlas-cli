@@ -2,7 +2,7 @@
 
 > **Status:** authoritative · rewritten 2026-07-27 by the Fable seat at `main` @ `a7f81ee`, from four independent read-only recon sweeps (docs inventory, capability surface, state durability, cloud→local gap). Supersedes the "EB-0 + Mission 2 map" version of this file.
 > **This file answers four questions and nothing else:** what Atlas IS, where each part RUNS, what is MISSING, and by what LAW the next thing gets built.
-> **Doc law:** this is the ONLY architecture document. ADRs record decisions. `docs/atlas-cto/ATLAS-STATE-NOW.md` records current status. `VOLAURA/memory/atlas/codex-loop.md` is the journal. Anything else describing "how Atlas is built" is superseded (§0.1) and must not be treated as current. **Do not create a second architecture doc — edit this one.**
+> **Doc law:** this is the ONLY architecture document. `docs/atlas-cto/ATLAS-MASTER-PLAN.md` is the ONLY forward plan. ADRs record decisions. `docs/atlas-cto/ATLAS-STATE-NOW.md` records current status. `VOLAURA/memory/atlas/codex-loop.md` is the journal. Anything else describing "how Atlas is built" is superseded (§0.1) and must not be treated as current. **Do not create a second architecture doc or a second plan — edit these two.**
 
 ---
 
@@ -50,7 +50,7 @@ Every mission must move exactly one level, and its DoD must include that level's
 |---|---|---|---|
 | **L0 Talks** | "I text the bot, it answers as Atlas." | ✅ DONE — live, `@volaurabot`, single poller | — |
 | **L1 Sees** | "I ask from my phone what's in flight / what's waiting on me, and get the truth." | ⚠️ HALF — `cos brief`/`drift` and exec-graph reads exist, **not wired to Telegram** | Wire `cos`+`graph` to bot commands |
-| **L2 Hands** | "I text 'do X', it happens on my machine, the result comes back to Telegram." | ❌ **NOT DONE** — task is created, nothing executes it | **`atlas-runner` (local node) does not exist** — §6.2 |
+| **L2 Hands** | "I text 'do X', it happens on my machine, the result comes back to Telegram." | ✅ **BUILT + LIVE** (2026-07-27) — runner autostarts via Task Scheduler, verified live; end-to-end round-trip from the operator's own phone still untested by him | safety envelope — see MASTER-PLAN P0 |
 | **L3 Remembers** | "It doesn't forget after a restart." | ⚠️ PARTIAL — memory/mood/journal durable; task graph, budgets, evidence, control-state **die on redeploy** | State-root law — §8 |
 | **L4 Speaks/hears** | "I send a voice note and get a voice answer." | ❌ NOT BUILT — STT/TTS absent (`voice` handler exists, transcription path disabled) | VOICE-01 |
 | **L5 Initiates** | "It messages me first when something matters, and shuts up at night." | ⚠️ MOSTLY — notify chokepoint + quiet hours + morning brief shipped; content still thin | Feed brief from `cos` |
@@ -171,9 +171,13 @@ Runs exactly one process: `node dist/cli.js telegram` (`Dockerfile` CMD). It **c
 
 Known cloud-specific defects (receipts): `task-spawner.ts` hardcodes `cwd: 'C:/Projects/VOLAURA'` → `/task` is broken-by-construction in the container; the `openmanus` action-lane route defaults to `C:/Projects/OpenManus` → fails there too. Both are symptoms of code written for one runtime and deployed to the other — exactly what §6.3's law prevents.
 
-### 6.2 Local node (operator's PC) — `atlas-runner` — **DOES NOT EXIST**
+### 6.2 Local node (operator's PC) — `atlas-runner` — **BUILT AND LIVE (2026-07-27)**
 
-This is the single missing component behind "I can't use it the way I want."
+Shipped as `src/atlas/atlas-runner.ts` + CLI `atlas runner status|peek|tick|start`, installed as a Windows Task Scheduler logon task (verified live: task `Ready`, process running, heartbeat fresh). Three real defects were found and fixed by running it against live infrastructure rather than by unit tests alone (repo-root resolution when bundled; a crash path on malformed input; an empty-queue result being mistaken for a claimed row).
+
+**Its safety envelope is NOT yet at the standard the rest of the system holds** — see `docs/atlas-cto/ATLAS-MASTER-PLAN.md` phase P0 (work-order authenticity, red-line coverage in Russian, actor-scoped writes, restart-durable spend cap) and P4 (the sandbox decision this design still owes). Treat P0 as a prerequisite for widening what the runner is allowed to do.
+
+The contract below remains the design of record.
 
 **Contract for `atlas-runner`:**
 - A resident process on the operator's Windows machine (Task Scheduler at logon, or the tray extended to host it). Survives reboot; announces liveness via heartbeat.
@@ -283,8 +287,9 @@ Code depends on: `bot_sessions`, `bot_messages`, `bot_heartbeats`, `atlas_comman
 
 ## 12. Gap register (ranked; each maps to a ladder level)
 
-1. **No local runner** → L2 blocked. Everything the operator most wants depends on this. (§6.2)
-2. **Action-router dead end** → a task is created and acknowledged, then nothing runs it. Honest fix: either wire it to the nerve (L2) or change the reply to say "запишу, выполню когда раннер будет" (truth now). (§7)
+1. ~~No local runner~~ → **CLOSED 2026-07-27**, runner built + autostarted (§6.2). Replaced by: **the runner's safety envelope is below the standard the rest of the system holds** — unsigned work orders, Russian-language coverage gaps in the red-line list, actor-blind file writes, restart-resettable spend cap, and no execution sandbox. See MASTER-PLAN P0 + P4. This is now the top risk in the system.
+2. ~~Action-router dead end~~ → **CLOSED 2026-07-27**, wired through the Supabase nerve to the runner (§7).
+2b. **Not rebuildable / not backed up** → several live tables have no migration in the repo, and no backup or restore mechanism exists anywhere. See MASTER-PLAN P1. (Raised by the 2026-07-27 audit.)
 3. **Cloud state ephemeral** → task graph, budgets, control state, evidence reset on every redeploy. (§8)
 4. **L1 not wired** → the operator cannot see his own board from his phone. Cheapest real win. (§4)
 5. **Unversioned prod schema** → cannot rebuild the DB from the repo. (§9)
