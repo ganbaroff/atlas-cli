@@ -13,7 +13,7 @@
 
 import { appendFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 /**
  * Pure, testable classifier. True for paths that must never be read or
@@ -35,6 +35,47 @@ export function isSensitivePath(p: string): boolean {
   if (segments.some((s) => s.toLowerCase() === '.git')) return true;
 
   return false;
+}
+
+// ── Actor resolution (mirrors shell.ts resolveShellActor, kept here to avoid circular deps) ──
+
+export type FsActor = 'ceo' | 'autonomy';
+
+export function resolveFsActor(): FsActor {
+  const id = (process.env.ATLAS_AGENT_ID || '').trim().toLowerCase();
+  if (id === 'autonomy' || (process.env.ATLAS_AUTONOMY || '').trim() === '1') return 'autonomy';
+  return 'ceo';
+}
+
+// ── Workspace confinement (autonomy actor only) ──────────────────────────────
+
+function resolveWorkspaceRoot(): string {
+  return resolve(process.env.ATLAS_WORKSPACE_ROOT || process.cwd());
+}
+
+/**
+ * Check whether a write to `targetPath` is allowed for the current actor.
+ * Autonomy actors are confined to the workspace root — the resolved path must
+ * start with the resolved workspace root + separator (or be the root itself).
+ * Non-autonomy actors are always allowed (existing behavior).
+ */
+export function checkWorkspaceConfinement(targetPath: string): { allowed: boolean; reason?: string } {
+  const actor = resolveFsActor();
+  if (actor !== 'autonomy') return { allowed: true };
+
+  const root = resolveWorkspaceRoot();
+  const resolved = resolve(targetPath);
+  const normalizedRoot = root.replace(/\\/g, '/');
+  const normalizedResolved = resolved.replace(/\\/g, '/');
+
+  if (normalizedResolved === normalizedRoot || normalizedResolved.startsWith(normalizedRoot + '/')) {
+    return { allowed: true };
+  }
+
+  return {
+    allowed: false,
+    reason: `[atlas-fs] REFUSED: autonomy actor confined to workspace root (${root}). Path resolves outside: ${resolved}`,
+  };
 }
 
 /** Same file/shape as shell.ts's audit log by default, so fs + shell governance share one JSONL stream. */
