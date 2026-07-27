@@ -4,6 +4,12 @@ Persistent AI agent for the terminal. Multi-model, multi-perspective, memory-bac
 
 Part of the [VOLAURA](https://volaura.app) ecosystem.
 
+## Start here
+
+- [docs/architecture/ATLAS-ARCHITECTURE.md](./docs/architecture/ATLAS-ARCHITECTURE.md) — what Atlas is, where it runs, what's missing, the build law.
+- [docs/atlas-cto/ATLAS-STATE-NOW.md](./docs/atlas-cto/ATLAS-STATE-NOW.md) — current status.
+- [docs/adr/](./docs/adr/) — decisions.
+
 ## What this repo is — and isn't
 
 **Is:** the Atlas CLI shell — terminal commands, the deployed Telegram bot

@@ -1,5 +1,8 @@
 # Atlas Canon
 
+> **Scope note (2026-07-27):** this file owns ONE thing — the ANUS↔VOLAURA repo-split rule (where to edit what). It is NOT the architecture.
+> Architecture of record: `docs/architecture/ATLAS-ARCHITECTURE.md`.
+
 This file defines the current canonical layout of Atlas across `ANUS` and `VOLAURA`.
 
 Use this as the source of truth when deciding where to edit code, where memory lives, and which directories are archival only.

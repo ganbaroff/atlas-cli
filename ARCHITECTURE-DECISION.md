@@ -1,3 +1,7 @@
+> ⛔ **SUPERSEDED — historical record only.** Do not build from this document.
+> Current architecture of record: `ANUS/docs/architecture/ATLAS-ARCHITECTURE.md` (§0.1 supersession list). Current status: `ANUS/docs/atlas-cto/ATLAS-STATE-NOW.md`.
+> Reason: Frozen at "PARTIAL — 2 of 7 decisions implemented" (April/May 2026); contradicted by the shipped M1-M8 ledger.
+
 # Atlas CLI — Architecture Decision Record
 
 **Date:** 2026-04-26 (original) | 2026-05-04 (audit rewrite)

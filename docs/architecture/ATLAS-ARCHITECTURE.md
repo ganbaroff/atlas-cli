@@ -1,316 +1,303 @@
-# Atlas / ANUS architecture map (EB-0 + Mission 2)
+# ATLAS — ARCHITECTURE OF RECORD
 
-Canonical system map, originally EB-0 (branch `feat/arsenal-wiring`, HEAD
-`ac6d384`), updated for Mission 2 (Hand Contract V0 — controlled
-delegation over exec-graph, `src/hands/*`). This is the entry point for
-"what talks to what" — component docs and ADRs go deeper on any one piece;
-this file's job is to keep the whole shape visible in one place and stay
-current.
+> **Status:** authoritative · rewritten 2026-07-27 by the Fable seat at `main` @ `a7f81ee`, from four independent read-only recon sweeps (docs inventory, capability surface, state durability, cloud→local gap). Supersedes the "EB-0 + Mission 2 map" version of this file.
+> **This file answers four questions and nothing else:** what Atlas IS, where each part RUNS, what is MISSING, and by what LAW the next thing gets built.
+> **Doc law:** this is the ONLY architecture document. ADRs record decisions. `docs/atlas-cto/ATLAS-STATE-NOW.md` records current status. `VOLAURA/memory/atlas/codex-loop.md` is the journal. Anything else describing "how Atlas is built" is superseded (§0.1) and must not be treated as current. **Do not create a second architecture doc — edit this one.**
 
-**swarm-exec V1 (2026-07-18, see ADR-0007):** `src/swarm-exec/*` delegates a
-bounded run on the in-process TS swarm (`swarm.ts`) FROM an exec-graph task and
-verifies it through the SAME Hand Contract deterministic verifier as every other
-hand — intent → `intake` draft → `commit` task → `swarm-local` hand → honest
-fail-closed completion policy → durable run bundle
-(`state/swarm-runs/<runId>/bundle.json`, `SWARM-VERIFIED|SWARM-REJECTED` proof
-token) → `verifyAndTransition` → VERIFIED/REJECTED. Only the deterministic
-verifier closes the task; the swarm never self-declares success. Single control
-path via `atlas/control-plane.ts` (paused/stopped ⇒ the run is `blocked`, never
-verified). CLI: `atlas swarm-exec intake|commit|run`.
+---
 
-**Chief-of-Staff Surface V1 (2026-07-19, see ADR-0008):** `src/atlas/cos/*`
-is a read-only projection over exec-graph + control-plane + spend + git/
-heartbeat — never an authority, writes nothing (verified every run via
-`git status --porcelain state/`). `facts.ts`/`drift.ts`/`brief.ts` are pure;
-`gather.ts` is the sole impure module (read-only git/filesystem/ledger
-reads). Composes into six fixed categories (CEO DECISION REQUIRED / WAITING
-ON EXTERNAL OWNER / BLOCKED / DRIFT-STALE SIGNAL / RECENTLY VERIFIED / NO
-ACTION REQUIRED) via `atlas cos brief|drift`. NOT yet wired into the
-Telegram `/status` or 08:45 morning brief below (`briefing.ts`'s
-`awaitingCeo` is still hand-typed) — that remains future work.
+## 0. Why this rewrite exists (the diagnosis)
 
-**Status of this document:** the diagram and tables below describe code
-that exists and is tested (IMPLEMENTED-LOCAL throughout unless marked
-otherwise); they are not a claim that every path shown has been exercised
-against the live Railway deployment. See the maturity labels in
-`README.md` for per-component status.
+A recon sweep on 2026-07-27 found **~180-190 documents (~2.7 MB) describing Atlas**, and *no single file* that answers "what is Atlas today." Six files each held partial current-state authority with no resolving hierarchy; the de-facto plan of record was a 340 KB append-only journal. The previous version of THIS file — which called itself "the canonical system map… stay current" — had **zero mentions** of `goal-runner`, `action-router`, `emotion`, `pulse`, `supervised-assist`, all of which had shipped.
 
-## Context diagram
+The cost is not tidiness. It is that **every session begins with archaeology**, spends its budget on discovery, and pays for that discovery by writing another document — which raises the next session's archaeology cost. The orchestrator writing this file was itself four days stale on M4-M8 until it ran `git log`.
+
+Second finding, larger: **the internals are excellent and the product is unreachable.** exec-graph, the Hand Contract, the deterministic verifier, red-lines, budgets, the evidence ledger — all real, all tested. And the operator's only real surface (Telegram) reaches **11 commands**, while `goal run`, `swarm-exec run`, `hand *`, `task *`, `graph *`, `cos brief`, `assist run`, `evidence audit` are **CLI-only, unreachable from his phone**. A freeform action message creates an exec-graph task and then **nothing executes it** — no daemon, in any runtime, watches for work.
+
+Root cause, one line: **the project optimized for governance of building instead of delivery to the operator, and documentation grew as a substitute for a product surface.** This file is the correction.
+
+### 0.1 Supersession list (these are NOT current; do not build from them)
+
+| Document | Why superseded |
+|---|---|
+| `C:\Projects\ATLAS-SUPERASSISTANT-PLAN.md` | June plan; ADR-0009 explicitly supersedes its Jarvis-only framing. Historical. |
+| `C:\Projects\ATLAS-IMPLEMENTATION-PLAN.md` | June plan; its gaps were implemented 2026-07-23 (see `docs/atlas-cto/MEGAPLAN-EXECUTION-2026-07-23.md`). Phase 4.1 superseded by `swarm-exec/intake.ts`. Historical. |
+| `C:\Projects\ATLAS_BASELINE.md` | Phase-0 snapshot; ADR-0009 demotes "Jarvis-shell" to a phase, not the destination. Historical. |
+| `ARCHITECTURE-DECISION.md` (repo root) | Frozen at "2 of 7 decisions implemented" (April/May). Contradicts the shipped M1-M8 ledger. Historical. |
+| `ATLAS-CANON.md` (repo root) | Repo-split layout only; folded into §3 and §8 here. Keep for the ANUS↔VOLAURA split rule; it is not an architecture. |
+| `VOLAURA/memory/atlas/CANONICAL-MAP.md` | Self-flagged stale since 2026-05-03. |
+| `C:\Projects\ATLAS\` | Archive since 2026-06-27 (ADR-0009 decision 9). Never develop there. |
+
+---
+
+## 1. What Atlas is (from the operator's seat, not the code's)
+
+**Atlas is one agent with one operator.** For Yusif Ganbarov it must: talk to him where he already is (Telegram), do work on his machines, remember him and his people, report before he has to ask, and never take an irreversible action without his explicit word. Products (VOLAURA, OPSBOARD, MindShift) are its **customers**, not its identity (ADR-0009).
+
+Three things follow, and they are binding:
+
+1. **A capability that the operator cannot reach does not exist.** Internal quality is necessary and not sufficient.
+2. **Atlas spans machines by nature.** Its mouth lives in the cloud (always on); its hands must live where the work is (his PC). Any design that ignores this produces a talking head or an unreachable tool — both have already happened.
+3. **Trust is the product.** The deterministic verifier, the red-line gate and the evidence ledger are not overhead; they are why an agent is allowed near a real machine at all.
+
+---
+
+## 2. Delivery ladder (acceptance in the operator's words, not in tests)
+
+Every mission must move exactly one level, and its DoD must include that level's sentence.
+
+| Level | The operator can… | Status (2026-07-27) | Blocker |
+|---|---|---|---|
+| **L0 Talks** | "I text the bot, it answers as Atlas." | ✅ DONE — live, `@volaurabot`, single poller | — |
+| **L1 Sees** | "I ask from my phone what's in flight / what's waiting on me, and get the truth." | ⚠️ HALF — `cos brief`/`drift` and exec-graph reads exist, **not wired to Telegram** | Wire `cos`+`graph` to bot commands |
+| **L2 Hands** | "I text 'do X', it happens on my machine, the result comes back to Telegram." | ❌ **NOT DONE** — task is created, nothing executes it | **`atlas-runner` (local node) does not exist** — §6.2 |
+| **L3 Remembers** | "It doesn't forget after a restart." | ⚠️ PARTIAL — memory/mood/journal durable; task graph, budgets, evidence, control-state **die on redeploy** | State-root law — §8 |
+| **L4 Speaks/hears** | "I send a voice note and get a voice answer." | ❌ NOT BUILT — STT/TTS absent (`voice` handler exists, transcription path disabled) | VOICE-01 |
+| **L5 Initiates** | "It messages me first when something matters, and shuts up at night." | ⚠️ MOSTLY — notify chokepoint + quiet hours + morning brief shipped; content still thin | Feed brief from `cos` |
+
+**Current true position: L0 done, L1 half, L2 blocked, L3 partial.** L2 is the unlock the operator has asked for repeatedly; everything else is secondary until it lands.
+
+---
+
+## 3. Topology — three planes, two runtimes, one nerve
 
 ```mermaid
 flowchart TD
-    CEO["CEO (Yusif Ganbarov)"]
+    CEO(["Operator — Yusif"])
 
-    subgraph CLOUD["Cloud — Railway (always-on)"]
-        TG["Telegram bot runtime<br/>node dist/cli.js telegram<br/>(telegram.ts)"]
-        SUPA[("Supabase<br/>session memory, command queue")]
+    subgraph SURFACE["PLANE A — SURFACE (where the operator meets Atlas)"]
+        TG["Telegram bot — PRIMARY<br/>11 commands + freeform + voice"]
+        CLIS["Atlas CLI — power/dev surface<br/>~30 command groups"]
+        TRAY["Desktop tray — status + PANIC only"]
     end
 
-    subgraph LOCAL["Local — CEO's machine"]
-        CLI["Atlas CLI<br/>(cli.ts, interactive)"]
-        AUTO["Autonomy loop / scheduler<br/>(autonomy-loop.ts, OS-level Task Scheduler)"]
-        TRAY["Desktop tray<br/>(apps/desktop)"]
-        EXECG[("state/exec-graph<br/>ledger.jsonl + graph.json<br/>git-tracked")]
+    subgraph CORE["PLANE B — CORE (portable brain — DONE, frozen)"]
+        XG[("exec-graph<br/>THE task authority")]
+        HANDS["hands + manifests<br/>delegation contract"]
+        VER["deterministic verifier<br/>+ evidence ledger<br/>THE ONLY closer"]
+        GR["goal-runner<br/>bounded autonomy"]
+        RL["red-line / policy<br/>deny-by-default"]
+        NOT["notify — ONE outbound gate<br/>quiet hours"]
+        COS["cos — read-only projection"]
+        EMO["emotion / pulse<br/>tone + proactivity ONLY"]
     end
 
-    subgraph HANDS["Hands (execution surfaces)"]
-        SPAWN["task-spawner.ts<br/>(TEMPORARY ADAPTER — /task)"]
-        OPDISP["operator/dispatcher.ts<br/>+ evaluator + promotion"]
-        SWARM["swarm.ts / swarm-deep<br/>(TS fork-parallel + Python bridge)"]
+    subgraph CLOUD["PLANE C-1 — CLOUD NODE (Railway, always on)"]
+        BOT["telegram runtime<br/>chat · classify · intake · notify · brief"]
+        VOL[("Railway volume /app/memory<br/>DURABLE")]
     end
 
-    HANDSCTL["Hand Contract V0<br/>src/hands/*<br/>delegation-control over exec-graph"]
-
-    subgraph VOLAURA["VOLAURA (separate repo)"]
-        VMEM["memory/atlas/*<br/>intent + strategy canon"]
-        VPY["Python swarm (packages/swarm)"]
-        VBUS["memory/shared-bus<br/>(gitignored, known issue — ADR-0002)"]
+    subgraph LOCAL["PLANE C-2 — LOCAL NODE (operator's PC)"]
+        RUNNER["atlas-runner — MISSING<br/>resident claimer + executor"]
+        LH["local hands: files · code · claude -p<br/>Playwright · apps · screen"]
     end
 
-    CEO -->|Telegram message| TG
-    CEO -->|shell, interactive| CLI
-    CEO -->|"/pause tray button"| TRAY
+    NERVE[("NERVE — Supabase work queue<br/>atlas_command_queue + claim/sweep RPC<br/>BUILT, producer dormant")]
 
-    TG -->|routes via model-router| MODEL["model-router.ts<br/>NVIDIA -> Ollama -> freellmapi/Gemini -> Groq -> OpenRouter -> Anthropic"]
-    CLI --> MODEL
+    CEO --> TG
+    CEO --> CLIS
+    CEO --> TRAY
+    TG --> BOT
+    BOT --> CORE
+    BOT -->|"work order for a local hand"| NERVE
+    NERVE -.->|"claim — NOT WIRED"| RUNNER
+    RUNNER -.->|"executes via"| LH
+    RUNNER -.->|"receipt → verifier closes"| CORE
+    NERVE -->|"deliverRemoteResults — ALREADY WORKS"| BOT
+    BOT --> VOL
 
-    TG -->|"/task"| SPAWN
-    SPAWN -->|"subprocess: node dist/cli.js chat --role WORKER"| CLIPROC["Atlas CLI subprocess<br/>cwd=VOLAURA"]
-
-    CLI -->|"atlas operator ..."| OPDISP
-    OPDISP --> RUNS[("operator/runs/*.result.json<br/>evidence traces")]
-
-    CLI -->|"atlas goal/task/graph ..."| EXECG
-    CLI -->|"atlas hand assign/submit/verify"| HANDSCTL
-    HANDSCTL -->|"moveTask/addEvidence/reassignOwner<br/>(_viaHandAdapter capability flag)"| EXECG
-    TG -->|"/status, 08:45 brief<br/>(read-only)"| EXECG
-
-    AUTO -->|"read-only: repo_watch + health-check"| REPOS[("watched git repos<br/>ANUS, VOLAURA")]
-    AUTO -->|"notifyCeoResult()"| NOTIFY["notify.ts<br/>the ONE alerting gate"]
-    NOTIFY -->|gated send| TG
-
-    TG -.->|session write-back| SUPA
-    TG -.->|legacy CEO-command transport<br/>OUT OF SCOPE, dormant producer| SUPA
-
-    CLI -.->|memory read/write<br/>MEMORY_ROOT| VMEM
-    SWARM -.->|python-bridge subprocess| VPY
-
-    style EXECG fill:#1a3,color:#fff
-    style HANDSCTL fill:#1a3,color:#fff
-    style SUPA fill:#666,color:#fff
-    style VBUS fill:#a33,color:#fff
+    style RUNNER fill:#a33,color:#fff
+    style NERVE fill:#c80,color:#fff
+    style XG fill:#1a3,color:#fff
+    style VER fill:#1a3,color:#fff
 ```
 
-Legend: solid arrows are the primary, currently-live data paths; dotted
-arrows are secondary/optional paths (VOLAURA memory access, Supabase
-session mirroring, the dormant legacy queue). Green = the machine execution
-authority (ADR-0001) — `HANDSCTL` is green too because it is the sole
-enforced *path into* that authority for hand-owned tasks (ADR-0006), not a
-second authority itself. Red = a known-issue node (ADR-0002).
+Green = authority. Orange = built but unfed. **Red = does not exist and is the reason L2 is blocked.**
 
-**Naming note (avoid confusion):** the pre-existing `HANDS["Hands (execution
-surfaces)"]` subgraph (`task-spawner.ts`, `operator/dispatcher.ts`,
-`swarm.ts`) predates Mission 2 and means "places work actually executes."
-`HANDSCTL` (Mission 2, `src/hands/*`) is a different, newer concept — a
-**delegation-control layer over exec-graph task state**, named "Hand
-Contract" in ADR-0006 and the mission brief. The two are unrelated in code
-and are drawn as separate nodes deliberately; a future rename of the older
-subgraph is out of this mission's scope.
+---
 
-## Component map
+## 4. PLANE A — Surface, and the reachability law
 
-| Component | File(s) | Role |
+**LAW A1 — Telegram-first.** Every operator-meaningful capability MUST be reachable from Telegram, or carry an explicit `CLI-ONLY (reason)` line in the table below. Silence is a violation.
+
+**LAW A2 — one bot, one auth gate.** Exactly one Telegram process, one `TELEGRAM_CEO_CHAT_ID` resolution, fail-closed on unset. A second poller causes `409 Conflict` and silent message loss (observed 2026-07-23).
+
+**LAW A3 — the tray stays thin.** Status + local PANIC only. It is not a second brain.
+
+Current reachability (receipts: `src/telegram.ts` command registrations, `src/cli.ts` command groups):
+
+| Capability | Telegram | CLI | Verdict |
+|---|---|---|---|
+| Chat / ask | ✅ freeform | ✅ `chat` | ok |
+| Pause / resume | ✅ `/pause` `/resume` | ✅ `control` | ok |
+| Status / spend | ✅ `/status` | ✅ `status` | ok |
+| Freeform action → task | ✅ (action-router) | ✅ `swarm-exec intake\|commit` | **created but never executed** — §6 |
+| Task graph read/write | ❌ | ✅ `task` `graph` `goal add` | **VIOLATION → L1** |
+| Chief-of-Staff brief / drift | ❌ | ✅ `cos brief\|drift` | **VIOLATION → L1** |
+| Goal-runner autonomous run | ❌ | ✅ `goal run` | **VIOLATION → L2** |
+| Execute a committed task | ❌ | ✅ `swarm-exec run` | **VIOLATION → L2 (the dead end)** |
+| Hand assign / submit / verify | ❌ | ✅ `hand *` | CLI-ONLY (operator-grade primitive) — acceptable |
+| Evidence audit | ❌ | ✅ `evidence audit` | CLI-ONLY (audit tool) — acceptable |
+| Supervised form assist | ❌ | ✅ `assist run` | CLI-ONLY (**hard TTY gate by design** — a human must be at the console) |
+| Screen capture | ❌ | ✅ `capture` | CLI-ONLY (local display) — should become runner-mediated at L2 |
+| Voice in/out | ❌ | ❌ | not built — L4 |
+
+---
+
+## 5. PLANE B — Core (the brain). DONE. Freeze it.
+
+This plane is the project's real asset and needs no redesign. Its invariants are binding on every future module:
+
+| Invariant | Meaning | Enforced by |
 |---|---|---|
-| **Telegram bot runtime** | `src/telegram.ts` | The one deployed, always-on CEO interface. Command handlers, inbound-auth gate, `/status`, morning brief, voice transcription, `/task` spawner trigger. |
-| **Atlas CLI** | `src/cli.ts` | Local interactive shell + every scriptable command (chat, swarm, exec-graph, operator, autonomy, health). |
-| **Model router** | `src/model-router.ts` | Cost-ordered multi-provider routing (NVIDIA -> Ollama -> freellmapi/Gemini -> Groq -> OpenRouter -> Anthropic), role-based selection (FAST/WORKER/JUDGE/CRITICAL), runtime fallback. |
-| **Notifier** | `src/atlas/notify.ts` | The one gate every proactive CEO-facing send passes through (ADR-0005). Silent by default; `briefing`/`error`/`important`/`remote-result` only. |
-| **Policy** | `src/atlas/policy.ts` + `config/policy.yaml` | Declarative read-model over spend caps, pause, autonomy shell whitelist, fs-sensitive paths. Fail-closed on load failure. |
-| **exec-graph** | `src/exec-graph/*` | The one machine execution authority for new Atlas-managed work (ADR-0001). Goal/task ledger, 11-state lifecycle, evidence-gated transitions. |
-| **Hand Contract V0** | `src/hands/*` | Delegation-control layer over exec-graph (ADR-0006, Mission 2). Assigns a descriptive `HandSpec` (`registry.ts`) to a task, accepts a falsifiable `Receipt`, and resolves it via a deterministic no-LLM verifier (`verifier.ts`) + risk-gated refuter (`risk.ts`/`refuter.ts`). `exec-graph-adapter.ts` is the only module that calls into `exec-graph/api.ts`; the Hand registry itself is descriptive config, never task-state authority. |
-| **Operator contracts** | `src/operator/*` (`dispatcher.ts`, `contracts.ts`, `evaluator.ts`, `promotion.ts`, `lifecycle.ts`, `action-lane.ts`) | Task dispatch/evaluate/promote pipeline with its own evidence contract, distinct from exec-graph's task lifecycle. Reads `operator/tasks/*.json`, writes `operator/runs/*.result.json`. |
-| **Task spawner** | `src/atlas/task-spawner.ts` | Telegram `/task` — spawns an Atlas CLI subprocess (cwd=VOLAURA) as a CEO-direct, ephemeral execution. TEMPORARY ADAPTER (ADR-0004 #2). |
-| **Model swarm** | `src/swarm.ts`, `src/swarm-worker.ts`, `src/atlas/python-bridge.ts` | Fork-based parallel-agent decomposition (TS) or subprocess call into VOLAURA's Python swarm (13 perspectives, 4 DAG waves). |
-| **Scheduler (OS-level)** | Windows Task Scheduler (external to this repo), invoking `atlas autonomy-tick --notify` | Not a Node daemon — an OS-level periodic trigger. See `docs/AUTONOMY-V0.md`. |
-| **VOLAURA intent canon** | `C:\Projects\VOLAURA\memory\atlas` (separate repo) | Strategy/intent + cross-session memory canon (`ATLAS-CANON.md`). Not this repo's concern to modify directly. |
-| **Supabase session memory** | `src/atlas/supabase-memory.ts` (tables `bot_sessions`, `bot_messages`, `bot_heartbeats`, `atlas_command_queue`) | Cloud-side session/heartbeat mirror with file-based local fallback; also hosts the legacy command-queue transport (ADR-0004 #1, currently dormant on the producer side). |
+| **I1 — one task authority** | `exec-graph` is the only place task state lives, per node. Append-only ledger + derived snapshot. | ADR-0001/0003 |
+| **I2 — only the verifier closes** | Nothing self-declares success. `verified`/`rejected` reachable ONLY through the deterministic no-LLM verifier path. | ADR-0006, `verifier-port.ts` (structural, not a flag) |
+| **I3 — evidence or it didn't happen** | Every closure cites falsifiable evidence; receipts are secret-scanned *before* the append. | ADR-0003/0006, `src/evidence/*` (M8) |
+| **I4 — irreversible needs a human** | Money, deletion, prod-DB, outbound send/post, submit, credentials, deploy: deny-by-default, human gate. | `goal-runner/red-line.ts`, policy |
+| **I5 — one outbound gate** | All proactive messages pass `notify.ts`; quiet hours 23:00-08:00 Baku; panic bypasses. | ADR-0005, M7 |
+| **I6 — bounded autonomy** | Wall-clock, attempts, decomposition rounds, circuit breaker by fingerprint, single active lease. | `goal-runner/budgets.ts` |
+| **I7 — mood never touches truth** | Emotion/pulse may color tone and timing only; never facts, verification, money or legal. | `emotion.ts`, `pulse.ts`, `emotional-safety.ts` |
+| **I8 — cost order** | Free/credit providers first; a frontier model is never a swarm worker. | `model-router.ts` (anthropic has no WORKER role), ADR-0007/013 |
 
-## AUTHORITY MAP
+**Freeze rule:** Plane B changes only to close a proven defect or to serve a ladder level. It does not grow features on its own momentum.
 
-| Concern | Authority | Notes |
+---
+
+## 6. PLANE C — Execution. The missing plane.
+
+### 6.1 Cloud node (Railway) — what it can and cannot do
+
+Runs exactly one process: `node dist/cli.js telegram` (`Dockerfile` CMD). It **can**: chat, classify intent, intake tasks, notify, brief, read state, call free LLMs. It **cannot, ever**: touch the operator's filesystem, drive a browser with his sessions, open his apps, run his IDEs or `claude` on his machine. That is a property of physics, not a bug — a container in another country is not his PC.
+
+Known cloud-specific defects (receipts): `task-spawner.ts` hardcodes `cwd: 'C:/Projects/VOLAURA'` → `/task` is broken-by-construction in the container; the `openmanus` action-lane route defaults to `C:/Projects/OpenManus` → fails there too. Both are symptoms of code written for one runtime and deployed to the other — exactly what §6.3's law prevents.
+
+### 6.2 Local node (operator's PC) — `atlas-runner` — **DOES NOT EXIST**
+
+This is the single missing component behind "I can't use it the way I want."
+
+**Contract for `atlas-runner`:**
+- A resident process on the operator's Windows machine (Task Scheduler at logon, or the tray extended to host it). Survives reboot; announces liveness via heartbeat.
+- **Claims** work orders addressed to local hands from the nerve (§7), one at a time, honoring `claim`/lease semantics.
+- **Mirrors** each claimed order into its OWN local `exec-graph` — so I1/I2 hold on the executing node, and the operator has a local audit trail.
+- **Executes** through existing hands only: `local-readonly`, shell allowlist, Playwright browser, `claude -p` executor sessions, screen capture. No new execution primitive.
+- **Submits a receipt** to the local verifier; the verifier — not the runner — closes the task.
+- **Writes the result back** to the nerve; the cloud's already-working `deliverRemoteResults` posts it to Telegram.
+- **Refuses** anything red-line (I4) and anything not on its hand's allowlist; refusals return a `needs-approval` result, never a silent drop.
+- Honors control state: `pause`/PANIC stops claiming immediately.
+
+**What must NOT be built:** a second task authority, a second notifier, a bot instance on the PC (causes `409`), or an unattended path to irreversible actions.
+
+### 6.3 Runtime law
+
+**LAW C1 — every capability declares its runtime.** `cloud` | `local` | `either`. A capability whose requirements (TTY, display, Windows path, local FS, browser profile) contradict its declared runtime is a defect, not a limitation.
+**LAW C2 — no cross-runtime hardcoded paths.** Anything referencing `C:\...` may run only on `local`.
+**LAW C3 — the operator's machine is not assumed on.** Cloud-side flows must degrade honestly ("твой раннер офлайн, задача ждёт") rather than hang.
+
+---
+
+## 7. The nerve — how the two nodes share work
+
+`exec-graph` is file-local by design; it cannot be the cross-machine channel. The transport already exists and is unused:
+
+**DECISION (2026-07-27): Supabase `atlas_command_queue` is the work transport; `exec-graph` remains the authority on each node.**
+
+- Cloud: intent → `action-router` → exec-graph task (governance) → **if the task's hand is local-only, enqueue a work order** (`queueRemoteCommand`, currently dormant by a deliberate 2026-07-10 board decision — this decision re-enables it under governance).
+- Local: `atlas-runner` claims (`claim_next_command` RPC exists), mirrors, executes, verifies, completes (`completeCommand`/`failCommand` exist).
+- Cloud: `deliverRemoteResults` (already polls every 120 s and works) posts the outcome to Telegram.
+- Stale orders are swept (`sweep_stale_commands` RPC exists).
+
+Why this and not something new: it is durable, already provisioned, RLS-gated, audit-friendly, and requires **no new protocol** — only a producer, a consumer and a governance wrapper. `docs/QUEUE-CONTRACT.md` must be updated from "producer-dormant" to this decision when the work lands.
+
+**Nerve laws:** the queue carries *work orders and results*, never task-lifecycle authority (I1); every order carries the exact action payload for the operator's approval card (Lies-in-the-Loop defense: render exact JSON, log SHA-256, never a summary); nothing irreversible may traverse it without a prior human `yes`.
+
+---
+
+## 8. State & durability law
+
+**LAW S1 — one state root per node.** All runtime state resolves under a single root: `ATLAS_STATE_ROOT`. Cloud → `/app/memory/atlas/state` (the mounted Railway volume is the ONLY durable path there). Local → `%USERPROFILE%\.atlas\state`. No store may resolve to `process.cwd()` or `os.homedir()` without an override.
+
+**LAW S2 — durability is a property of the store, declared here.** A store that dies on restart must say so in this table, or it is a defect.
+
+Current reality (recon 2026-07-27) — cloud durability is the problem:
+
+| Store | Cloud durable? | Why |
 |---|---|---|
-| Goals/tasks/execution state (new work) | `src/exec-graph` | ADR-0001. Evidence-gated, append-only ledger. |
-| Delegation / verification of hand-owned tasks | `src/hands/exec-graph-adapter.ts`'s `verifyAndTransition()` — enforced jointly with `src/exec-graph/api.ts`'s `moveTask()`/`reassignOwner()` via an internal `_viaHandAdapter` capability flag | ADR-0006. Final state (`verified`/`rejected`) for a hand-owned task can be set ONLY through this path; the generic `atlas task move`/`task reassign` CLI throws `HandAuthorityError` on a hand-owned task. The Hand registry (`src/hands/registry.ts`) is descriptive config, NOT authority — it never reads/writes exec-graph state. |
-| Decisions / intent / strategy | VOLAURA canon + CEO | ADR-0002. `ATLAS-CANON.md` remains the repo-split source of truth for where to edit. |
-| CEO notifications (proactive) | `src/atlas/notify.ts` | ADR-0005. The only gate for unprompted sends. `/status`/brief are CEO-pulled or pre-existing scheduled reads, not a second authority. |
-| Credentials / secrets | `.env` (local) / Railway env vars (cloud) — **names only**, never values in code, logs, or docs | See `SECURITY.md`, `docs/POLICY.md`. |
-| Guardrail policy (caps, pause, shell whitelist) | `config/policy.yaml` via `src/atlas/policy.ts`, env-override-wins, fail-closed | `src/tools/shell.ts` / `src/tools/fs-guard.ts` remain the operative enforcement floor — policy.yaml documents, doesn't replace them. |
-| Operator task dispatch/evaluation | `src/operator/*` | Separate lifecycle from exec-graph; classification #3 under ADR-0004 for its `tasks/*.json` inputs specifically. |
-| Legacy CEO-command transport | Supabase `atlas_command_queue`, owner: cloud Telegram bot runtime / External CTO | ADR-0004 #1. Out of scope for this repo's exec-graph; zero code path between them. |
+| memory/journal/heartbeat/MOOD/conversations | ✅ | resolve via `MEMORY_ROOT=/app` → `/app/memory` (volume) |
+| Supabase (`bot_sessions`, `bot_messages`, `atlas_learnings`, `llm_spend`) | ✅ | external DB |
+| **exec-graph ledger + snapshot** | ❌ | `/app/state/…` — **the whole task authority resets on redeploy** |
+| **operator/control-plane state** (pause/stop) | ❌ | hardcoded `cwd/operator/state/…`, **no env override exists** |
+| goal-runner budgets + lease | ❌ | `ATLAS_GOAL_BUDGET_DIR` unset → circuit breaker resets |
+| evidence ledger (M8) | ❌ | `ATLAS_EVIDENCE_DIR` unset |
+| notify queue, emotion audit, spend receipts, provider health, instance lease, breadcrumb | ❌ | default to `~/.atlas` / cwd, all unset |
+| swarm-exec run bundles, intake drafts | ❌ | **no env override exists in code at all** |
 
-## Local / cloud boundary
+**Fix order (config first, then code):** set the ten `ATLAS_*` env vars under `/app/memory/atlas/state` in Railway; then add `ATLAS_SWARM_EXEC_DIR`, `ATLAS_INTAKE_DIR`, `ATLAS_OPERATOR_STATE_PATH` overrides in code following `exec-graph/ledger.ts`'s resolver pattern; then collapse all of them behind `ATLAS_STATE_ROOT` (S1).
 
-- **Cloud (Railway):** exactly one process — `CMD ["node", "dist/cli.js",
-  "telegram"]` (`Dockerfile`, built per `railway.json`'s `DOCKERFILE`
-  builder), which `cli.ts`'s `telegram` command resolves by `import()`ing
-  `telegram.js`. This is the only thing that runs unattended, always-on, on
-  infrastructure the CEO doesn't have to keep a machine on for.
-- **Local (CEO's machine):** the autonomy loop/scheduler (OS-level Windows
-  Task Scheduler, not a cloud cron), the desktop tray, and **all
-  `state/exec-graph` writes**. exec-graph has no cloud write path today —
-  `atlas goal add` / `atlas task ...` / `atlas graph ...` are run locally,
-  and the Railway image ships `state/` read-only (`src/exec-graph/README.md`).
-  The cloud `/status`/brief can *read* exec-graph state that's baked into
-  the deployed image at build time, but cannot write new tasks.
-- **Why this split:** the cloud process must stay minimal, stateless-ish,
-  and restart-safe (Railway's `ON_FAILURE` restart policy) — anything that
-  needs durable, git-tracked, human-auditable state (exec-graph) or
-  interactive control (the CLI, the tray) belongs on the machine a human is
-  actually sitting at.
+---
 
-## Data / state flow (summary)
+## 9. Data plane truth
 
-1. CEO sends a message (Telegram) or runs a command (local CLI).
-2. Telegram path: inbound-auth gate (`isAuthorizedChat`) → command handler
-   → model-router (for chat/skill/swarm requests) or a direct read (for
-   `/status`).
-3. CLI path: direct command dispatch, no network auth gate (local trust
-   boundary is the machine itself).
-4. Any exec-graph mutation (`goal add`/`task add`/`task move`/`task
-   import`) appends one event to `state/exec-graph/ledger.jsonl` and
-   rewrites `state/exec-graph/graph.json` as a derived cache (ADR-0003).
-5. Evidence is never inlined as a blob — it's a typed reference
-   (`commit`/`test-output`/`file`/`url`/`tool-receipt`/`other`) cited on
-   the transition and the task (`docs/state-and-evidence-index.md`).
-6. Any proactive CEO-facing message (not a reply to a command) passes
-   through `notify.ts`'s gate before it can send (ADR-0005).
-7. Cross-session memory (identity, journal, heartbeat) is file-based,
-   rooted at `MEMORY_ROOT` (`src/atlas/path-util.ts`'s `getMemoryRoot()`),
-   with an optional Supabase mirror when `SUPABASE_URL`/
-   `SUPABASE_SERVICE_ROLE_KEY` are configured (`src/atlas/supabase-memory.ts`)
-   — Supabase is a mirror here, not the source of truth; the file-based
-   vault is. **`MEMORY_ROOT` differs by environment, not by default alone:**
-   locally it defaults to `C:\Projects\VOLAURA` (the VOLAURA intent canon —
-   see `ATLAS-CANON.md`), but the production `Dockerfile` explicitly sets
-   `ENV MEMORY_ROOT=/app`, so the deployed cloud process reads/writes a
-   container-local, Railway-volume-backed directory, **not** VOLAURA
-   directly. Cloud Atlas does not read or write VOLAURA's memory files at
-   all — only local CLI/autonomy processes do, by default.
+Code depends on: `bot_sessions`, `bot_messages`, `bot_heartbeats`, `atlas_command_queue` (+ `claim_next_command`, `sweep_stale_commands`), `atlas_learnings` (+ `recall_atlas_memories`, `bump_recall_count`), `llm_spend`.
 
-## Trust boundaries + secrets policy
+**Drift:** migrations exist in `db/` for `llm_spend` and `atlas_learnings` (with `decay_multiplier` in the base table). **No migration exists for `bot_sessions`, `bot_messages`, `bot_heartbeats`, `atlas_command_queue` or their RPCs** — hand-created in prod, unversioned. That is a restore-from-zero hazard: a fresh Supabase project cannot be provisioned from this repo.
 
-- **Inbound Telegram trust boundary:** every inbound message is checked
-  against `TELEGRAM_CEO_CHAT_ID` (`isAuthorizedChat`, `telegram.ts`); an
-  unset chat ID id fails closed — *all* inbound messages are refused
-  (`[auth] FATAL: TELEGRAM_CEO_CHAT_ID unset — refusing ALL inbound
-  messages`), not open by default.
-- **Autonomous-actor trust boundary:** commands run by an unattended actor
-  (`ATLAS_AGENT_ID=autonomy`, e.g. the `/task` subprocess) are restricted to
-  a shell whitelist (`config/policy.yaml`'s `whitelist_autonomy`) on top of
-  the existing BLOCKED/GATED denylist floor (`src/tools/shell.ts`) — CEO
-  Telegram turns and the interactive CLI are not whitelist-gated, only
-  denylist-gated.
-- **Secrets:** environment variable **names** only appear in code, docs, and
-  logs — never values. `.env`/`.env.*` and `*.pem`/`*.key`/`id_rsa` are
-  denied paths for the fs tools regardless of actor
-  (`src/tools/fs-guard.ts`, mirrored in `config/policy.yaml`'s `fs.sensitive`
-  list). This document and every doc in `docs/adr/` and `docs/runbooks/`
-  follows the same rule — no token values, chat IDs, or user-account
-  absolute paths.
-- **Filesystem trust boundary:** exec-graph rejects
-  `__proto__`/`constructor`/`prototype` as goal/task ids at the persistence
-  layer (`ledger.ts`'s `isSafeKey()`) — defense in depth against a
-  malformed/malicious ledger line poisoning the in-memory snapshot via
-  prototype pollution.
+**LAW D1 — no unversioned prod schema.** Every table/RPC the code touches has a migration in `db/`. Applying to live remains an operator gate.
 
-## EXCLUDED-BY-DESIGN
+---
 
-Explicitly not built, and why — so a future contributor doesn't reintroduce
-these as "obviously missing":
+## 10. Build law — how work happens from now on
 
-- **No second router.** All model calls go through
-  `src/model-router.ts`. A second, parallel routing path would defeat the
-  cost-ordering/fallback guarantee and make spend auditing (`spend-tracker.ts`,
-  `spend-policy.ts`) incomplete by construction.
-- **No second Telegram authority.** Exactly one bot process, one inbound-auth
-  gate, one `CEO_CHAT_ID` resolution point. A second bot or a second
-  chat-ID-resolution path would reopen the exact "who can this send to"
-  question ADR-0005 and the inbound-auth gate exist to close.
-- **No VOLAURA execution state.** Per ADR-0002 — VOLAURA is intent/strategy
-  canon, not a second task-lifecycle authority. Writing task-lifecycle data
-  there would reintroduce the fragmentation ADR-0001 fixes.
-- **No OpenClaw runtime in this repo.** Referenced in project-level notes
-  as an orchestration tool under evaluation elsewhere in the ecosystem;
-  ANUS does not embed it, spawn it, or depend on it.
-- **No unbounded swarm.** Both swarm paths (`swarm.ts`'s TS fork-parallel
-  and the Python bridge) run a bounded, explicit set of perspectives/waves
-  — there is no self-spawning or recursive-swarm capability anywhere in
-  this repo.
-- **No cloud exec-graph writer.** Deliberate, not an oversight — see "Local
-  / cloud boundary" above. Extending write access to the cloud process is a
-  future ADR's decision, not an assumed next step.
-- **No second delegation store.** Hand Contract V0 (`src/hands/*`) does not
-  persist a `DelegationBrief` or a delegation-state record anywhere of its
-  own — a hand-owned task's status IS an exec-graph `Task` status (owner
-  `hand:<id>`), and riskClass is re-derived at verify time from the task's
-  own title + the hand's registry entry, not cached in a parallel table
-  (ADR-0006). A second store would reintroduce exactly the "which place do
-  I check for the real status" fragmentation ADR-0001 exists to eliminate.
+1. **Ladder-anchored.** Every mission names its level (L0-L5) and its DoD includes that level's operator sentence. "Tests green" is necessary, never sufficient.
+2. **Surface + runtime declared.** Every capability states where it is invoked from and where it runs (LAW A1, C1).
+3. **No new authority.** exec-graph closes nothing but through the verifier (I1/I2). No second router, no second notifier, no second delegation store.
+4. **No new persistence idiom.** Append-only ledger + derived snapshot, under `ATLAS_STATE_ROOT` (S1).
+5. **No new architecture document.** This file is edited; ADRs record decisions; STATE-NOW records status; the journal records events. A new "plan" doc is a smell — the answer is a mission, not a document.
+6. **Irreversible stays human-gated forever** (I4). Autonomy widens only on accumulated verified history, never by convenience.
+7. **Delete-or-mark on supersede.** Superseding a design means editing §0.1 in the same commit.
 
-## LEARN — Mission 2 lessons (Hand Contract V0)
+---
 
-Concrete lessons from building the delegation-control layer, kept here
-rather than as generic advice because each one changed a specific line of
-code or a specific test:
+## 11. Reality map (2026-07-27, `main` @ `a7f81ee`)
 
-1. **A specialized safe wrapper is not enough on its own.** The first cut
-   of `src/hands/exec-graph-adapter.ts` correctly refused to let
-   `verifyAndTransition()` be bypassed — but the *underlying generic
-   primitive* it wraps (`exec-graph/api.ts`'s `moveTask()`/
-   `reassignOwner()`) was still willing to drive a hand-owned task straight
-   to `verified` or create `hand:` ownership if called directly through the
-   plain `atlas task move`/`task reassign` CLI path — an adversarial review
-   found this sibling-CLI bypass. The fix had to live in the generic
-   primitive itself (the `_viaHandAdapter` capability flag +
-   `HandAuthorityError` in `exec-graph/api.ts`), not just in the adapter
-   that was supposed to be the only caller. A guard that only exists in the
-   "nice" entry point is trivially bypassable via any other entry point
-   into the same underlying state.
-2. **Receipts must be secret-scanned *before* ledger persistence, not
-   after.** `state/exec-graph/ledger.jsonl` is append-only by design
-   (ADR-0003) — that guarantee is exactly what makes a leaked secret
-   written into it permanent, unlike a mutable store where a bad write can
-   be corrected in place. `assertReceiptHasNoSecrets()` therefore has to
-   run before `submitReceipt()`'s first write, not as a cleanup pass after.
-3. **A deterministic verifier needs a minimum-meaningful-evidence guard,
-   or it degenerates into theater.** Re-checking falsifiable evidence
-   (file/command output actually contains a claimed substring) is what
-   separates a receipt from a narrative — but an `expectedSubstring` of
-   `' '` (a single space) technically satisfies `z.string().min(1)` and
-   would then "verify" against almost any non-empty file or command
-   output. `contract.ts`'s `receiptSchema` needed an explicit
-   `expectedSubstring.trim().length >= 3` check to close that degenerate
-   case; length-1 validation alone was not a real evidence bar.
-4. **Accepted V0 limit, not fixed here:** `risk.ts`'s `classifyRisk()` is a
-   fixed keyword rule over the task's title + the hand's `allowedActions`
-   — an objective worded to avoid the `write|mutat|delete|deploy|migrat`,
-   `secret|credential|token|\.env|auth|rls`, and `prod|production|live|
-   cloud` keyword groups classifies as `'low'` and skips the refuter
-   entirely (`risk.ts`'s `needsRefuter()`), regardless of what the task
-   actually does once delegated. Documented as an accepted V0 gap, not
-   fixed in this mission — a future risk classifier would need semantic
-   (not just lexical) evaluation of the objective, which reintroduces the
-   "no LLM in the verification path" tension this V0 deliberately avoided.
+| Module | Plane | Runtime | Reachable from | Status |
+|---|---|---|---|---|
+| `telegram.ts` | A | cloud | operator | live (11 commands + freeform + emotion + action-router) |
+| `cli.ts` | A | local/either | operator (shell) | live, ~30 groups — carries most capability |
+| `apps/desktop` tray | A | local | operator | live, thin (status + PANIC) |
+| `exec-graph` | B | either | CLI | live, authority, **ephemeral in cloud** |
+| `hands` + manifests (M5) | B | either | CLI | live |
+| verifier + `evidence` (M8) | B | either | CLI | live |
+| `goal-runner` | B | local (in practice) | CLI only | live, unreachable from phone |
+| `swarm-exec` | B | either | CLI + intake from phone | live; **run step unreachable from phone** |
+| `cos` | B | either | CLI only | live, unreachable from phone (L1 gap) |
+| `notify` + queue (M7) | B | cloud | internal | live, quiet hours |
+| `emotion` / `pulse` / `emotional-safety` | B | cloud | internal | live, tone-only |
+| `model-router` (M6 health) | B | either | internal | live, free-first, anthropic no-WORKER |
+| `action-router` | A→B | cloud | freeform text | live → **dead-ends at task creation** |
+| `atlas_command_queue` transport | nerve | both | — | **built, producer dormant** |
+| `atlas-runner` | C-2 | local | — | **DOES NOT EXIST — L2 blocker** |
+| `operator/*` (legacy dispatcher) | C | local | hidden text triggers | legacy; superseded by hands/exec-graph; cloud paths broken |
+| `task-spawner` (`/task`) | C | local only | Telegram | **broken in cloud (hardcoded Windows cwd)** |
 
-## Links
+---
 
-- `docs/adr/0001-one-task-authority-exec-graph.md` through `0006-*.md`
-- `docs/runbooks/exec-graph-recovery.md`,
-  `atlas-pause-and-resume.md`, `morning-brief-and-status.md`,
-  `legacy-task-cutover.md`, `hand-delegation.md`
-- `docs/state-and-evidence-index.md`
-- `ATLAS-CANON.md` — the pre-existing repo-split canon
-- `src/exec-graph/README.md`, `src/hands/README.md`,
-  `docs/QUEUE-CONTRACT.md`, `docs/POLICY.md`, `docs/PANIC.md`,
-  `docs/AUTONOMY-V0.md`, `docs/DESKTOP-SHELL.md`
-- `README.md` — component entry points + commands
+## 12. Gap register (ranked; each maps to a ladder level)
+
+1. **No local runner** → L2 blocked. Everything the operator most wants depends on this. (§6.2)
+2. **Action-router dead end** → a task is created and acknowledged, then nothing runs it. Honest fix: either wire it to the nerve (L2) or change the reply to say "запишу, выполню когда раннер будет" (truth now). (§7)
+3. **Cloud state ephemeral** → task graph, budgets, control state, evidence reset on every redeploy. (§8)
+4. **L1 not wired** → the operator cannot see his own board from his phone. Cheapest real win. (§4)
+5. **Unversioned prod schema** → cannot rebuild the DB from the repo. (§9)
+6. **Voice absent** → L4. (§2)
+7. **Legacy duplicates** (`operator/*`, `task-spawner`) → two lifecycles, one broken in cloud; retire behind hands/exec-graph.
+8. **Doc sediment** → §0.1 executed in this commit; keep it executed.
+
+---
+
+## 13. Excluded by design
+
+No second model router. No second Telegram authority or bot instance. No second delegation store. No unbounded/self-spawning swarm. No VOLAURA execution state (VOLAURA = intent/lived memory only). No autonomous real-portal submit — submit is a human key, permanently. No frontier model as a swarm worker. No mood-gated refusal to work.
+
+## 14. Links
+
+ADR-0001 (task authority) · 0003 (ledger) · 0005 (notify) · 0006 (hand contract) · 0007 (swarm-exec + honest verification) · 0008 (cos) · 0009 (vision: portable agent-factory) · `docs/atlas-cto/ATLAS-OPERATING-CANON.md` (portable behavior gates) · `docs/atlas-cto/ATLAS-STATE-NOW.md` (status) · `docs/QUEUE-CONTRACT.md` (nerve; update on L2) · `docs/runbooks/*` · `src/{exec-graph,hands,cos}/README.md`
