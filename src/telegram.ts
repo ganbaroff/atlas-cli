@@ -420,6 +420,65 @@ bot.command('status', async (ctx) => {
   }
 });
 
+// ── /brief — CEO board read (L1 ladder) ────────────────────────────
+// Read-only projection over exec-graph + drift signals. Pure formatters in
+// src/atlas/cos/telegram-formatters.ts are unit-tested without a live bot.
+// Any throw → honest error reply; never kills the bot process.
+bot.command('brief', async (ctx) => {
+  try {
+    const { gatherCosFacts } = await import('./atlas/cos/facts.js');
+    const { detectDrift } = await import('./atlas/cos/drift.js');
+    const { composeCosBriefItems } = await import('./atlas/cos/brief.js');
+    const { gatherLiveDriftInputs } = await import('./atlas/cos/gather.js');
+    const { formatBriefForTelegram } = await import('./atlas/cos/telegram-formatters.js');
+
+    const facts = gatherCosFacts();
+    const drift = detectDrift(gatherLiveDriftInputs());
+    const items = composeCosBriefItems(facts, drift);
+    const reply = formatBriefForTelegram(items);
+    await ctx.reply(reply);
+  } catch (e) {
+    const reason = e instanceof Error ? e.message.slice(0, 200) : String(e);
+    await ctx.reply(`Не смог прочитать борт: ${reason}`);
+    console.error('[/brief error]', e);
+  }
+});
+
+// ── /drift — drift/stale-signal findings only (L1 ladder) ──────────
+bot.command('drift', async (ctx) => {
+  try {
+    const { detectDrift } = await import('./atlas/cos/drift.js');
+    const { gatherLiveDriftInputs } = await import('./atlas/cos/gather.js');
+    const { formatDriftForTelegram } = await import('./atlas/cos/telegram-formatters.js');
+
+    const findings = detectDrift(gatherLiveDriftInputs());
+    const reply = formatDriftForTelegram(findings);
+    await ctx.reply(reply);
+  } catch (e) {
+    const reason = e instanceof Error ? e.message.slice(0, 200) : String(e);
+    await ctx.reply(`Не смог прочитать борт: ${reason}`);
+    console.error('[/drift error]', e);
+  }
+});
+
+// ── /tasks — active exec-graph tasks (L1 ladder) ───────────────────
+// Shows only non-terminal tasks (not verified/closed/rejected).
+// Never throws — "Граф пуст." on empty or unreadable graph.
+bot.command('tasks', async (ctx) => {
+  try {
+    const { listTasks } = await import('./exec-graph/api.js');
+    const { formatTasksForTelegram } = await import('./atlas/cos/telegram-formatters.js');
+
+    const tasks = listTasks();
+    const reply = formatTasksForTelegram(tasks);
+    await ctx.reply(reply);
+  } catch (e) {
+    const reason = e instanceof Error ? e.message.slice(0, 200) : String(e);
+    await ctx.reply(`Не смог прочитать борт: ${reason}`);
+    console.error('[/tasks error]', e);
+  }
+});
+
 // /help — generated from the command registry (src/atlas/commands.ts), never
 // hand-maintained. RU/EN by the user's Telegram language_code.
 bot.command('help', async (ctx) => {
