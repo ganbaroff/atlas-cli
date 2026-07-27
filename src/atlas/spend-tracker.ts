@@ -89,11 +89,36 @@ let daily: DailyCounter = {
   calls: 0,
 };
 
+let rehydrated = false;
+
+/** Rehydrate daily counter from persisted receipts for the current UTC day. */
+function rehydrateFromReceipts(): void {
+  if (rehydrated) return;
+  rehydrated = true;
+  try {
+    const today = daily.date;
+    const receipts = readSpendReceipts();
+    for (const r of receipts) {
+      // Match receipts whose timestamp falls on today (UTC)
+      if (r.ts.slice(0, 10) === today) {
+        daily.tokensIn += r.tokensIn;
+        daily.tokensOut += r.tokensOut;
+        daily.costUsd = Math.round((daily.costUsd + r.estCostUsd) * 1_000_000) / 1_000_000;
+        daily.calls += 1;
+      }
+    }
+  } catch (err) {
+    console.error('[spend] rehydrate failed:', err instanceof Error ? err.message : err);
+  }
+}
+
 function rollIfNewDay(): void {
   const today = todayUtc();
   if (daily.date !== today) {
     daily = { date: today, tokensIn: 0, tokensOut: 0, costUsd: 0, calls: 0 };
+    rehydrated = false;
   }
+  rehydrateFromReceipts();
 }
 
 /** Snapshot of today's accumulated spend (in-memory, since process start). */
@@ -111,6 +136,7 @@ export function getDailyTokenTotal(): number {
 /** Reset the counter (tests / manual). */
 export function resetDailySpend(): void {
   daily = { date: todayUtc(), tokensIn: 0, tokensOut: 0, costUsd: 0, calls: 0 };
+  rehydrated = true; // skip rehydration after explicit reset
 }
 
 async function writeSpendRow(row: {
