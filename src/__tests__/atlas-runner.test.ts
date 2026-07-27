@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { runnerTick, runRunnerLoop, type RunnerDeps, type RunnerTickResult } from '../atlas/atlas-runner.js';
+import { runnerTick, runRunnerLoop, describeRunnerLiveness, type RunnerDeps, type RunnerTickResult } from '../atlas/atlas-runner.js';
 
 // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -177,5 +177,33 @@ describe('runRunnerLoop', () => {
     expect(ticks).toHaveLength(3);
     expect(ticks.every((t) => t.status === 'completed')).toBe(true);
     expect(deps.claim).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('describeRunnerLiveness', () => {
+  const lease = { instanceId: 'i-1', pid: 1234, startedAt: '2026-07-27T14:00:00.000Z', heartbeatAt: '2026-07-27T14:05:00.000Z' };
+
+  it('reports not-started when no lease file exists', () => {
+    const result = describeRunnerLiveness(null, Date.parse('2026-07-27T14:05:10.000Z'), () => true);
+    expect(result.status).toBe('not-started');
+  });
+
+  it('reports running when the process is alive and heartbeat is fresh', () => {
+    const now = Date.parse('2026-07-27T14:05:10.000Z'); // 10s after last heartbeat
+    const result = describeRunnerLiveness(lease, now, () => true, 60_000);
+    expect(result.status).toBe('running');
+    expect(result.pid).toBe(1234);
+  });
+
+  it('reports stale when the heartbeat is older than the TTL, even if the pid still exists', () => {
+    const now = Date.parse('2026-07-27T14:06:05.000Z'); // 65s after last heartbeat, TTL=60s
+    const result = describeRunnerLiveness(lease, now, () => true, 60_000);
+    expect(result.status).toBe('stale');
+  });
+
+  it('reports stale when the pid no longer exists, even with a fresh heartbeat timestamp', () => {
+    const now = Date.parse('2026-07-27T14:05:10.000Z');
+    const result = describeRunnerLiveness(lease, now, () => false, 60_000);
+    expect(result.status).toBe('stale');
   });
 });

@@ -150,4 +150,9 @@ export function clearInstanceLeaseForTests(): void {
   if (existsSync(path)) unlinkSync(path);
 }
 
+/** Read-only accessor for external status/diagnostic tools (e.g. `atlas runner status`). */
+export function getInstanceLeaseInfo(): InstanceLease | null {
+  return readLease();
+}
+
 export { isProcessAlive as isInstanceProcessAlive, DEFAULT_LEASE_TTL_MS };

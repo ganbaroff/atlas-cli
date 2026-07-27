@@ -1380,6 +1380,21 @@ const runnerCmd = program
   .description('L2 local-node runner — claim + execute commands from the queue');
 
 runnerCmd
+  .command('status')
+  .description('Is the local runner alive? (reads the instance-lease heartbeat)')
+  .action(async () => {
+    try {
+      const { runnerLivenessNow } = await import('./atlas/atlas-runner.js');
+      const report = runnerLivenessNow();
+      console.log(JSON.stringify(report, null, 2));
+      process.exitCode = report.status === 'running' ? 0 : 1;
+    } catch (err) {
+      console.error(`runner status error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
+  });
+
+runnerCmd
   .command('peek')
   .description('Read-only: show the most recent atlas_command_queue rows (any status)')
   .option('-n, --limit <n>', 'How many rows', '10')

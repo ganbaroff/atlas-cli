@@ -22,6 +22,12 @@ import { deriveEffectsFromText } from './action-router.js';
 import { claimNextCommand, completeCommand, failCommand } from './supabase-memory.js';
 import { runTask } from './task-spawner.js';
 import { effectivelyPaused } from './control-plane.js';
+import {
+  getInstanceLeaseInfo,
+  isInstanceProcessAlive,
+  DEFAULT_LEASE_TTL_MS,
+  type InstanceLease,
+} from './instance-lease.js';
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -223,4 +229,48 @@ export async function runRunnerLoop(
     process.removeListener('SIGINT', onSignal);
     process.removeListener('SIGTERM', onSignal);
   }
+}
+
+// ── Liveness status (for `atlas runner status`) ─────────────────────────
+//
+// The runner is always launched via `node dist/cli.js runner start`, and
+// cli.ts's top-level guard already acquires the M4-C instance lease and
+// heartbeats it every DEFAULT_LEASE_TTL_MS/3 for the life of the process
+// (src/atlas/instance-lease.ts). Reused here rather than inventing a
+// second heartbeat file — one lease, one liveness signal, machine-wide.
+
+export type RunnerLivenessStatus = 'running' | 'stale' | 'not-started';
+
+export interface RunnerLivenessReport {
+  status: RunnerLivenessStatus;
+  pid?: number;
+  startedAt?: string;
+  heartbeatAt?: string;
+  heartbeatAgeMs?: number;
+}
+
+/** Pure — testable without touching the real lease file. */
+export function describeRunnerLiveness(
+  lease: InstanceLease | null,
+  nowMs: number,
+  processAlive: (pid: number) => boolean,
+  staleAfterMs: number = DEFAULT_LEASE_TTL_MS,
+): RunnerLivenessReport {
+  if (!lease) return { status: 'not-started' };
+
+  const heartbeatAgeMs = nowMs - Date.parse(lease.heartbeatAt);
+  const alive = processAlive(lease.pid) && heartbeatAgeMs <= staleAfterMs;
+
+  return {
+    status: alive ? 'running' : 'stale',
+    pid: lease.pid,
+    startedAt: lease.startedAt,
+    heartbeatAt: lease.heartbeatAt,
+    heartbeatAgeMs,
+  };
+}
+
+/** Production wiring — reads the real lease file, checks the real process table. */
+export function runnerLivenessNow(): RunnerLivenessReport {
+  return describeRunnerLiveness(getInstanceLeaseInfo(), Date.now(), isInstanceProcessAlive);
 }
