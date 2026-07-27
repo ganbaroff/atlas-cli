@@ -20,6 +20,18 @@ The June megaplan predates the current architecture (exec-graph task authority, 
 | E | Phase 4.3b — wire action-router into telegram freeform path (chat vs action lane) | Opus `claude -p` | ✅ DONE | `6ed2122` | Fable-verified: tsc 0, vitest 726/0/2, +8 tests; actionResultToReply helper, telegram freeform→router, throw-falls-through-to-brain |
 | Z | Full verify (tsc/vitest/build) + push + redeploy to Railway + records | Fable seat | IN PROGRESS | `6ed2122` | tsc 0 · vitest **726/0/2** · build clean · secret-scan 0 · pushed (c514b89..6ed2122) · redeploy uploaded (verifying bootTime) |
 
+## LADDER EXECUTION — 2026-07-27 (CEO: «делай L1 и L2, локальный раннер тоже»)
+
+Baseline: `main` @ `84947ef` (after chore(deps): install missing @google-cloud/storage). Per `docs/architecture/ATLAS-ARCHITECTURE.md` §2 ladder + §6.2 atlas-runner contract + §7 nerve decision.
+
+| Wave | Scope | Body | Status | Commit | Proof |
+|------|-------|------|--------|--------|-------|
+| L1 | Telegram /brief /drift /tasks — read-only cos+exec-graph projection to phone | Sonnet `claude -p` | ✅ DONE | `55ac63c` | tsc 0, vitest **886/0/2** (+14), state/ untouched by the commit itself |
+| R1 | `atlas-runner` core: resident claim→execute→verify loop, local hand execution via task-spawner's runTask() | Opus `claude -p` | ✅ DONE | `a01dec8` + fix `fc38cd7` | tsc 0, vitest 895/0/2 (+9). **Fable adversarial review caught a real defect**: original gate treated `exitCode:null` (task-spawner's marker for pause/control-block/busy/timeout-killed — 4 distinct non-completion states) as SUCCESS, which would report false completion for work that never ran. Fixed to require exitCode===0; regression test added. |
+| R2 | Producer wiring: action-router 'queued' → governed queueRemoteCommand for local-hand tasks + QUEUE-CONTRACT.md update + end-to-end dry-run | Opus `claude -p` | RUNNING | — | — |
+
+**Live incident noted, NOT caused by this work:** a separate process on this machine (PID alive since 2026-07-25) is actively writing to the real `state/exec-graph/*` (VOLAURA work-queue NBA imports) concurrently with this session's test runs — caused one flaky test failure (886/**1**/2 → re-run 886/0/2). This is the exact concurrent-writer hazard the architecture doc's LAW C1/I1 exist to prevent; flagged for a separate mission, not chased here.
+
 ## FINAL RESULT (2026-07-23)
 - **All 5 build waves shipped + Fable-verified.** Test suite 669 → **726 passed / 0 failed / 2 skipped** (+57 tests). tsc 0, build clean, every wave a bounded single-writer commit on feat/arsenal-wiring, pushed to origin at `6ed2122`.
 - **Megaplan coverage:** Phase 0 (0.1/0.2/0.3) already DONE · Phase 1 freellmapi DONE + **gemini/azure added (Wave A)** · Phase 2 keyword DONE + **2.8 LLM-first emotion + telegram wiring (Wave B)** · Phase 3 pulse/3.2/3.4 DONE · **3.5 safety guardrail (Wave C)** · Phase 4.1 superseded by swarm-exec · **4.2 action-router (Wave D)** · **4.3 telegram freeform→executor (Wave E)** · Phase 5 memory migration files DONE + **5A-iii recall write-back (Wave A)**.
