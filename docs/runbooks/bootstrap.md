@@ -53,7 +53,9 @@ Expected: resolves ~400 packages, no `npm ERR!` lines. [UNTESTED on a fresh mach
 npm run build
 ```
 
-Expected: tsup bundles `dist/cli.js` and `dist/learning-api.js`, then `copy-manifests.mjs` runs. No TypeScript errors. [UNVERIFIED in current recovery]
+Expected: tsup bundles `dist/cli.js` and `dist/learning-api.js`, then
+`copy-manifests.mjs` runs. No TypeScript errors. [verified in a clean detached
+checkout at exact source commit `57042ed`: `npm run build` exit 0]
 
 ```bash
 # 4. Type-check (zero-tolerance — must be clean before any commit)
@@ -67,8 +69,9 @@ Expected: silent exit 0. [tested — clean on this branch]
 npx vitest run 2>&1 | tee /tmp/vitest-run.txt
 ```
 
-No current full-suite receipt. Run before release; current recovery evidence
-covers only the focused runner suite: 4 files, 75/75 passed.
+Clean detached verification at exact source commit `57042ed`: `npx vitest run`
+exit 0 — 123 files, 1036 passed, 2 skipped, 0 failed. Focused runner suite:
+4 files, 75/75 passed.
 
 The 2 skipped tests are live-provider guards (`it.skipIf(!process.env['NVIDIA_API_KEY'])`); they skip when the key is absent and are not regressions.
 
@@ -372,6 +375,13 @@ running process, not the shell you typed this in. A reader with no `.env`
 loaded still gets the runner's real state. A pre-fix or non-runner lease reports
 `occupied` and does not emit auth or build fields.
 
+Binary probes in a clean detached checkout at exact source commit `57042ed`:
+
+- Empty status ⇒ `not-started`, exit 1, no lease.
+- Live unmarked holder ⇒ `occupied`, exit 1, no auth/build.
+- Competing start ⇒ exit 1 refusal.
+- Newer source mtime ⇒ stale start exits 1 before runner annotation.
+
 ### Autostart via Windows Task Scheduler
 
 Desired state: register a task that starts the runner at login (requires admin
@@ -465,9 +475,10 @@ Builds a scratch DB, exports fixtures, tears down, rebuilds, imports, verifies. 
 Run these in order. All are read-only. Expect the outputs shown.
 
 ```bash
-# 1. Full suite (not part of current recovery evidence)
+# 1. Full suite
 npx vitest run 2>&1 | tail -5
-# Expected: obtain and retain a fresh release receipt
+# Verified at exact source commit 57042ed in a clean detached checkout:
+# exit 0; 123 files; 1036 passed; 2 skipped; 0 failed
 
 # 2. TypeScript clean
 npx tsc --noEmit && echo "tsc: clean"
