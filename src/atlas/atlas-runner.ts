@@ -27,9 +27,11 @@ import { effectivelyPaused } from './control-plane.js';
 import {
   getInstanceLeaseInfo,
   isInstanceProcessAlive,
+  annotateInstanceLease,
   DEFAULT_LEASE_TTL_MS,
   type InstanceLease,
 } from './instance-lease.js';
+import { inspectBuildFreshness, type BuildFreshness } from './build-freshness.js';
 import {
   verifyPayload,
   createNonceLedger,
@@ -289,7 +291,7 @@ export async function runRunnerLoop(
 // (src/atlas/instance-lease.ts). Reused here rather than inventing a
 // second heartbeat file — one lease, one liveness signal, machine-wide.
 
-export type RunnerLivenessStatus = 'running' | 'stale' | 'not-started';
+export type RunnerLivenessStatus = 'running' | 'occupied' | 'stale' | 'not-started';
 
 export interface RunnerLivenessReport {
   status: RunnerLivenessStatus;
@@ -297,8 +299,22 @@ export interface RunnerLivenessReport {
   startedAt?: string;
   heartbeatAt?: string;
   heartbeatAgeMs?: number;
-  /** Whether queue authenticity enforcement is active (signing key set). */
-  authEnforcement?: 'on' | 'off';
+  /**
+   * Queue authenticity enforcement AS DECLARED BY THE RUNNING RUNNER.
+   *
+   * Read from the lease, never from this process's env. A reader that
+   * never loaded .env used to report 'off' while enforcement was on —
+   * the field described the reader, not the runner (found live
+   * 2026-07-28). 'unknown' means a marked runner omitted the field; a
+   * non-runner lease holder exposes no runner fields.
+   */
+  authEnforcement?: 'on' | 'off' | 'unknown';
+  /** Which build the running runner is executing, as it declared at startup. */
+  build?: {
+    entryPath?: string;
+    builtAt?: string;
+    freshnessAtStart?: 'fresh' | 'stale' | 'unknown';
+  };
 }
 
 /** Pure — testable without touching the real lease file. */
@@ -312,19 +328,68 @@ export function describeRunnerLiveness(
 
   const heartbeatAgeMs = nowMs - Date.parse(lease.heartbeatAt);
   const alive = processAlive(lease.pid) && heartbeatAgeMs <= staleAfterMs;
+  const runner = lease.runner?.kind === 'runner' ? lease.runner : undefined;
 
-  return {
-    status: alive ? 'running' : 'stale',
+  const report: RunnerLivenessReport = {
+    status: alive ? (runner ? 'running' : 'occupied') : 'stale',
     pid: lease.pid,
     startedAt: lease.startedAt,
     heartbeatAt: lease.heartbeatAt,
     heartbeatAgeMs,
   };
+  if (runner) report.authEnforcement = runner.authEnforcement ?? 'unknown';
+
+  const ann = runner;
+  if (ann && (ann.entryPath || ann.buildMtimeMs !== undefined || ann.buildFreshness)) {
+    report.build = {
+      entryPath: ann.entryPath,
+      builtAt: ann.buildMtimeMs !== undefined
+        ? new Date(ann.buildMtimeMs).toISOString()
+        : undefined,
+      freshnessAtStart: ann.buildFreshness,
+    };
+  }
+
+  return report;
 }
 
 /** Production wiring — reads the real lease file, checks the real process table. */
 export function runnerLivenessNow(): RunnerLivenessReport {
-  const report = describeRunnerLiveness(getInstanceLeaseInfo(), Date.now(), isInstanceProcessAlive);
-  report.authEnforcement = getSigningKey() ? 'on' : 'off';
-  return report;
+  return describeRunnerLiveness(getInstanceLeaseInfo(), Date.now(), isInstanceProcessAlive);
+}
+
+// ── Startup self-declaration (written by the runner, read by everyone) ──
+
+export interface RunnerStartRecord {
+  recorded: boolean;
+  authEnforcement: 'on' | 'off';
+  freshness: BuildFreshness;
+}
+
+/**
+ * Called once by `runner start`, in the runner's own process, so the
+ * lease carries the runner's real state instead of leaving readers to
+ * guess it from their own environment.
+ *
+ * `recorded:false` means this process does not own the lease (read-only
+ * second instance) — readers see the foreign holder as occupied, with
+ * no runner claims.
+ */
+export function recordRunnerStartState(
+  instanceId: string | undefined,
+  deps: { getSigningKey?: () => string | undefined } = {},
+  freshness: BuildFreshness = inspectBuildFreshness(),
+): RunnerStartRecord {
+  const keyFn = deps.getSigningKey ?? getSigningKey;
+  const authEnforcement: 'on' | 'off' = keyFn() ? 'on' : 'off';
+
+  const recorded = instanceId !== undefined && annotateInstanceLease(instanceId, {
+    kind: 'runner',
+    authEnforcement,
+    entryPath: freshness.status === 'unknown' ? undefined : freshness.entryPath,
+    buildMtimeMs: freshness.status === 'unknown' ? undefined : freshness.distMtimeMs,
+    buildFreshness: freshness.status === 'unknown' ? undefined : freshness.status,
+  });
+
+  return { recorded, authEnforcement, freshness };
 }

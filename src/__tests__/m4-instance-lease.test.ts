@@ -10,6 +10,7 @@ import {
   clearInstanceLeaseForTests,
   heartbeatInstanceLease,
   releaseInstanceLease,
+  shouldAcquireInstanceLease,
 } from '../atlas/instance-lease.js';
 
 const ROOT = resolve(fileURLToPath(new URL('../..', import.meta.url)));
@@ -174,4 +175,15 @@ describe('M4-C instance anti-fork lease', () => {
     const result = JSON.parse(takeover.stdout.trim()) as { mode: string };
     expect(result.mode).toBe('writer');
   }, 60_000);
+});
+
+describe('CLI instance-lease routing', () => {
+  it('does not let runner status create the lease it is trying to observe', () => {
+    expect(shouldAcquireInstanceLease(['runner', 'status'])).toBe(false);
+  });
+
+  it('keeps writer protection for runner start and other commands', () => {
+    expect(shouldAcquireInstanceLease(['runner', 'start'])).toBe(true);
+    expect(shouldAcquireInstanceLease(['chat', 'hello'])).toBe(true);
+  });
 });

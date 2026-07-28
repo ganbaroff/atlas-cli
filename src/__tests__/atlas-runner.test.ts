@@ -271,7 +271,13 @@ describe('runnerTick — benign Russian commands still pass (C-wire regression)'
 });
 
 describe('describeRunnerLiveness', () => {
-  const lease = { instanceId: 'i-1', pid: 1234, startedAt: '2026-07-27T14:00:00.000Z', heartbeatAt: '2026-07-27T14:05:00.000Z' };
+  const lease = {
+    instanceId: 'i-1',
+    pid: 1234,
+    startedAt: '2026-07-27T14:00:00.000Z',
+    heartbeatAt: '2026-07-27T14:05:00.000Z',
+    runner: { kind: 'runner' as const },
+  };
 
   it('reports not-started when no lease file exists', () => {
     const result = describeRunnerLiveness(null, Date.parse('2026-07-27T14:05:10.000Z'), () => true);
@@ -295,6 +301,39 @@ describe('describeRunnerLiveness', () => {
     const now = Date.parse('2026-07-27T14:05:10.000Z');
     const result = describeRunnerLiveness(lease, now, () => false, 60_000);
     expect(result.status).toBe('stale');
+  });
+
+  // Defect 2 (found live 2026-07-28): this field used to be computed from
+  // the READER's env. It now comes from the lease holder's own
+  // declaration — see runner-liveness-lease.test.ts for the end-to-end
+  // proof that a reader without the key still gets the truth.
+  it('takes authEnforcement from the lease holder declaration', () => {
+    const declared = {
+      ...lease,
+      runner: { kind: 'runner' as const, authEnforcement: 'on' as const },
+    };
+    const now = Date.parse('2026-07-27T14:05:10.000Z');
+    expect(describeRunnerLiveness(declared, now, () => true, 60_000).authEnforcement).toBe('on');
+  });
+
+  it('reports occupied without runner fields for a fresh non-runner lease', () => {
+    const { runner: _runner, ...nonRunnerLease } = lease;
+    const now = Date.parse('2026-07-27T14:05:10.000Z');
+    const report = describeRunnerLiveness(nonRunnerLease, now, () => true, 60_000);
+    expect(report.status).toBe('occupied');
+    expect(report.authEnforcement).toBeUndefined();
+    expect(report.build).toBeUndefined();
+  });
+
+  it('still reports a declaration for a runner that has gone stale', () => {
+    const declared = {
+      ...lease,
+      runner: { kind: 'runner' as const, authEnforcement: 'off' as const },
+    };
+    const now = Date.parse('2026-07-27T14:06:05.000Z'); // past the TTL
+    const result = describeRunnerLiveness(declared, now, () => true, 60_000);
+    expect(result.status).toBe('stale');
+    expect(result.authEnforcement).toBe('off');
   });
 });
 

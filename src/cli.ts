@@ -26,8 +26,14 @@ import { runHealthCheck, formatHealthReport } from './atlas/health-check.js';
 import type { ModelRole } from './model-router.js';
 import * as readline from 'node:readline';
 import { capture, shutdown } from './analytics.js';
-import { acquireInstanceLease, startInstanceLeaseHeartbeat } from './atlas/instance-lease.js';
+import {
+  acquireInstanceLease,
+  shouldAcquireInstanceLease,
+  startInstanceLeaseHeartbeat,
+} from './atlas/instance-lease.js';
 import { writeSessionBreadcrumb, assertBreadcrumbBeforeExit } from './atlas/write-back-hook.js';
+
+let ownedInstanceLeaseId: string | undefined;
 
 // CWD-FIX: resolve .env from module dir, not process.cwd()
 import { parse as dotenvParse } from 'dotenv';
@@ -1428,12 +1434,42 @@ runnerCmd
   .command('start')
   .description('Run the runner loop — claims and executes until Ctrl-C')
   .option('-i, --interval <seconds>', 'Seconds between ticks', '15')
+  .option('--allow-stale-dist', 'UNSAFE: start even if dist/ is older than src/', false)
   .action(async (opts) => {
     const intervalSec = parseInt(opts.interval, 10) || 15;
-    console.log(`[runner] Starting local runner (interval ${intervalSec}s). Ctrl+C to stop.`);
+
+    // Startup gate: never silently run a build that predates src/. A stale
+    // dist is invisible at runtime — safety gates you believe are live may
+    // not exist in the binary at all (found live 2026-07-28: the autostarted
+    // runner was executing a build older than queue-auth.ts, so the P0.1
+    // signing gate was inert with no signal). Refuse loudly instead.
+    const { inspectBuildFreshness, formatStaleDistError, runnerStartAllowed } = await import('./atlas/build-freshness.js');
+    const freshness = inspectBuildFreshness();
+    if (freshness.status === 'stale') {
+      console.error(formatStaleDistError(freshness));
+      const override = opts.allowStaleDist === true || process.env.ATLAS_ALLOW_STALE_DIST === '1';
+      if (!runnerStartAllowed(freshness, override)) {
+        process.exitCode = 1;
+        return;
+      }
+      console.error('[runner] stale-dist override active — starting anyway. This is UNSAFE.');
+    }
+
     try {
-      const { defaultRunnerDeps, runRunnerLoop } = await import('./atlas/atlas-runner.js');
+      const { defaultRunnerDeps, runRunnerLoop, recordRunnerStartState } = await import('./atlas/atlas-runner.js');
+
+      // Declare our own state into the lease so `runner status` reports the
+      // RUNNER's enforcement, not the reader's env.
+      const record = recordRunnerStartState(ownedInstanceLeaseId, {}, freshness);
+      console.log(`[runner] authEnforcement=${record.authEnforcement} build=${freshness.status}`);
+      if (!record.recorded) {
+        console.error('[runner] REFUSING TO START — this process does not own the instance lease.');
+        process.exitCode = 1;
+        return;
+      }
+
       const deps = defaultRunnerDeps();
+      console.log(`[runner] Starting local runner (interval ${intervalSec}s). Ctrl+C to stop.`);
       console.log(`[runner] workerId=${deps.workerId}`);
       await runRunnerLoop(deps, {
         tickIntervalMs: intervalSec * 1000,
@@ -1526,12 +1562,15 @@ program
   });
 
 if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith('cli.js')) {
-  const instanceLease = acquireInstanceLease();
-  if (instanceLease.mode === 'readonly') {
-    console.error(`[atlas] READ-ONLY MODE: ${instanceLease.reason ?? 'another instance holds the lease'}`);
-    process.env.ATLAS_READONLY = '1';
-  } else {
-    startInstanceLeaseHeartbeat(instanceLease.instanceId);
+  if (shouldAcquireInstanceLease(process.argv.slice(2))) {
+    const instanceLease = acquireInstanceLease();
+    if (instanceLease.mode === 'readonly') {
+      console.error(`[atlas] READ-ONLY MODE: ${instanceLease.reason ?? 'another instance holds the lease'}`);
+      process.env.ATLAS_READONLY = '1';
+    } else {
+      ownedInstanceLeaseId = instanceLease.instanceId;
+      startInstanceLeaseHeartbeat(instanceLease.instanceId);
+    }
   }
   const exit = process.exit.bind(process);
   process.exit = ((code?: number) => {

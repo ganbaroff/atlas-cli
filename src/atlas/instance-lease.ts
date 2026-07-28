@@ -12,11 +12,40 @@ import { homedir } from 'node:os';
 
 export type InstanceLeaseMode = 'writer' | 'readonly';
 
+/**
+ * Self-declared state of the process holding the lease.
+ *
+ * Written by the lease OWNER at startup, read by anyone. This exists so
+ * diagnostics describe the RUNNING process instead of the process doing
+ * the asking (defect found live 2026-07-28: `runner status` computed
+ * authEnforcement from its own env, so a probe that never loaded .env
+ * reported "off" while enforcement was actually on).
+ *
+ * Anything here is a claim about the owner, valid only while the owner
+ * holds the lease — acquireInstanceLease() drops it on takeover.
+ */
+export interface RunnerAnnotation {
+  /** Explicit runner identity. Optional only for legacy lease-file compatibility. */
+  kind?: 'runner';
+  /** Queue authenticity enforcement, as resolved by the RUNNING process. */
+  authEnforcement?: 'on' | 'off';
+  /** Built entry the owner is executing (absolute path). */
+  entryPath?: string;
+  /** mtime of that built entry — which build is actually live. */
+  buildMtimeMs?: number;
+  /** Build freshness verdict at the moment the owner started. */
+  buildFreshness?: 'fresh' | 'stale' | 'unknown';
+  /** When the owner recorded this. */
+  recordedAt?: string;
+}
+
 export interface InstanceLease {
   instanceId: string;
   pid: number;
   startedAt: string;
   heartbeatAt: string;
+  /** Present only once the owner has declared its own state. */
+  runner?: RunnerAnnotation;
 }
 
 export interface InstanceLeaseResult {
@@ -26,6 +55,11 @@ export interface InstanceLeaseResult {
 }
 
 const DEFAULT_LEASE_TTL_MS = 60_000;
+
+/** Status observes an existing lease; all other CLI commands need writer protection. */
+export function shouldAcquireInstanceLease(argv: readonly string[]): boolean {
+  return !(argv[0] === 'runner' && argv[1] === 'status');
+}
 
 function leasePath(): string {
   const dir = process.env.ATLAS_INSTANCE_LEASE_DIR ?? join(homedir(), '.atlas');
@@ -105,6 +139,34 @@ export function heartbeatInstanceLease(instanceId: string): boolean {
     return false;
   }
   existing.heartbeatAt = new Date().toISOString();
+  writeAtomic(leasePath(), JSON.stringify(existing, null, 2));
+  return true;
+}
+
+/**
+ * Record the calling process's own state into the lease it owns.
+ *
+ * Ownership is proven by acquisition-specific instanceId and pid. A
+ * read-only second instance therefore cannot overwrite the real writer's
+ * declaration — it just gets `false`.
+ *
+ * Merges into any existing annotation. Returns false when not the owner.
+ */
+export function annotateInstanceLease(
+  instanceId: string,
+  patch: RunnerAnnotation,
+): boolean {
+  const existing = readLease();
+  if (
+    !existing
+    || existing.instanceId !== instanceId
+    || existing.pid !== process.pid
+  ) return false;
+  existing.runner = {
+    ...existing.runner,
+    ...patch,
+    recordedAt: patch.recordedAt ?? new Date().toISOString(),
+  };
   writeAtomic(leasePath(), JSON.stringify(existing, null, 2));
   return true;
 }

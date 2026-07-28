@@ -53,7 +53,7 @@ Expected: resolves ~400 packages, no `npm ERR!` lines. [UNTESTED on a fresh mach
 npm run build
 ```
 
-Expected: tsup bundles `dist/cli.js` and `dist/learning-api.js`, then `copy-manifests.mjs` runs. No TypeScript errors. [tested — build is green on this branch]
+Expected: tsup bundles `dist/cli.js` and `dist/learning-api.js`, then `copy-manifests.mjs` runs. No TypeScript errors. [UNVERIFIED in current recovery]
 
 ```bash
 # 4. Type-check (zero-tolerance — must be clean before any commit)
@@ -67,7 +67,8 @@ Expected: silent exit 0. [tested — clean on this branch]
 npx vitest run 2>&1 | tee /tmp/vitest-run.txt
 ```
 
-Expected: **995 passed, 0 failed, 2 skipped**. [tested — baseline on `feat/p1-recoverability` as of commit ab2981c]
+No current full-suite receipt. Run before release; current recovery evidence
+covers only the focused runner suite: 4 files, 75/75 passed.
 
 The 2 skipped tests are live-provider guards (`it.skipIf(!process.env['NVIDIA_API_KEY'])`); they skip when the key is absent and are not regressions.
 
@@ -352,21 +353,72 @@ Expected when running:
   "startedAt": "2026-07-28T10:00:00.000Z",
   "heartbeatAt": "2026-07-28T10:05:00.000Z",
   "heartbeatAgeMs": 1200,
-  "authEnforcement": "on"
+  "authEnforcement": "on",
+  "build": {
+    "entryPath": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\dist\\cli.js",
+    "builtAt": "2026-07-28T09:15:00.000Z",
+    "freshnessAtStart": "fresh"
+  }
 }
 ```
 
-`status: "running"` proves the process is alive and holding the instance lease. [tested — matches source `src/atlas/atlas-runner.ts:317-329`]
+`status: "running"` proves a live lease carries the runner marker.
+`status: "occupied"` is a non-success result: a fresh live Atlas lease exists
+without that runner marker.
+
+Only a marked runner declares `authEnforcement` and `build` into the instance
+lease at startup; readers merely return those declarations. They describe the
+running process, not the shell you typed this in. A reader with no `.env`
+loaded still gets the runner's real state. A pre-fix or non-runner lease reports
+`occupied` and does not emit auth or build fields.
 
 ### Autostart via Windows Task Scheduler
 
-Register a task that starts the runner at login (requires admin elevation):
+Desired state: register a task that starts the runner at login (requires admin
+elevation). Point it at the wrapper, **not** at `dist\cli.js` directly — the
+wrapper rebuilds `dist/` before launching:
 
 ```powershell
-schtasks /Create /TN "AtlasRunner" /TR "node C:\Users\user\OneDrive\Documents\GitHub\ANUS\dist\cli.js runner start" /SC ONLOGON /F
+schtasks /Create /TN "AtlasRunner" /TR 'cmd /c "C:\Users\user\OneDrive\Documents\GitHub\ANUS\scripts\start-runner.cmd" --interval 20' /SC ONLOGON /F
 ```
 
+Existing installations that still invoke `dist\cli.js` directly are not
+migrated by this source change. Update the scheduled action only during the
+authorized runtime cutover, then verify wrapper log plus `runner status`.
+
+The wrapper appends everything (build output, runner log, exit code) to
+`%USERPROFILE%\.atlas\runner-autostart.log` — read that first when the
+runner is unexpectedly down.
+
 [UNTESTED — requires admin elevation; was not dry-run. Same limitation applies to the backup task documented in `docs/runbooks/backup.md`.]
+
+### Stale-build refusal
+
+`runner start` compares the mtime of the `dist/cli.js` it is executing
+against the newest non-test file under `src/`. If a source is newer, it
+prints a `REFUSING TO START` block naming the offending file and exits `1`
+**without claiming any work**.
+
+This exists because on 2026-07-28 the autostarted runner was found executing
+a build that predated `src/atlas/queue-auth.ts` entirely — the P0.1 signing
+gate was inert and nothing said so. A stale build is invisible at runtime;
+the only defence is a startup check.
+
+```bash
+# The fix is always the same:
+npm run build
+```
+
+Escape hatch (logs a loud warning and starts anyway — do not leave this on):
+
+```bash
+node dist/cli.js runner start --allow-stale-dist
+```
+
+`ATLAS_ALLOW_STALE_DIST=1` does the same thing for the scheduled task.
+The check reports `unknown` and stays out of the way when it cannot be
+trusted: under `tsx` (source *is* the build) or in a deploy that ships no
+`src/`.
 
 To verify after registration:
 
@@ -413,9 +465,9 @@ Builds a scratch DB, exports fixtures, tears down, rebuilds, imports, verifies. 
 Run these in order. All are read-only. Expect the outputs shown.
 
 ```bash
-# 1. Suite green (baseline 995/0/2)
+# 1. Full suite (not part of current recovery evidence)
 npx vitest run 2>&1 | tail -5
-# Expected: "995 passed | 2 skipped"  [tested]
+# Expected: obtain and retain a fresh release receipt
 
 # 2. TypeScript clean
 npx tsc --noEmit && echo "tsc: clean"
