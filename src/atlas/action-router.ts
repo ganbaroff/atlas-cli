@@ -17,7 +17,7 @@
  */
 
 import type { TypedEffect, EffectKind } from '../goal-runner/types.js';
-import { classifyEffect, hasRedLine, redLineReason } from '../goal-runner/red-line.js';
+import { classifyEffect, classifyCommandText, hasRedLine, redLineReason } from '../goal-runner/red-line.js';
 import { intakeCommand } from '../swarm-exec/commands.js';
 import { commitCommand } from '../swarm-exec/commands.js';
 import { queueRemoteCommand } from './supabase-memory.js';
@@ -130,20 +130,49 @@ const TEXT_RED_LINE_KEYWORDS: ReadonlyArray<{ pattern: string; effect: EffectKin
   { pattern: 'force push', effect: 'remote-vcs-mutation' },
 ];
 
+// ── Cyrillic root coverage (C-wire) ────────────────────────────────────
+//
+// Maps classifyCommandText() category names to the EffectKind that
+// classifyEffect() already treats as red-line. Explicit table — no
+// cleverness, no blind trust of upstream return values.
+
+const CATEGORY_TO_EFFECT: Readonly<Record<string, EffectKind>> = {
+  'credentials':   'credentials',      // credential exposure
+  'payment':       'payment',          // money/payment operations
+  'prod-database': 'prod-data-write',  // prod DB writes (matches deploy/prod gate today)
+  'merge':         'merge-to-main',    // merge/push to protected branch
+  'deletion':      'deletion',         // destructive deletion
+};
+
 /**
  * Derive typed effects from freeform text by keyword scan. Returns only
  * the effects that matched — an empty array means no red-line keywords
  * were found.
+ *
+ * Two layers (union, strictly additive):
+ *   1. TEXT_RED_LINE_KEYWORDS — original exact-substring patterns
+ *   2. classifyCommandText() — Cyrillic root coverage (P0.2 Wave C)
  */
 export function deriveEffectsFromText(text: string): TypedEffect[] {
   const lower = text.toLowerCase();
   const seen = new Set<EffectKind>();
   const effects: TypedEffect[] = [];
 
+  // Layer 1: original exact-substring patterns
   for (const { pattern, effect } of TEXT_RED_LINE_KEYWORDS) {
     if (lower.includes(pattern) && !seen.has(effect)) {
       seen.add(effect);
       effects.push({ kind: effect, class: classifyEffect(effect) });
+    }
+  }
+
+  // Layer 2: Cyrillic root coverage via classifyCommandText (C-wire)
+  const cmdResult = classifyCommandText(text);
+  if (cmdResult.blocked && cmdResult.category) {
+    const mappedEffect = CATEGORY_TO_EFFECT[cmdResult.category];
+    if (mappedEffect && !seen.has(mappedEffect)) {
+      seen.add(mappedEffect);
+      effects.push({ kind: mappedEffect, class: classifyEffect(mappedEffect) });
     }
   }
 

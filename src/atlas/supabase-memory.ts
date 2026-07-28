@@ -5,6 +5,8 @@
  * Falls back to file-based store if SUPABASE_URL not set (local dev).
  */
 
+import { signPayload, getSigningKey } from './queue-auth.js';
+
 function supabaseUrl(): string {
   return process.env['SUPABASE_URL'] ?? '';
 }
@@ -109,6 +111,7 @@ export async function loadMessages(chatId: number, limit = 20): Promise<Array<{
 
 export async function queueRemoteCommand(chatId: number, command: string): Promise<string> {
   const key = `tg-${chatId}-${Date.now().toString(36)}`;
+  const signed = signPayload({ command, chat_id: chatId }, getSigningKey());
   const [row] = await supaFetch('atlas_command_queue', {
     method: 'POST',
     body: JSON.stringify({
@@ -116,6 +119,7 @@ export async function queueRemoteCommand(chatId: number, command: string): Promi
       source: 'telegram',
       chat_id: chatId,
       command,
+      ...(signed ? { payload: signed } : {}),
     }),
     headers: { 'Prefer': 'return=representation' },
   });

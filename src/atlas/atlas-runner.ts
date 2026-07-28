@@ -16,8 +16,10 @@
  */
 
 import { hostname } from 'node:os';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
 import type { TypedEffect } from '../goal-runner/types.js';
-import { classifyEffect, hasRedLine, redLineReason } from '../goal-runner/red-line.js';
+import { classifyEffect, hasRedLine, redLineReason, checkRedLineWithClassifier } from '../goal-runner/red-line.js';
 import { deriveEffectsFromText } from './action-router.js';
 import { claimNextCommand, completeCommand, failCommand } from './supabase-memory.js';
 import { runTask } from './task-spawner.js';
@@ -28,6 +30,13 @@ import {
   DEFAULT_LEASE_TTL_MS,
   type InstanceLease,
 } from './instance-lease.js';
+import {
+  verifyPayload,
+  createNonceLedger,
+  getSigningKey,
+  type NonceLedger,
+  type VerifyResult,
+} from './queue-auth.js';
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -38,6 +47,10 @@ export interface RunnerDeps {
   runLocal: (objective: string) => Promise<{ output: string; exitCode: number | null }>;
   isPaused: () => boolean;
   workerId: string;
+  /** Returns the signing key or undefined (enforcement off). Injectable for tests. */
+  getSigningKey?: () => string | undefined;
+  /** Nonce ledger for replay protection. Injectable for tests. */
+  nonceLedger?: NonceLedger;
 }
 
 export type RunnerTickResult =
@@ -60,7 +73,16 @@ function resolveWorkerId(): string {
   return `${hostname()}-${process.pid}`;
 }
 
+// ── Once-per-boot warning tracking ────────────────────────────────────
+let _noKeyWarningEmitted = false;
+
+/** Reset for tests — not exported to production consumers. */
+export function _resetNoKeyWarning(): void {
+  _noKeyWarningEmitted = false;
+}
+
 export function defaultRunnerDeps(): RunnerDeps {
+  const stateDir = process.env['ATLAS_STATE_DIR'] ?? join(homedir(), '.atlas');
   return {
     claim: claimNextCommand,
     complete: completeCommand,
@@ -71,6 +93,8 @@ export function defaultRunnerDeps(): RunnerDeps {
     },
     isPaused: () => effectivelyPaused(),
     workerId: resolveWorkerId(),
+    getSigningKey,
+    nonceLedger: createNonceLedger(stateDir),
   };
 }
 
@@ -81,12 +105,14 @@ export function defaultRunnerDeps(): RunnerDeps {
 // effect is refused. Unknown text with no keyword hits is treated as safe
 // at this level — the Hand-level gate catches deeper risks later.
 
-function checkRedLine(commandText: string): { blocked: boolean; reason: string } {
+async function checkRedLine(commandText: string): Promise<{ blocked: boolean; reason: string }> {
+  // Layer 1: effect-based red-line check (deterministic, via action-router keywords)
   const effects: TypedEffect[] = deriveEffectsFromText(commandText);
   if (hasRedLine(effects)) {
     return { blocked: true, reason: redLineReason(effects) };
   }
-  return { blocked: false, reason: '' };
+  // Layer 2: additive classifier vote (keyword floor + optional LLM, via red-line.ts)
+  return checkRedLineWithClassifier(commandText);
 }
 
 // ── Single tick ────────────────────────────────────────────────────────
@@ -128,6 +154,30 @@ export async function runnerTick(deps: RunnerDeps): Promise<RunnerTickResult> {
     return { status: 'failed', commandId, error: reason };
   }
 
+  // Gate 2.7: work-order authenticity (P0.1 Wave D).
+  // When the signing key is configured, verify sig/ts/nonce/replay.
+  // When the key is NOT configured, accept with a once-per-boot warning.
+  const signingKey = deps.getSigningKey ? deps.getSigningKey() : undefined;
+  if (signingKey && deps.nonceLedger) {
+    const authResult = verifyPayload(
+      { command: commandText, chat_id: claimed.chat_id, payload: claimed.payload },
+      signingKey,
+      deps.nonceLedger,
+    );
+    if (!authResult.ok) {
+      const reason = `auth-failed: ${authResult.reason}`;
+      try {
+        await deps.fail(commandId, reason);
+      } catch { /* best-effort */ }
+      return { status: 'refused', commandId, reason };
+    }
+  } else if (!signingKey) {
+    if (!_noKeyWarningEmitted) {
+      console.warn('[atlas-runner] ATLAS_QUEUE_SIGNING_KEY not set — queue authenticity enforcement OFF. Set the key on both producer and runner to enable.');
+      _noKeyWarningEmitted = true;
+    }
+  }
+
   // Gate 3: red-line check BEFORE execution. Wrapped defensively — this
   // gate must never crash the process (found live 2026-07-27: an
   // unguarded downstream .toLowerCase() on bad input took down the
@@ -136,7 +186,7 @@ export async function runnerTick(deps: RunnerDeps): Promise<RunnerTickResult> {
   // "no red line" — a broken classifier must not silently permit execution.
   let redLine: { blocked: boolean; reason: string };
   try {
-    redLine = checkRedLine(commandText);
+    redLine = await checkRedLine(commandText);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const reason = `red-line check failed (treated as blocked): ${msg}`;
@@ -247,6 +297,8 @@ export interface RunnerLivenessReport {
   startedAt?: string;
   heartbeatAt?: string;
   heartbeatAgeMs?: number;
+  /** Whether queue authenticity enforcement is active (signing key set). */
+  authEnforcement?: 'on' | 'off';
 }
 
 /** Pure — testable without touching the real lease file. */
@@ -272,5 +324,7 @@ export function describeRunnerLiveness(
 
 /** Production wiring — reads the real lease file, checks the real process table. */
 export function runnerLivenessNow(): RunnerLivenessReport {
-  return describeRunnerLiveness(getInstanceLeaseInfo(), Date.now(), isInstanceProcessAlive);
+  const report = describeRunnerLiveness(getInstanceLeaseInfo(), Date.now(), isInstanceProcessAlive);
+  report.authEnforcement = getSigningKey() ? 'on' : 'off';
+  return report;
 }

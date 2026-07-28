@@ -2,7 +2,7 @@ import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { writeFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { isSensitivePath, auditFsOp } from './fs-guard.js';
+import { isSensitivePath, auditFsOp, checkWorkspaceConfinement } from './fs-guard.js';
 
 const destructiveAllowed = (): boolean => process.env.ATLAS_SHELL_ALLOW_DESTRUCTIVE === '1';
 
@@ -30,6 +30,16 @@ export const writeFileTool = createTool({
         written: false,
         path,
         error: '[atlas-fs] REFUSED: sensitive path blocked by default. Set ATLAS_SHELL_ALLOW_DESTRUCTIVE=1 to permit.',
+      };
+    }
+
+    const confinement = checkWorkspaceConfinement(path);
+    if (!confinement.allowed) {
+      await auditFsOp({ agent, op: 'write', path, sensitive, decision: 'refused', rule: 'workspace-confinement' });
+      return {
+        written: false,
+        path,
+        error: confinement.reason!,
       };
     }
 

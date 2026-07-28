@@ -4,14 +4,20 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { routeWorkerProvider, routeJudgeProvider, ProviderRoutingError } from '../../research-swarm/provider-routing.js';
 import { clearProviderHealthForTests, markProviderDead } from '../../atlas/provider-health.js';
+import { resetDailySpend } from '../../atlas/spend-tracker.js';
 
 describe('research-swarm provider-routing', () => {
   let healthDir: string;
 
+  let receiptDir: string;
+
   beforeEach(() => {
     healthDir = mkdtempSync(join(tmpdir(), 'atlas-swarm-route-'));
+    receiptDir = mkdtempSync(join(tmpdir(), 'atlas-spend-route-'));
     process.env.ATLAS_PROVIDER_HEALTH_DIR = healthDir;
+    process.env.ATLAS_SPEND_RECEIPT_DIR = receiptDir;
     clearProviderHealthForTests();
+    resetDailySpend();
     vi.unstubAllEnvs();
     vi.stubEnv('NVIDIA_API_KEY', 'test-nvidia');
     vi.stubEnv('GROQ_API_KEY', 'test-groq');
@@ -21,7 +27,9 @@ describe('research-swarm provider-routing', () => {
 
   afterEach(() => {
     delete process.env.ATLAS_PROVIDER_HEALTH_DIR;
+    delete process.env.ATLAS_SPEND_RECEIPT_DIR;
     rmSync(healthDir, { recursive: true, force: true });
+    rmSync(receiptDir, { recursive: true, force: true });
   });
 
   it('routes worker to preferred provider without mutating ATLAS_PREFERRED_PROVIDER', () => {
