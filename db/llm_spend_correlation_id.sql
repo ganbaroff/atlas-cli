@@ -1,3 +1,4 @@
+-- DEPRECATED: superseded by db/migrations/006_llm_spend.sql — use the numbered migration.
 -- Optional M6 additive column for llm_spend (CEO gate — do NOT apply without approval).
 -- Base table: db/llm_spend.sql
 -- Safe to apply after base table exists:

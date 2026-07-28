@@ -1,3 +1,4 @@
+-- DEPRECATED: superseded by db/migrations/006_llm_spend.sql — use the numbered migration.
 -- Atlas FinOps: per-call LLM spend telemetry.
 -- Written by src/atlas/spend-tracker.ts via PostgREST (service role only).
 --
