@@ -51,6 +51,10 @@ node scripts/m9-live-cross-repo.mts
 - [`ATLAS-OPERATING-CANON.md`](ATLAS-OPERATING-CANON.md) — portable behavior gates.
 - [`ATLAS-MASTER-PLAN.md`](ATLAS-MASTER-PLAN.md) — the one forward plan (capability charter, gap
   table vs industry practice, phases P0–P5). No second plan doc.
+- **Recoverability** — bare machine to running Atlas: [`docs/runbooks/bootstrap.md`](../runbooks/bootstrap.md) (P1.4) ·
+  backup + scheduling: [`docs/runbooks/backup.md`](../runbooks/backup.md) (P1.2) ·
+  restore drill + receipts: [`scripts/restore-drill.mts`](../../scripts/restore-drill.mts) + [`docs/atlas-cto/RESTORE-DRILL-RECEIPT-2026-07-28.md`](RESTORE-DRILL-RECEIPT-2026-07-28.md) (P1.3) ·
+  migration order: [`db/migrations/MANIFEST.md`](../../db/migrations/MANIFEST.md) (P1.1).
 
 ## HOW TO RESUME
 1. Read this file
