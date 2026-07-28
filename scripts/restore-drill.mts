@@ -12,8 +12,9 @@
  */
 
 import { execSync } from 'node:child_process';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 const CONTAINER = 'p1-restore-drill';
 const PORT = process.env['ATLAS_DRILL_PORT'] ?? '55433';
@@ -302,20 +303,163 @@ function teardown(): void {
   log('PASS', 'Container removed');
 }
 
-// ── Main ────────────────────────────────────────────────────────────────
+// ── Backup-restore proof ───────────────────────────────────────────────
 
-function main(): void {
-  console.log('=== P1.3 RESTORE DRILL ===');
+const BACKUP_RESTORE = process.argv.includes('--backup-restore');
+const BACKUP_EXPORT_DIR = (() => {
+  const idx = process.argv.indexOf('--export-dir');
+  return idx >= 0 ? process.argv[idx + 1] : undefined;
+})();
+
+const MANIFEST_TABLES = [
+  'atlas_learnings', 'learning_decisions', 'learning_outcomes',
+  'bot_sessions', 'bot_messages', 'bot_heartbeats',
+  'atlas_command_queue', 'llm_spend',
+];
+
+/**
+ * Export all tables from the current scratch DB as CSV (simulates backup DB export).
+ * If --export-dir is given, uses that dir; otherwise creates a temp dir.
+ */
+function exportFixtures(): string {
+  const exportDir = BACKUP_EXPORT_DIR ?? join(tmpdir(), `atlas-drill-fixtures-${Date.now()}`);
+  mkdirSync(exportDir, { recursive: true });
+  log('INFO', `Exporting fixture CSVs to ${exportDir}`);
+
+  for (const table of MANIFEST_TABLES) {
+    try {
+      const csv = execSync(
+        `docker exec -i ${CONTAINER} psql -U ${DB_USER} -d ${DB_NAME} -c "\\COPY ${table} TO STDOUT WITH (FORMAT csv, HEADER)"`,
+        { encoding: 'utf-8', timeout: 30_000 },
+      );
+      const outPath = join(exportDir, `${table}.csv`);
+      writeFileSync(outPath, csv, 'utf-8');
+      log('PASS', `Exported ${table} (${csv.split('\n').length - 1} rows incl header)`);
+    } catch (e: any) {
+      log('FAIL', `Export ${table} failed: ${e.message?.slice(0, 200)}`);
+    }
+  }
+
+  return exportDir;
+}
+
+/**
+ * Import CSV fixtures into the current scratch DB (simulates restore from backup).
+ */
+function importFixtures(exportDir: string): void {
+  log('INFO', `Importing fixture CSVs from ${exportDir}`);
+
+  for (const table of MANIFEST_TABLES) {
+    const csvPath = join(exportDir, `${table}.csv`);
+    if (!existsSync(csvPath)) {
+      log('SKIP', `No CSV for ${table}`);
+      continue;
+    }
+
+    const csvContent = readFileSync(csvPath, 'utf-8');
+    // Skip if only header (empty table)
+    if (csvContent.trim().split('\n').length <= 1) {
+      log('PASS', `${table}: empty table, nothing to import`);
+      continue;
+    }
+
+    try {
+      // Pipe CSV via stdin to COPY FROM
+      execSync(
+        `docker exec -i ${CONTAINER} psql -U ${DB_USER} -d ${DB_NAME} -c "\\COPY ${table} FROM STDIN WITH (FORMAT csv, HEADER)"`,
+        { encoding: 'utf-8', input: csvContent, timeout: 30_000 },
+      );
+      log('PASS', `Imported ${table}`);
+    } catch (e: any) {
+      log('FAIL', `Import ${table} failed: ${e.message?.slice(0, 200)}`);
+    }
+  }
+}
+
+/**
+ * Backup-restore proof path:
+ * 1. Stand up container A, apply migrations, insert fixture data, export CSVs
+ * 2. Tear down A
+ * 3. Stand up container B, apply migrations, import CSVs, run assertions + smoke
+ * 4. Tear down B
+ */
+function backupRestoreProof(): void {
+  console.log('=== P1.2 BACKUP-RESTORE PROOF ===');
   console.log(`Container: ${CONTAINER} | Port: ${PORT} | DB: ${DB_NAME}`);
   console.log('');
 
+  let exportDir: string;
+
+  // Phase 1: build source DB with fixture data, then export
+  log('INFO', '── Phase 1: source DB + fixture data + export ──');
   try {
     setupContainer();
     applyMigrations();
-    assertSchema();
-    smokeTests();
+    smokeTests(); // inserts + cleans up, but we need data for export...
+    // Insert durable fixture rows for export
+    psql(`INSERT INTO atlas_learnings (category, content, emotional_intensity, decay_multiplier, source_message) VALUES ('backup_test', 'backup fixture content', 2.5, 5.0, 'backup source')`);
+    psql(`INSERT INTO llm_spend (provider, model, tokens_in, tokens_out, est_cost_usd, caller, correlation_id) VALUES ('test-provider', 'test-model', 100, 50, 0.0001, 'backup-drill', 'backup-corr-1')`);
+    psql(`INSERT INTO atlas_command_queue (idempotency_key, source, chat_id, command, payload) VALUES ('backup-key-1', 'telegram', 99999, '/backup test', '{"backup":true}'::jsonb)`);
+    log('PASS', 'Fixture rows inserted into source DB');
+    exportDir = exportFixtures();
   } finally {
     teardown();
+  }
+
+  // Phase 2: fresh DB, apply migrations, import CSVs, verify
+  log('INFO', '── Phase 2: fresh DB + import + verify ──');
+  try {
+    setupContainer();
+    applyMigrations();
+    importFixtures(exportDir);
+
+    // Verify imported data
+    const learningRow = psql(`SELECT content FROM atlas_learnings WHERE category='backup_test'`);
+    if (learningRow.includes('backup fixture content')) {
+      log('PASS', 'Restored atlas_learnings fixture verified');
+    } else {
+      log('FAIL', `atlas_learnings fixture not found: ${learningRow}`);
+    }
+
+    const spendRow = psql(`SELECT provider FROM llm_spend WHERE correlation_id='backup-corr-1'`);
+    if (spendRow.includes('test-provider')) {
+      log('PASS', 'Restored llm_spend fixture verified');
+    } else {
+      log('FAIL', `llm_spend fixture not found: ${spendRow}`);
+    }
+
+    const queueRow = psql(`SELECT command FROM atlas_command_queue WHERE idempotency_key='backup-key-1'`);
+    if (queueRow.includes('/backup test')) {
+      log('PASS', 'Restored atlas_command_queue fixture verified');
+    } else {
+      log('FAIL', `atlas_command_queue fixture not found: ${queueRow}`);
+    }
+
+    // Run full schema assertions on restored DB
+    assertSchema();
+  } finally {
+    teardown();
+  }
+}
+
+// ── Main ────────────────────────────────────────────────────────────────
+
+function main(): void {
+  if (BACKUP_RESTORE) {
+    backupRestoreProof();
+  } else {
+    console.log('=== P1.3 RESTORE DRILL ===');
+    console.log(`Container: ${CONTAINER} | Port: ${PORT} | DB: ${DB_NAME}`);
+    console.log('');
+
+    try {
+      setupContainer();
+      applyMigrations();
+      assertSchema();
+      smokeTests();
+    } finally {
+      teardown();
+    }
   }
 
   console.log('');
