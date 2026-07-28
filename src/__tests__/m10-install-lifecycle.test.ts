@@ -1,13 +1,21 @@
 /**
  * M10 — install / upgrade / rollback lifecycle proofs (child-process E2E).
  *
+ * SANDBOX BUILD: each test builds cli.ts into a per-test temp dir INSIDE the
+ * project root (ROOT/.m10-<random>/dist), never into ROOT/dist/. This keeps
+ * node_modules resolution working (Node walks up to ROOT/node_modules) while
+ * preventing the race: `npm run build` passes --clean which DELETES ROOT/dist/
+ * before rewriting it — running that in parallel with e2e-binary.test.ts (which
+ * spawns `node dist/cli.js` from a beforeAll build) caused intermittent
+ * "Cannot find module …dist/cli.js" failures. Sandbox isolation ends the race.
+ *
  * Simulates reproducible install → upgrade → rollback without touching live deploy.
  * State dirs (exec-graph + goal-budgets) must survive dist swap.
  */
 
 import { spawn, execSync } from 'node:child_process';
 import {
-  cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync,
+  cpSync, existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync,
 } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -15,7 +23,6 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 const ROOT = resolve(fileURLToPath(new URL('../..', import.meta.url)));
-const DIST = join(ROOT, 'dist', 'cli.js');
 const BUDGET_MODULE = pathToFileURL(join(ROOT, 'src/goal-runner/budgets.ts')).href;
 
 function runNode(code: string, env: Record<string, string>): Promise<{ code: number | null; out: string }> {
@@ -37,6 +44,10 @@ describe('M10 install/upgrade/rollback lifecycle', () => {
   let budgetDir: string;
   let graphDir: string;
   let distBackup: string;
+  // sandboxParent lives inside ROOT so node_modules resolution walks up to ROOT/node_modules.
+  // It is NOT ROOT/dist — the race was specifically about that directory being --clean'd.
+  let sandboxParent: string;
+  let sandboxDist: string;
 
   beforeEach(() => {
     stateRoot = mkdtempSync(join(tmpdir(), 'atlas-m10-'));
@@ -46,22 +57,30 @@ describe('M10 install/upgrade/rollback lifecycle', () => {
     mkdirSync(graphDir, { recursive: true });
     distBackup = join(stateRoot, 'dist-backup');
     mkdirSync(distBackup, { recursive: true });
-    if (existsSync(DIST)) {
-      cpSync(DIST, join(distBackup, 'cli.js'));
-    }
+    // Temp build dir inside project root — node_modules resolution intact, but
+    // path is NOT ROOT/dist so it never conflicts with e2e-binary's beforeAll build.
+    sandboxParent = mkdtempSync(join(ROOT, '.m10-'));
+    sandboxDist = join(sandboxParent, 'dist');
+    mkdirSync(sandboxDist, { recursive: true });
   });
 
   afterEach(() => {
     rmSync(stateRoot, { recursive: true, force: true });
+    rmSync(sandboxParent, { recursive: true, force: true });
   });
 
   it('install: build + health green from isolated state dirs', async () => {
-    execSync('npm run build', { cwd: ROOT, stdio: 'pipe', timeout: 60_000 });
-    expect(existsSync(DIST)).toBe(true);
+    const sandboxCli = join(sandboxDist, 'cli.js');
+    execSync(`npx tsup src/cli.ts --format esm --out-dir "${sandboxDist}"`, {
+      cwd: ROOT,
+      stdio: 'pipe',
+      timeout: 60_000,
+    });
+    expect(existsSync(sandboxCli)).toBe(true);
 
     let health = '';
     try {
-      health = execSync(`node "${DIST}" health`, {
+      health = execSync(`node "${sandboxCli}" health`, {
         cwd: ROOT,
         encoding: 'utf8',
         env: {
@@ -97,7 +116,11 @@ describe('M10 install/upgrade/rollback lifecycle', () => {
     );
     writeFileSync(join(graphDir, 'ledger.jsonl'), '{"event":"goal-created","goalId":"' + goalId + '"}\n', 'utf8');
 
-    execSync('npm run build', { cwd: ROOT, stdio: 'pipe', timeout: 60_000 });
+    execSync(`npx tsup src/cli.ts --format esm --out-dir "${sandboxDist}"`, {
+      cwd: ROOT,
+      stdio: 'pipe',
+      timeout: 60_000,
+    });
 
     const code = `
       import { loadBudget } from ${JSON.stringify(BUDGET_MODULE)};
@@ -120,6 +143,9 @@ describe('M10 install/upgrade/rollback lifecycle', () => {
 
   it('rollback: restore prior dist; state + health still valid', async () => {
     const goalId = 'gol_m10_rollback';
+    const sandboxCli = join(sandboxDist, 'cli.js');
+    const backupCli = join(distBackup, 'cli.js');
+
     writeFileSync(
       join(budgetDir, `${goalId}.json`),
       JSON.stringify({
@@ -135,15 +161,28 @@ describe('M10 install/upgrade/rollback lifecycle', () => {
       'utf8',
     );
 
-    const backupCli = join(distBackup, 'cli.js');
-    expect(existsSync(backupCli)).toBe(true);
+    // Build v1 into sandbox, save a copy to simulate the "prior version"
+    execSync(`npx tsup src/cli.ts --format esm --out-dir "${sandboxDist}"`, {
+      cwd: ROOT,
+      stdio: 'pipe',
+      timeout: 60_000,
+    });
+    expect(existsSync(sandboxCli)).toBe(true);
+    cpSync(sandboxCli, backupCli);
 
-    execSync('npm run build', { cwd: ROOT, stdio: 'pipe', timeout: 60_000 });
-    cpSync(backupCli, DIST);
+    // Simulate upgrade: rebuild into the same sandbox dir (overwrites v1)
+    execSync(`npx tsup src/cli.ts --format esm --out-dir "${sandboxDist}"`, {
+      cwd: ROOT,
+      stdio: 'pipe',
+      timeout: 60_000,
+    });
+
+    // Rollback: restore v1 over the sandbox cli.js
+    cpSync(backupCli, sandboxCli);
 
     let health = '';
     try {
-      health = execSync(`node "${DIST}" health`, {
+      health = execSync(`node "${sandboxCli}" health`, {
         cwd: ROOT,
         encoding: 'utf8',
         env: {
