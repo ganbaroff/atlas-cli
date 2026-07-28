@@ -68,3 +68,6 @@ operator/state/operator-state.json
 # Private capability notes + smoke-test scratch logs (never commit)
 memory/atlas/CAPABILITIES-PRIVATE.md
 smoke-log*.txt
+
+# m10 lifecycle test sandbox (crash-leftover guard)
+.m10-*/
