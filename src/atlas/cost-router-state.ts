@@ -28,6 +28,20 @@ const TASK_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const DEFAULT_LOCK_WAIT_MS = 10_000;
 const STALE_LOCK_MS = 30_000;
 
+/**
+ * Closed set of objective triggers that may justify a T3 premium-reasoning
+ * escalation (M2A). Owned here because it is part of the durable premium
+ * owner record; the model-free route classifier imports it from this module
+ * rather than redefining it.
+ */
+export const T3_TRIGGERS = [
+  'architecture',
+  'conflict-resolution',
+  'critical-implementation',
+  'independent-verification',
+] as const;
+export type T3Trigger = (typeof T3_TRIGGERS)[number];
+
 const timestampSchema = z.string().datetime();
 const nonNegativeIntegerSchema = z.number().int().nonnegative();
 const boundedAttemptSchema = z.number().int().min(0).max(1);
@@ -38,6 +52,9 @@ export const premiumOwnerSchema = z.object({
   seat: z.enum(['fable', 'opus', 'codex-sol']),
   acquiredAt: timestampSchema,
   expiresAt: timestampSchema,
+  /** Objective T3 trigger accepted for this escalation (M2A). Optional so
+   *  pre-M2A callers/fixtures that never claimed a trigger keep validating. */
+  trigger: z.enum(T3_TRIGGERS).optional(),
 }).strict();
 
 export const asyncResearchHandleSchema = z.object({
