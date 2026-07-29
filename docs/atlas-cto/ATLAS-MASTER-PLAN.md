@@ -21,8 +21,9 @@
 one Telegram poller, one local PC/browser executor, cost-aware research, and
 product systems as adapters rather than competing brains.
 
-**Current point:** M1 Durable Foundation. Physical consolidation is NO-GO.
-Cost Router implementation and live provider traffic have not started.
+**Current point:** M1 Durable Foundation, package M1C. M1A contract and M1B
+resolver repair are complete on local unpushed branches. Physical
+consolidation is NO-GO. Live provider traffic has not started.
 
 ```mermaid
 flowchart LR
@@ -55,11 +56,11 @@ flowchart LR
 
 ### M1 work packages
 
-1. **M1A — written contract.** Close Opus review, define route predicates,
+1. **M1A — DONE — written contract.** Close Opus review, define route predicates,
    destination privacy, async handles, error buckets, and goal ceilings.
-2. **M1B — state-root repair.** Reject or stably interpret relative overrides;
-   correct inventory; add CWD-invariance tests.
-3. **M1C — durable router state.** Store goal budget, premium owner,
+2. **M1B — DONE — state-root repair.** Reject relative overrides, correct
+   inventory, and prove CWD invariance. Verified branch tip: `1d173d6`.
+3. **M1C — NEXT — durable router state.** Store goal budget, premium owner,
    escalation/retry ledgers, and async handles under accepted
    `ATLAS_STATE_ROOT`.
 4. **M1D — restart proof.** Restart mid-goal; reject duplicate premium owner;
@@ -75,12 +76,13 @@ Already approved:
   copy/replay/ignore proof;
 - no `ATLAS.next`.
 
-Decision requested before implementation planning:
+Safe reversible working defaults:
 
-- accept or change this milestone order;
-- accept or change recommended default goal ceiling:
-  4 local slices, 2 external research jobs, 1 active premium owner,
-  1 T3 escalation per task, 0 metered API spend.
+- 4 local slices;
+- 2 external research jobs;
+- 1 active premium owner;
+- 1 T3 escalation per task;
+- 0 metered API spend.
 
 Later CEO gates remain physical cutover, paid API activation, weaker-provider
 privacy exception, login/MFA, secret rotation, deployment, scheduler/Railway

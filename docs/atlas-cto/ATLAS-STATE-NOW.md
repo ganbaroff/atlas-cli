@@ -15,7 +15,7 @@ push, merge, move, deployment, or scheduler cutover is active.
 |---|---|---|---|
 | Runner recovery | **DONE** | verified checkpoint `243864d`; source fix `57042ed` | preserve until integration |
 | Legacy Atlas preservation | **DONE** | bundle, ZIP, patch, manifest, dirty worktree ref | no deletion |
-| State root | **MODIFY** | provisional `6f54582`; 18/18 tests, but relative override depends on CWD | repair plus restart/cold-read proof |
+| State root resolver | **REPAIR VERIFIED** | dedicated branch `1d173d6`; 22/22 tests, typecheck, direct CWD probe | integrate before call-site migration |
 | Cost Router design | **IN REVIEW** | design branch; two Opus reviews closed by Codex | Yusif approves/corrects roadmap and ceilings |
 | Cost Router implementation | **NOT STARTED** | no router code or live traffic | written-spec approval first |
 | Physical consolidation | **NO-GO** | nested worktrees, unique legacy state, runtime bindings remain | shadow rehearsal plus CEO cutover gate |
@@ -25,14 +25,14 @@ push, merge, move, deployment, or scheduler cutover is active.
 
 ## Exact current point
 
-We are at **Milestone M1 — Durable Foundation**:
+We are at **Milestone M1 — Durable Foundation**. M1A written contract and M1B
+resolver repair are complete on local unpushed branches. Active package: M1C.
 
-1. correct the written Cost Router contract;
-2. define restart-proof router state, objective routes, provider-bound privacy,
-   bounded async resumes, and fail-closed unavailable behavior;
-3. repair the state-root resolver on a dedicated branch;
-4. run restart and cold-read tests;
-5. only then plan pure router implementation with no live provider traffic.
+1. implement restart-proof goal router state under the accepted resolver;
+2. implement objective routes, provider-bound privacy, bounded async handles,
+   and fail-closed unavailable behavior with fake providers only;
+3. run restart and cold-read tests;
+4. keep all live provider traffic disabled.
 
 ## External review closure
 
@@ -55,25 +55,21 @@ Codex disposition:
 
 ## Next execution order
 
-1. **Documentation now:** roadmap and revised Cost Router specification.
-2. **CEO review:** approve or correct roadmap and default goal ceilings.
-3. **State-root repair:** absolute-path contract, inventory correction,
-   CWD-invariance and cold-read tests.
-4. **Pure Cost Router:** classifier, error table, privacy checker, durable
+1. **Done:** roadmap and revised Cost Router specification.
+2. **Done:** state-root resolver repair, absolute-path contract, inventory
+   correction, CWD-invariance proof.
+3. **Now:** pure Cost Router classifier, error table, privacy checker, durable
    records; fake providers only.
-5. **Shadow migration:** copy/replay/outcome diff; no physical move.
-6. **CEO cutover gate:** only after rollback proof.
-7. **Live research broker:** one provider at a time, public synthetic prompts.
-8. **Research swarm:** only after `READY_FOR_RESEARCH`.
+4. **Then:** shadow migration, copy/replay/outcome diff; no physical move.
+5. **CEO cutover gate:** only after rollback proof.
+6. **Live research broker:** one provider at a time, public synthetic prompts.
+7. **Research swarm:** only after `READY_FOR_RESEARCH`.
 
 ## CEO decisions
 
-Needed now:
-
-- confirm or change the roadmap;
-- confirm default per-goal ceilings. Codex recommendation:
-  4 local slices, 2 external research jobs, 1 active premium owner,
-  1 T3 escalation per task, 0 metered API spend.
+No CEO action is needed now. Safe reversible working defaults are active:
+4 local slices, 2 external research jobs, 1 active premium owner,
+1 T3 escalation per task, and 0 metered API spend.
 
 Needed later:
 
