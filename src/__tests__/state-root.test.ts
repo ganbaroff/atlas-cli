@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 import { resolveStateRoot, resolveStateDir, STATE_STORES } from '../atlas/state-root.js';
@@ -10,6 +10,9 @@ const MANAGED_ENV_KEYS = [
   'ATLAS_EVIDENCE_DIR',
   'ATLAS_GOAL_BUDGET_DIR',
 ] as const;
+
+const ABSOLUTE_STATE_ROOT = join(tmpdir(), 'atlas-state-root-test');
+const ABSOLUTE_LEGACY_ROOT = join(tmpdir(), 'atlas-legacy-root-test');
 
 describe('atlas/state-root', () => {
   let prior: Record<string, string | undefined>;
@@ -39,13 +42,20 @@ describe('atlas/state-root', () => {
 
   describe('resolveStateRoot()', () => {
     it('respects ATLAS_STATE_ROOT when set and non-empty', () => {
-      process.env.ATLAS_STATE_ROOT = '/tmp/custom-atlas-root';
-      expect(resolveStateRoot()).toBe(resolve('/tmp/custom-atlas-root'));
+      process.env.ATLAS_STATE_ROOT = ABSOLUTE_STATE_ROOT;
+      expect(resolveStateRoot()).toBe(resolve(ABSOLUTE_STATE_ROOT));
     });
 
     it('trims whitespace on ATLAS_STATE_ROOT', () => {
-      process.env.ATLAS_STATE_ROOT = '  /tmp/custom-atlas-root  ';
-      expect(resolveStateRoot()).toBe(resolve('/tmp/custom-atlas-root'));
+      process.env.ATLAS_STATE_ROOT = `  ${ABSOLUTE_STATE_ROOT}  `;
+      expect(resolveStateRoot()).toBe(resolve(ABSOLUTE_STATE_ROOT));
+    });
+
+    it('rejects a relative ATLAS_STATE_ROOT', () => {
+      process.env.ATLAS_STATE_ROOT = 'relative-state';
+      expect(() => resolveStateRoot()).toThrow(
+        'ATLAS_STATE_ROOT must be a stable absolute path'
+      );
     });
 
     it('falls back to ~/.atlas/state when ATLAS_STATE_ROOT is unset', () => {
@@ -72,17 +82,24 @@ describe('atlas/state-root', () => {
       const after = resolveStateRoot();
       expect(after).toBe(before);
     });
+
+    it('keeps an absolute override stable across cwd changes', () => {
+      process.env.ATLAS_STATE_ROOT = ABSOLUTE_STATE_ROOT;
+      const before = resolveStateRoot();
+      process.chdir(tmpdir());
+      expect(resolveStateRoot()).toBe(before);
+    });
   });
 
   describe('resolveStateDir()', () => {
     it('lands under the state root when the store has no legacy env var', () => {
-      process.env.ATLAS_STATE_ROOT = '/tmp/custom-atlas-root';
-      expect(resolveStateDir('swarm-runs')).toBe(resolve('/tmp/custom-atlas-root', 'swarm-runs'));
+      process.env.ATLAS_STATE_ROOT = ABSOLUTE_STATE_ROOT;
+      expect(resolveStateDir('swarm-runs')).toBe(resolve(ABSOLUTE_STATE_ROOT, 'swarm-runs'));
       expect(resolveStateDir('operator-state')).toBe(
-        resolve('/tmp/custom-atlas-root', 'operator-state')
+        resolve(ABSOLUTE_STATE_ROOT, 'operator-state')
       );
       expect(resolveStateDir('operator-runs')).toBe(
-        resolve('/tmp/custom-atlas-root', 'operator-runs')
+        resolve(ABSOLUTE_STATE_ROOT, 'operator-runs')
       );
     });
 
@@ -91,27 +108,36 @@ describe('atlas/state-root', () => {
     });
 
     it('the legacy per-store env var wins over ATLAS_STATE_ROOT', () => {
-      process.env.ATLAS_STATE_ROOT = '/tmp/custom-atlas-root';
-      process.env.ATLAS_EXEC_GRAPH_DIR = '/tmp/legacy-exec-graph';
-      expect(resolveStateDir('exec-graph')).toBe(resolve('/tmp/legacy-exec-graph'));
+      process.env.ATLAS_STATE_ROOT = ABSOLUTE_STATE_ROOT;
+      process.env.ATLAS_EXEC_GRAPH_DIR = ABSOLUTE_LEGACY_ROOT;
+      expect(resolveStateDir('exec-graph')).toBe(resolve(ABSOLUTE_LEGACY_ROOT));
     });
 
     it('the legacy per-store env var wins even when ATLAS_STATE_ROOT is unset', () => {
-      process.env.ATLAS_EVIDENCE_DIR = '/tmp/legacy-evidence';
-      expect(resolveStateDir('evidence')).toBe(resolve('/tmp/legacy-evidence'));
+      process.env.ATLAS_EVIDENCE_DIR = ABSOLUTE_LEGACY_ROOT;
+      expect(resolveStateDir('evidence')).toBe(resolve(ABSOLUTE_LEGACY_ROOT));
+    });
+
+    it('rejects a relative legacy store override', () => {
+      process.env.ATLAS_EXEC_GRAPH_DIR = 'relative-exec-graph';
+      expect(() => resolveStateDir('exec-graph')).toThrow(
+        'ATLAS_EXEC_GRAPH_DIR must be a stable absolute path'
+      );
     });
 
     it('falls through to the root when the legacy env var is set but empty', () => {
-      process.env.ATLAS_STATE_ROOT = '/tmp/custom-atlas-root';
+      process.env.ATLAS_STATE_ROOT = ABSOLUTE_STATE_ROOT;
       process.env.ATLAS_GOAL_BUDGET_DIR = '';
-      expect(resolveStateDir('goal-budgets')).toBe(resolve('/tmp/custom-atlas-root', 'goal-budgets'));
+      expect(resolveStateDir('goal-budgets')).toBe(resolve(ABSOLUTE_STATE_ROOT, 'goal-budgets'));
     });
 
     it('honors an explicit legacyEnv override argument over the registry default', () => {
-      process.env.ATLAS_STATE_ROOT = '/tmp/custom-atlas-root';
-      process.env.SOME_OTHER_VAR = '/tmp/override-target';
+      process.env.ATLAS_STATE_ROOT = ABSOLUTE_STATE_ROOT;
+      process.env.SOME_OTHER_VAR = ABSOLUTE_LEGACY_ROOT;
       try {
-        expect(resolveStateDir('swarm-runs', 'SOME_OTHER_VAR')).toBe(resolve('/tmp/override-target'));
+        expect(resolveStateDir('swarm-runs', 'SOME_OTHER_VAR')).toBe(
+          resolve(ABSOLUTE_LEGACY_ROOT)
+        );
       } finally {
         delete process.env.SOME_OTHER_VAR;
       }

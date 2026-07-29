@@ -26,7 +26,31 @@
  */
 
 import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { isAbsolute, join, normalize, parse } from 'node:path';
+
+export class StateRootConfigurationError extends Error {
+  constructor(envName: string) {
+    super(`${envName} must be a stable absolute path`);
+    this.name = 'StateRootConfigurationError';
+  }
+}
+
+function readAbsoluteOverride(envName: string): string | undefined {
+  const value = process.env[envName]?.trim();
+  if (!value) return undefined;
+
+  const root = parse(value).root;
+  const windowsRootIsStable =
+    process.platform !== 'win32' ||
+    /^[A-Za-z]:[\\/]$/.test(root) ||
+    root.startsWith('\\\\');
+
+  if (!isAbsolute(value) || !windowsRootIsStable) {
+    throw new StateRootConfigurationError(envName);
+  }
+
+  return normalize(value);
+}
 
 /** Registry of known state stores and (if any) their legacy per-store env var. */
 export const STATE_STORES = {
@@ -46,8 +70,8 @@ export type StateStore = keyof typeof STATE_STORES;
  * `~/.atlas/state`. Never cwd-relative or checkout-relative.
  */
 export function resolveStateRoot(): string {
-  const override = process.env.ATLAS_STATE_ROOT;
-  if (override && override.trim()) return resolve(override.trim());
+  const override = readAbsoluteOverride('ATLAS_STATE_ROOT');
+  if (override) return override;
   return join(homedir(), '.atlas', 'state');
 }
 
@@ -61,8 +85,8 @@ export function resolveStateRoot(): string {
 export function resolveStateDir(store: StateStore, legacyEnv?: string): string {
   const envName = legacyEnv ?? STATE_STORES[store];
   if (envName) {
-    const legacy = process.env[envName];
-    if (legacy && legacy.trim()) return resolve(legacy.trim());
+    const legacy = readAbsoluteOverride(envName);
+    if (legacy) return legacy;
   }
   return join(resolveStateRoot(), store);
 }
