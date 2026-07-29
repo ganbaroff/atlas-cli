@@ -16,6 +16,7 @@
 
 import {
   acquirePremiumOwner,
+  recordRetryEvent,
   T3_TRIGGERS,
   type DurableGoalRouterRecord,
   type GoalRouterStateOptions,
@@ -60,7 +61,10 @@ export interface RouteMatch {
 export type RouteRefusalReason =
   | 'unclassifiable'
   | 't3_trigger_missing'
-  | 'route_disabled';
+  | 'route_disabled'
+  /** M2B: a value claiming to be an `AvailableRoute` never actually passed
+   *  through `resolveRoute`'s availability check (brand missing/forged). */
+  | 'availability_not_checked';
 
 export class RouteRefusalError extends Error {
   constructor(
@@ -176,16 +180,62 @@ export function checkRouteAvailability(
 }
 
 /**
+ * M2B structural fix. The M2A independent review flagged that nothing
+ * stopped a caller from taking a bare `classifyRoute()` result and acting on
+ * it directly, skipping `checkRouteAvailability`. `AvailableRoute` closes
+ * that gap structurally rather than by convention: it is `RouteMatch`
+ * branded with a symbol that is never exported from this module, so no
+ * code outside this file can construct one. The only function that can
+ * produce a real `AvailableRoute` is `resolveRoute`, because only it holds
+ * the symbol. A caller that tries to skip the availability check by
+ * forging the shape (`... as unknown as AvailableRoute`) still satisfies
+ * the compiler, but the forged object carries no such symbol key at
+ * runtime, so any consumer that calls `assertRouteAvailabilityChecked`
+ * (every consumer in this module does) throws `availability_not_checked`.
+ */
+const ROUTE_AVAILABILITY_CHECKED: unique symbol = Symbol(
+  'atlas.cost-router.route-availability-checked',
+);
+
+export type AvailableRoute = RouteMatch & {
+  readonly [ROUTE_AVAILABILITY_CHECKED]: true;
+};
+
+/**
  * Classify, then gate on availability. Still pure/offline: no model call,
- * no provider call, no durable-state read or write.
+ * no provider call, no durable-state read or write. This is the only
+ * supported way to obtain an `AvailableRoute` — see the comment above.
  */
 export function resolveRoute(
   task: RouteTaskInput,
   availability: RouteAvailability = DEFAULT_ROUTE_AVAILABILITY,
-): RouteMatch {
+): AvailableRoute {
   const match = classifyRoute(task);
   checkRouteAvailability(match.route, availability);
-  return match;
+  return Object.freeze({
+    ...match,
+    [ROUTE_AVAILABILITY_CHECKED]: true,
+  }) as AvailableRoute;
+}
+
+/**
+ * Runtime companion to the type-level brand above. Every function in this
+ * module that spends a provider attempt against a route must call this
+ * first. Throws `RouteRefusalError('availability_not_checked')` for any
+ * value that did not genuinely come from `resolveRoute` — including a
+ * type-cast forgery, since the brand symbol cannot be reproduced outside
+ * this file.
+ */
+function assertRouteAvailabilityChecked(
+  route: AvailableRoute,
+): asserts route is AvailableRoute {
+  if (!route || route[ROUTE_AVAILABILITY_CHECKED] !== true) {
+    throw new RouteRefusalError(
+      'availability_not_checked',
+      (route as RouteMatch | undefined)?.route,
+      'route was not obtained from resolveRoute(); availability was never checked',
+    );
+  }
 }
 
 export interface T3OwnerMeta {
@@ -232,4 +282,192 @@ export async function acquireT3RouteOwner(
 
   const record = await acquirePremiumOwner(goalId, owner, now, options);
   return { match, record };
+}
+
+/**
+ * M2B: error bucketing and availability-enforced routing.
+ *
+ * `classifyFailure` is a single PURE function: given the caller's objective
+ * description of one failed attempt, it returns exactly one bucket, and the
+ * bucket alone decides what `runRoutedAttempt` below is allowed to do next.
+ * Nothing else — not the error message, not a heuristic guess — influences
+ * the retry behaviour.
+ */
+export type ErrorBucket = 'denial' | 'transport' | 'async-expired' | 'unknown';
+
+/**
+ * Objective, caller-declared description of one failed provider attempt.
+ * Like `RouteTaskInput`, these flags are stated by the caller (the provider
+ * adapter or async-resume poller), never inferred from free text, so
+ * `classifyFailure` stays a closed-set lookup rather than a heuristic.
+ */
+export interface FailureInput {
+  /** Policy/permission/seat/capability/invariant refusal. */
+  isDenial?: boolean;
+  /** Network/timeout/5xx-style transport failure. */
+  isTransportFailure?: boolean;
+  /** This failure is an async job handle whose expiry has already passed. */
+  isAsyncExpired?: boolean;
+}
+
+const ERROR_BUCKET_PREDICATES: ReadonlyArray<{
+  bucket: ErrorBucket;
+  test: (failure: FailureInput) => boolean;
+}> = Object.freeze([
+  { bucket: 'denial', test: (f) => f.isDenial === true },
+  { bucket: 'async-expired', test: (f) => f.isAsyncExpired === true },
+  { bucket: 'transport', test: (f) => f.isTransportFailure === true },
+]);
+
+/**
+ * Pure error-bucket classifier. First matching predicate wins. A failure
+ * that matches none of the closed-set predicates buckets as `unknown` —
+ * deliberately fail-closed: `runRoutedAttempt` treats `unknown` exactly
+ * like `denial` (zero retries), never leniently like `transport`.
+ */
+export function classifyFailure(failure: FailureInput): ErrorBucket {
+  for (const { bucket, test } of ERROR_BUCKET_PREDICATES) {
+    if (test(failure)) return bucket;
+  }
+  return 'unknown';
+}
+
+/**
+ * Explicit provider cost tier. Making this a closed set (rather than a
+ * convention like "never pick the expensive one") is what lets
+ * `selectFailoverProvider` make "never fail over to premium" a checkable
+ * invariant instead of a comment.
+ */
+export type ProviderTier = 'free' | 'cheap' | 'premium';
+
+export interface ProviderCandidate {
+  readonly providerId: string;
+  readonly tier: ProviderTier;
+}
+
+/**
+ * Picks the first candidate that is not `premium`. Never returns a premium
+ * candidate, even if every candidate given is premium — callers must treat
+ * an `undefined` result as "no eligible failover", not "try harder".
+ */
+export function selectFailoverProvider(
+  candidates: readonly ProviderCandidate[],
+): ProviderCandidate | undefined {
+  return candidates.find((candidate) => candidate.tier !== 'premium');
+}
+
+export type ProviderAttemptResult = { ok: true } | { ok: false; failure: FailureInput };
+
+export interface RunRoutedAttemptParams {
+  /** Must come from `resolveRoute` — see `assertRouteAvailabilityChecked`. */
+  route: AvailableRoute;
+  goalId: string;
+  taskId: string;
+  now: string;
+  currentProvider: ProviderCandidate;
+  /** Ordered failover candidates; premium entries are always skipped. */
+  failoverCandidates?: readonly ProviderCandidate[];
+  /** Caller-declared: this is an async job handle already past its expiry. */
+  isAsyncExpired?: boolean;
+  /** Injected provider call. Never invoked by this module for real I/O. */
+  attempt: (provider: ProviderCandidate) => ProviderAttemptResult;
+  options?: GoalRouterStateOptions;
+}
+
+export interface RoutedAttemptResult {
+  status: 'succeeded' | 'failed';
+  /** Absent only on success. */
+  bucket?: ErrorBucket;
+  providerCalls: number;
+  callsByProvider: Record<string, number>;
+  finalProviderId?: string;
+}
+
+/**
+ * The only supported way to spend a provider attempt against a resolved
+ * route. Requires an `AvailableRoute` (unreachable except via
+ * `resolveRoute`), classifies any failure into exactly one bucket via
+ * `classifyFailure`, and applies the bucket's retry rule against the M1
+ * durable retry ledger (`recordRetryEvent`) rather than a second,
+ * parallel counter:
+ *
+ *  - `denial` / `unknown`  -> one attempt, zero retries, ledger `denial`.
+ *  - `async-expired`       -> zero provider calls, no ledger write.
+ *  - `transport`           -> one same-provider retry (ledger
+ *                             `transport_retry`), then at most one failover
+ *                             to a non-premium candidate (ledger
+ *                             `provider_failover`). No premium failover, no
+ *                             third attempt on any provider.
+ */
+export async function runRoutedAttempt(
+  params: RunRoutedAttemptParams,
+): Promise<RoutedAttemptResult> {
+  assertRouteAvailabilityChecked(params.route);
+
+  const callsByProvider: Record<string, number> = {};
+  const call = (provider: ProviderCandidate): ProviderAttemptResult => {
+    callsByProvider[provider.providerId] = (callsByProvider[provider.providerId] ?? 0) + 1;
+    return params.attempt(provider);
+  };
+  const totalCalls = () =>
+    Object.values(callsByProvider).reduce((sum, count) => sum + count, 0);
+
+  if (params.isAsyncExpired) {
+    const bucket = classifyFailure({ isAsyncExpired: true });
+    return { status: 'failed', bucket, providerCalls: 0, callsByProvider: {} };
+  }
+
+  const first = call(params.currentProvider);
+  if (first.ok) {
+    return {
+      status: 'succeeded',
+      providerCalls: totalCalls(),
+      callsByProvider,
+      finalProviderId: params.currentProvider.providerId,
+    };
+  }
+
+  const bucket = classifyFailure(first.failure);
+  if (bucket !== 'transport') {
+    await recordRetryEvent(params.goalId, params.taskId, 'denial', params.now, params.options);
+    return { status: 'failed', bucket, providerCalls: totalCalls(), callsByProvider };
+  }
+
+  await recordRetryEvent(
+    params.goalId,
+    params.taskId,
+    'transport_retry',
+    params.now,
+    params.options,
+  );
+  const retry = call(params.currentProvider);
+  if (retry.ok) {
+    return {
+      status: 'succeeded',
+      providerCalls: totalCalls(),
+      callsByProvider,
+      finalProviderId: params.currentProvider.providerId,
+    };
+  }
+
+  const candidate = selectFailoverProvider(params.failoverCandidates ?? []);
+  if (!candidate) {
+    return { status: 'failed', bucket: 'transport', providerCalls: totalCalls(), callsByProvider };
+  }
+
+  await recordRetryEvent(
+    params.goalId,
+    params.taskId,
+    'provider_failover',
+    params.now,
+    params.options,
+  );
+  const failover = call(candidate);
+  return {
+    status: failover.ok ? 'succeeded' : 'failed',
+    bucket: failover.ok ? undefined : 'transport',
+    providerCalls: totalCalls(),
+    callsByProvider,
+    finalProviderId: candidate.providerId,
+  };
 }
