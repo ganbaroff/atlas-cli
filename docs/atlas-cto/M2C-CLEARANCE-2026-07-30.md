@@ -304,3 +304,148 @@ is exactly what a control exists to avoid trusting. The rule going forward
 for this codebase: when a function's only legitimate callers are the test
 suite, that must be true by construction (a runtime gate, an unreachable
 module path, a structural type) — never by a docstring asking politely.
+
+## M2C repair 2 (2026-07-30) — a third refutation: the runtime gate was itself caller-controlled
+
+The Refutation 1 fix above (`process.env.VITEST === 'true'`) was itself
+demonstrated live, twice, to be no fix at all. A plain `npx tsx` script —
+not Vitest, not this repository's test runner — set
+`process.env.VITEST = 'true'` on itself before importing
+`cost-router-classify.ts`, called the exported `runRoutedAttempt` directly
+with a forged `{ T0: true, T1: true, T2: true, T3: true }` availability
+table, and completed a real provider call against the default-disabled T1
+route. The guard checked *a value the caller supplied to its own process*
+and treated agreement with that value as authorization. It never was.
+
+### Why an environment variable is not a control
+
+A control has to distinguish a legitimate caller from an illegitimate one
+using information the illegitimate caller cannot produce. `ATLAS_CLEARANCE_SIGNING_KEY`
+(section A above) is a control in this sense: the caller cannot compute a
+valid HMAC without the operator-held key, no matter what environment it
+runs in. `RESOLVED_ROUTES` (the M2B repair) is a control in this sense: the
+caller cannot manufacture WeakSet membership for an object it didn't get
+back from `resolveRoute`, no matter what property values it copies.
+`process.env.VITEST` is not a control in this sense: it is a bare string in
+the calling process's own environment, and the calling process owns its own
+environment completely. Checking it is equivalent to asking a caller
+"are you allowed to do this?" and trusting a `yes` — the exact anti-pattern
+Refutation 1 already named on the *previous* attempt (a comment asking
+politely). This is the third time this specific file has repaired a
+caller-controlled marker being mistaken for an authenticated one: first an
+own-enumerable symbol property (survives spread/`Object.assign`), then a
+code comment (enforces nothing), now an environment variable (the caller's
+own process sets it). All three share the same shape: the check reads
+something the caller fully controls and calls agreement "proof."
+
+### What replaced it: remove the entry point, don't gate it
+
+Every previous attempt kept an injectable-table function exported from
+`cost-router-classify.ts` and tried to make calling it, from outside the
+test suite, refuse. That framing was the mistake — as long as the function
+is exported with an injectable-table signature, *some* caller-controlled
+signal has to be the thing standing between "test" and "production," and
+caller-controlled signals can always be forged by the caller. The fix
+removes the function from the module's exports instead of trying to gate
+who may call it:
+
+- `runRoutedAttempt` and `RunRoutedAttemptParams` are deleted from
+  `cost-router-classify.ts`'s public surface. The engine logic they held
+  (availability re-check, clearance re-check, error-bucket retry/failover)
+  now lives in `executeRoutedAttempt`, a private, non-exported function.
+  Its `RouteAttemptExecutionParams` type is not exported either, and its
+  `availability`/`providerClasses` fields are mandatory, not optional —
+  there is no longer any caller for which they would need a default.
+- `runTrustedRoutedAttempt` stays the sole exported function able to spend
+  a provider attempt. It resolves its tables by calling
+  `resolveTrustedTables({ availability: DEFAULT_ROUTE_AVAILABILITY,
+  providerClasses: DEFAULT_PROVIDER_CLASS_TABLE })` — a function imported
+  from a new file, `src/atlas/cost-router-test-seam.ts`.
+- `cost-router-test-seam.ts` is the substitution seam: `resolveTrustedTables`
+  returns whatever `withTrustedTables` last installed, or the caller's
+  `defaults` unchanged when nothing is installed. `withTrustedTables` is the
+  *only* function in the entire codebase that can change what
+  `resolveTrustedTables` returns, and it is exported only from this one
+  file. `cost-router-classify.ts` imports `resolveTrustedTables` (a getter)
+  but never `withTrustedTables` (the setter) — so even a caller that reads
+  every export of `cost-router-classify.ts` has no path to the setter
+  without a separate, explicit `import ... from
+  './cost-router-test-seam.js'`.
+
+The `test_only_entry_point` refusal reason and the `RouteRefusalReason`
+member it lived on are removed as dead code — there is no longer a runtime
+refusal to name, because there is no longer a reachable call to refuse.
+
+### Why this is not the same shape as the previous two failures
+
+The previous two fixes both tried to answer "how do we stop an illegitimate
+caller from using this exported function correctly?" — which is
+unanswerable in general, because "correctly" is defined by the caller's own
+input. This fix instead answers "does an illegitimate caller have any
+statement in the language that reaches an injectable table?" and the answer
+is now no: `cost-router-classify.ts` exports zero functions whose parameter
+type includes an `availability` or `providerClasses` field.
+`resolveTrustedTables` is a getter with no exported setter reachable from
+that module. The only way to influence what it returns is to import a
+second, separate, explicitly-named file and call the one function that file
+exports for exactly that purpose. Nothing about that path involves
+predicting or reading a caller-controlled runtime signal — it is a question
+about the static import graph, decided at the same time the module graph
+itself is decided, not at call time.
+
+### Test coverage
+
+`cost-router-error-policy.test.ts` and `cost-router-clearance.test.ts` were
+updated so every gate they proved through the old `runRoutedAttempt`
+now goes through `runTrustedRoutedAttempt` plus `withTrustedTables`
+(disabled route refused, unclassifiable/forged-brand refused, error buckets
+and retry arithmetic, weaker-class destination refused, the four
+signed-clearance refusals, fail-closed with no key — all unchanged in
+substance, only in which entry point exercises them). Each file also gained
+a mechanical assertion that `cost-router-classify.ts`'s runtime exports do
+not include `runRoutedAttempt` (the actual boundary check this repair is
+about), and `cost-router-clearance.test.ts` additionally reproduces the
+exact live attack — `process.env.VITEST = 'true'` plus a
+`... as unknown as TrustedRoutedAttemptParams` cast smuggling an
+`availability` field onto the params object — and confirms it still
+refuses (`route_disabled`, from the real default table, because the
+smuggled field is never read).
+
+One pre-existing test, "backward compatibility: no clearance declared",
+called the old `runRoutedAttempt` with no `briefClearance` at all — a
+scenario `runTrustedRoutedAttempt` never permitted even before this repair
+(`briefClearance` was already mandatory on `TrustedRoutedAttemptParams`).
+With the low-level entry point gone, that scenario is not expressible
+through any surface, public or test-only, so the test was removed rather
+than kept as dead weight. Net count across the two files: 25 -> 26 (one
+test removed as unreachable, three added: the two mechanical
+public-surface checks and the reproduced-attack-still-refuses case).
+`npx vitest run` across all four cost-router test files: 71 -> 72 total,
+still 0 failing.
+
+```
+$ npx tsc --noEmit
+TypeScript: No errors found
+
+$ npx vitest run src/__tests__/cost-router-classify.test.ts \
+    src/__tests__/cost-router-clearance.test.ts \
+    src/__tests__/cost-router-error-policy.test.ts \
+    src/__tests__/cost-router-state.test.ts
+PASS (72) FAIL (0)
+```
+
+### Standing rule
+
+**A boundary is enforced by what a module exports, not by what a caller
+promises.** This is the durable form of the lesson across all three
+refutations: a symbol property is a promise (spreadable), a comment is a
+promise (readable but not binding), an environment-variable check is a
+promise (the caller sets its own environment). None of the three could ever
+have worked, structurally, no matter how the specific check was worded —
+the fix was never "phrase the gate better," it was "does the caller have
+any reachable statement that produces an injectable table." For this
+codebase going forward: if a table, key, or capability must never reach
+production code, it cannot be a parameter, default, or conditionally-set
+value on any function production code can import — it must live in a file
+production code does not import, reachable only through a function that
+file alone exports.
