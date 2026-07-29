@@ -42,6 +42,32 @@ export const T3_TRIGGERS = [
 ] as const;
 export type T3Trigger = (typeof T3_TRIGGERS)[number];
 
+/**
+ * M2C: closed set of retention terms a destination may declare. Owned here
+ * (durable schema) for the same reason T3_TRIGGERS is: the model-free
+ * clearance gate in cost-router-classify.ts imports it rather than
+ * redefining it.
+ */
+export const RETENTION_TERMS = ['none', 'session', 'bounded', 'indefinite'] as const;
+export type RetentionTerm = (typeof RETENTION_TERMS)[number];
+
+/**
+ * M2C: declared class of a destination — three explicit, objective fields,
+ * never inferred from message content:
+ *  - identityBearing: true for a signed-in subscription/browser session,
+ *    false for a keyed service call.
+ *  - retentionTerm: how long the destination is declared to retain what it
+ *    is sent.
+ *  - canActBeyondBrief: true if the destination can act beyond the brief it
+ *    was handed (e.g. an agentic session with its own tool access).
+ */
+export const providerClassSchema = z.object({
+  identityBearing: z.boolean(),
+  retentionTerm: z.enum(RETENTION_TERMS),
+  canActBeyondBrief: z.boolean(),
+}).strict();
+export type ProviderClass = z.infer<typeof providerClassSchema>;
+
 const timestampSchema = z.string().datetime();
 const nonNegativeIntegerSchema = z.number().int().nonnegative();
 const boundedAttemptSchema = z.number().int().min(0).max(1);
@@ -92,6 +118,20 @@ const retryLedgerEntrySchema = z.object({
   providerFailovers: boundedAttemptSchema,
 }).strict();
 
+/**
+ * M2C: durable record of one operator exception that let a brief be sent to
+ * a destination weaker than the class it was cleared for. `permittedClass`
+ * is the floor the operator explicitly authorized for this task, not the
+ * brief's original clearance.
+ */
+const clearanceExceptionRecordSchema = z.object({
+  reason: z.string().min(1),
+  approvedBy: z.string().min(1),
+  permittedClass: providerClassSchema,
+  recordedAt: timestampSchema,
+}).strict();
+export type ClearanceExceptionRecord = z.infer<typeof clearanceExceptionRecordSchema>;
+
 export const durableGoalRouterRecordSchema = z.object({
   schemaVersion: z.literal(1),
   goalId: z.string().regex(GOAL_ID_PATTERN),
@@ -104,6 +144,11 @@ export const durableGoalRouterRecordSchema = z.object({
   budget: goalRouterBudgetSchema,
   retryLedger: z.record(z.string().min(1), retryLedgerEntrySchema),
   openAsyncHandles: z.array(asyncResearchHandleSchema),
+  /** M2C: per-task operator clearance exceptions. Optional (no `.default`)
+   *  so records persisted before M2C keep validating and keep round-tripping
+   *  through cold reads with no key added — see cost-router-state.test.ts
+   *  full-record assertions, which must not regress. */
+  clearanceLedger: z.record(z.string().min(1), clearanceExceptionRecordSchema).optional(),
   updatedAt: timestampSchema,
 }).strict().superRefine((record, ctx) => {
   const pairs: Array<[number, number, string]> = [
@@ -247,7 +292,8 @@ export type GoalRouterStateErrorCode =
   | 'retry_after_denial_refused'
   | 'transport_retry_exhausted'
   | 'provider_failover_before_retry'
-  | 'provider_failover_exhausted';
+  | 'provider_failover_exhausted'
+  | 'clearance_exception_invalid';
 
 export class GoalRouterStateError extends Error {
   constructor(
@@ -469,6 +515,7 @@ export async function createGoalRouterRecord(
       budget: { ...DEFAULT_GOAL_ROUTER_BUDGET },
       retryLedger: {},
       openAsyncHandles: [],
+      clearanceLedger: {},
       updatedAt: now,
     });
     writeRecordAtomically(path, record);
@@ -916,4 +963,41 @@ export async function recordRetryEvent(
       },
     };
   });
+}
+
+/**
+ * M2C: persists one operator clearance exception against the goal's durable
+ * record. Called only when an exception actually let a cross-class send
+ * proceed (see `runRoutedAttempt` in cost-router-classify.ts) — never for an
+ * exception that was present but not needed, so the ledger reflects only
+ * exceptions that were exercised.
+ */
+export async function recordClearanceException(
+  goalId: string,
+  taskId: string,
+  exception: { reason: string; approvedBy: string; permittedClass: ProviderClass },
+  now: string,
+  options?: GoalRouterStateOptions,
+): Promise<DurableGoalRouterRecord> {
+  assertTaskId(taskId);
+  const parsed = clearanceExceptionRecordSchema.safeParse({
+    reason: exception.reason,
+    approvedBy: exception.approvedBy,
+    permittedClass: exception.permittedClass,
+    recordedAt: now,
+  });
+  if (!parsed.success) {
+    throw new GoalRouterStateError(
+      'clearance_exception_invalid',
+      `clearance exception for task ${taskId} failed validation`
+    );
+  }
+
+  return mutateGoalRouterRecord(goalId, now, options, (current) => ({
+    ...current,
+    clearanceLedger: {
+      ...(current.clearanceLedger ?? {}),
+      [taskId]: parsed.data,
+    },
+  }));
 }

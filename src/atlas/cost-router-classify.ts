@@ -16,18 +16,21 @@
 
 import {
   acquirePremiumOwner,
+  recordClearanceException,
   recordRetryEvent,
   T3_TRIGGERS,
   type DurableGoalRouterRecord,
   type GoalRouterStateOptions,
   type PremiumOwner,
+  type ProviderClass,
+  type RetentionTerm,
   type T3Trigger,
 } from './cost-router-state.js';
 
 export type RouteTier = 'T0' | 'T1' | 'T2' | 'T3';
 
 export { T3_TRIGGERS };
-export type { T3Trigger };
+export type { T3Trigger, ProviderClass, RetentionTerm };
 
 /**
  * Objective, caller-declared capability flags for one task. These are not
@@ -368,6 +371,123 @@ export function selectFailoverProvider(
   return candidates.find((candidate) => candidate.tier !== 'premium');
 }
 
+/**
+ * M2C: destination-bound clearance.
+ *
+ * Clearance is bound to the destination actually used, not to the message.
+ * Every provider carries a declared `ProviderClass` (three objective
+ * fields). A brief is cleared for a specific class; sending it to a
+ * destination of a weaker class is refused, never silently downgraded —
+ * whether that destination is the current provider or a failover target.
+ */
+const RETENTION_RANK: Record<RetentionTerm, number> = {
+  none: 0,
+  session: 1,
+  bounded: 2,
+  indefinite: 3,
+};
+
+/** Higher rank = weaker clearance class (more identity/retention/agency risk). */
+function clearanceRank(providerClass: ProviderClass): number {
+  return (
+    RETENTION_RANK[providerClass.retentionTerm] +
+    (providerClass.identityBearing ? 4 : 0) +
+    (providerClass.canActBeyondBrief ? 8 : 0)
+  );
+}
+
+/**
+ * True when `candidate` is a weaker clearance class than `required`.
+ * All-else-equal, a destination able to act beyond its brief is always
+ * weaker than one that cannot: `canActBeyondBrief` carries the largest
+ * weight, so it alone can never be outweighed by the other two fields.
+ */
+export function isWeakerClass(candidate: ProviderClass, required: ProviderClass): boolean {
+  return clearanceRank(candidate) > clearanceRank(required);
+}
+
+export type ClearanceRefusalReason = 'destination_class_unknown' | 'destination_class_too_weak';
+
+export class ClearanceRefusalError extends Error {
+  constructor(
+    readonly reason: ClearanceRefusalReason,
+    readonly requiredClass: ProviderClass,
+    readonly actualClass: ProviderClass | undefined,
+    message: string,
+  ) {
+    super(message);
+    this.name = 'ClearanceRefusalError';
+  }
+}
+
+/**
+ * Explicit operator exception: when present, the brief may be sent to a
+ * destination as weak as `permittedClass` instead of the class the brief
+ * was originally cleared for. Recorded on the durable record (via
+ * `recordClearanceException`) only when it actually lets a cross-class send
+ * proceed.
+ */
+export interface ClearanceException {
+  readonly reason: string;
+  readonly approvedBy: string;
+  readonly permittedClass: ProviderClass;
+}
+
+/**
+ * Pure clearance gate. Refuses — never downgrades silently — when the
+ * destination's declared class is weaker than the brief's cleared class,
+ * unless an explicit operator exception names a permitted class the
+ * destination still meets. A destination with no declared class is refused
+ * rather than assumed safe.
+ */
+export function assertDestinationClearance(
+  required: ProviderClass,
+  destination: ProviderClass | undefined,
+  exception?: ClearanceException,
+): void {
+  if (!destination) {
+    throw new ClearanceRefusalError(
+      'destination_class_unknown',
+      required,
+      undefined,
+      'destination declared no provider class; refusing rather than assuming clearance',
+    );
+  }
+
+  const effectiveRequired = exception ? exception.permittedClass : required;
+  if (!isWeakerClass(destination, effectiveRequired)) return;
+
+  throw new ClearanceRefusalError(
+    'destination_class_too_weak',
+    required,
+    destination,
+    'destination class is weaker than the brief was cleared for; refusing rather than sending silently',
+  );
+}
+
+/** Table of providerId -> declared ProviderClass, consulted by `runRoutedAttempt`. */
+export type ProviderClassTable = Readonly<Record<string, ProviderClass>>;
+
+/**
+ * M2C module-owned trusted source for provider classes — the single table
+ * `runTrustedRoutedAttempt` resolves internally. Extend as new providers are
+ * onboarded (mirrors `DEFAULT_ROUTE_AVAILABILITY`'s role for routes). A
+ * providerId absent from this table has no declared class and is refused
+ * (`destination_class_unknown`) rather than assumed safe.
+ */
+export const DEFAULT_PROVIDER_CLASS_TABLE: ProviderClassTable = Object.freeze({
+  'trusted-keyed-1': Object.freeze({
+    identityBearing: false,
+    retentionTerm: 'none',
+    canActBeyondBrief: false,
+  }),
+  'trusted-identity-1': Object.freeze({
+    identityBearing: true,
+    retentionTerm: 'indefinite',
+    canActBeyondBrief: true,
+  }),
+});
+
 export type ProviderAttemptResult = { ok: true } | { ok: false; failure: FailureInput };
 
 export interface RunRoutedAttemptParams {
@@ -393,6 +513,24 @@ export interface RunRoutedAttemptParams {
    * `resolveRoute` defaults to.
    */
   availability?: RouteAvailability;
+  /**
+   * M2C: the provider class this brief is cleared for. Optional so pre-M2C
+   * callers (and the existing test suite) keep working unchanged — when
+   * omitted, no clearance check runs at all. Production code should not set
+   * this directly; use `runTrustedRoutedAttempt`, which requires it.
+   */
+  briefClearance?: ProviderClass;
+  /**
+   * M2C: table resolving providerId -> declared ProviderClass, consulted
+   * only when `briefClearance` is set. Defaults to this module's own
+   * `DEFAULT_PROVIDER_CLASS_TABLE`. This parameter is the injectable-table
+   * hole an independent review flagged — it stays reachable here so tests
+   * can exercise the clearance gate against fixtures, but
+   * `runTrustedRoutedAttempt` has no such parameter at all.
+   */
+  providerClasses?: ProviderClassTable;
+  /** M2C: explicit operator exception permitting a specific weaker class for this send. */
+  clearanceException?: ClearanceException;
 }
 
 export interface RoutedAttemptResult {
@@ -402,6 +540,12 @@ export interface RoutedAttemptResult {
   providerCalls: number;
   callsByProvider: Record<string, number>;
   finalProviderId?: string;
+  /**
+   * M2C: the class of the destination actually used, read live from the
+   * provider-class table at send time — never the class assumed when the
+   * brief was composed. Present only when `briefClearance` was set.
+   */
+  finalProviderClass?: ProviderClass;
 }
 
 /**
@@ -429,6 +573,36 @@ export async function runRoutedAttempt(
   // be replayed to spend a provider call after the route was disabled.
   checkRouteAvailability(params.route.route, params.availability ?? DEFAULT_ROUTE_AVAILABILITY);
 
+  const providerClasses = params.providerClasses ?? DEFAULT_PROVIDER_CLASS_TABLE;
+  const classOf = (provider: ProviderCandidate): ProviderClass | undefined =>
+    providerClasses[provider.providerId];
+
+  // M2C: refuses (throws) before any attempt is made against `provider` when
+  // its declared class is weaker than the brief's cleared class. Records the
+  // operator exception on the durable record the first time it is what
+  // actually let a cross-class send proceed — never for an unused exception.
+  let clearanceExceptionRecorded = false;
+  const guardClearance = async (provider: ProviderCandidate): Promise<void> => {
+    if (!params.briefClearance) return;
+    const destinationClass = classOf(provider);
+    assertDestinationClearance(params.briefClearance, destinationClass, params.clearanceException);
+    if (
+      !clearanceExceptionRecorded &&
+      params.clearanceException &&
+      destinationClass &&
+      isWeakerClass(destinationClass, params.briefClearance)
+    ) {
+      clearanceExceptionRecorded = true;
+      await recordClearanceException(
+        params.goalId,
+        params.taskId,
+        params.clearanceException,
+        params.now,
+        params.options,
+      );
+    }
+  };
+
   const callsByProvider: Record<string, number> = {};
   const call = (provider: ProviderCandidate): ProviderAttemptResult => {
     callsByProvider[provider.providerId] = (callsByProvider[provider.providerId] ?? 0) + 1;
@@ -436,20 +610,30 @@ export async function runRoutedAttempt(
   };
   const totalCalls = () =>
     Object.values(callsByProvider).reduce((sum, count) => sum + count, 0);
+  const withFinalClass = (
+    result: RoutedAttemptResult,
+    provider: ProviderCandidate,
+  ): RoutedAttemptResult =>
+    params.briefClearance ? { ...result, finalProviderClass: classOf(provider) } : result;
 
   if (params.isAsyncExpired) {
     const bucket = classifyFailure({ isAsyncExpired: true });
     return { status: 'failed', bucket, providerCalls: 0, callsByProvider: {} };
   }
 
+  await guardClearance(params.currentProvider);
+
   const first = call(params.currentProvider);
   if (first.ok) {
-    return {
-      status: 'succeeded',
-      providerCalls: totalCalls(),
-      callsByProvider,
-      finalProviderId: params.currentProvider.providerId,
-    };
+    return withFinalClass(
+      {
+        status: 'succeeded',
+        providerCalls: totalCalls(),
+        callsByProvider,
+        finalProviderId: params.currentProvider.providerId,
+      },
+      params.currentProvider,
+    );
   }
 
   const bucket = classifyFailure(first.failure);
@@ -467,18 +651,26 @@ export async function runRoutedAttempt(
   );
   const retry = call(params.currentProvider);
   if (retry.ok) {
-    return {
-      status: 'succeeded',
-      providerCalls: totalCalls(),
-      callsByProvider,
-      finalProviderId: params.currentProvider.providerId,
-    };
+    return withFinalClass(
+      {
+        status: 'succeeded',
+        providerCalls: totalCalls(),
+        callsByProvider,
+        finalProviderId: params.currentProvider.providerId,
+      },
+      params.currentProvider,
+    );
   }
 
   const candidate = selectFailoverProvider(params.failoverCandidates ?? []);
   if (!candidate) {
     return { status: 'failed', bucket: 'transport', providerCalls: totalCalls(), callsByProvider };
   }
+
+  // M2C: the failover path must apply the same clearance check — a cheaper
+  // failover target of a weaker class is refused before it is ever called,
+  // rather than taken silently.
+  await guardClearance(candidate);
 
   await recordRetryEvent(
     params.goalId,
@@ -488,11 +680,65 @@ export async function runRoutedAttempt(
     params.options,
   );
   const failover = call(candidate);
-  return {
-    status: failover.ok ? 'succeeded' : 'failed',
-    bucket: failover.ok ? undefined : 'transport',
-    providerCalls: totalCalls(),
-    callsByProvider,
-    finalProviderId: candidate.providerId,
-  };
+  return withFinalClass(
+    {
+      status: failover.ok ? 'succeeded' : 'failed',
+      bucket: failover.ok ? undefined : 'transport',
+      providerCalls: totalCalls(),
+      callsByProvider,
+      finalProviderId: candidate.providerId,
+    },
+    candidate,
+  );
+}
+
+/**
+ * M2C: the only supported entry point for running routed work from outside
+ * this module. Unlike `runRoutedAttempt`, this parameter type carries no
+ * `availability` and no `providerClasses` field — there is no reachable way
+ * to hand it a substitute table. It always resolves both tables from this
+ * module's own trusted constants (`DEFAULT_ROUTE_AVAILABILITY`,
+ * `DEFAULT_PROVIDER_CLASS_TABLE`).
+ *
+ * This is the same technique `resolveRoute`/`RESOLVED_ROUTES` uses to make a
+ * forged `AvailableRoute` unreachable: the unsafe path (an injectable table)
+ * simply does not exist on this call's type, rather than being a documented
+ * rule callers are trusted to follow. `runRoutedAttempt` stays exported with
+ * its injectable tables purely so the test suite can exercise both the
+ * availability gate and the clearance gate against fixtures without live
+ * provider state.
+ */
+export interface TrustedRoutedAttemptParams {
+  route: AvailableRoute;
+  goalId: string;
+  taskId: string;
+  now: string;
+  currentProvider: ProviderCandidate;
+  failoverCandidates?: readonly ProviderCandidate[];
+  isAsyncExpired?: boolean;
+  attempt: (provider: ProviderCandidate) => ProviderAttemptResult;
+  options?: GoalRouterStateOptions;
+  /** Mandatory here — unlike the pure function, there is no pre-M2C caller to stay compatible with. */
+  briefClearance: ProviderClass;
+  clearanceException?: ClearanceException;
+}
+
+export async function runTrustedRoutedAttempt(
+  params: TrustedRoutedAttemptParams,
+): Promise<RoutedAttemptResult> {
+  return runRoutedAttempt({
+    route: params.route,
+    goalId: params.goalId,
+    taskId: params.taskId,
+    now: params.now,
+    currentProvider: params.currentProvider,
+    failoverCandidates: params.failoverCandidates,
+    isAsyncExpired: params.isAsyncExpired,
+    attempt: params.attempt,
+    options: params.options,
+    briefClearance: params.briefClearance,
+    clearanceException: params.clearanceException,
+    availability: DEFAULT_ROUTE_AVAILABILITY,
+    providerClasses: DEFAULT_PROVIDER_CLASS_TABLE,
+  });
 }
