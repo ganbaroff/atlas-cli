@@ -48,7 +48,7 @@ function readAbsoluteOverride(envName: string): string | undefined {
   return normalize(value);
 }
 
-/** Initial migration registry; not a claim of complete runtime-store inventory. */
+/** Managed state-store registry; not a claim of complete runtime-store inventory. */
 export const STATE_STORES = {
   'exec-graph': 'ATLAS_EXEC_GRAPH_DIR',
   evidence: 'ATLAS_EVIDENCE_DIR',
@@ -58,6 +58,7 @@ export const STATE_STORES = {
   'operator-runs': undefined,
   'intake-drafts': undefined,
   'task-results': undefined,
+  'cost-router': undefined,
 } as const satisfies Readonly<Record<string, string | undefined>>;
 
 export type StateStore = keyof typeof STATE_STORES;

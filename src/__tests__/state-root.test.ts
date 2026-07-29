@@ -107,6 +107,13 @@ describe('atlas/state-root', () => {
       expect(resolveStateDir('swarm-runs')).toBe(join(homedir(), '.atlas', 'state', 'swarm-runs'));
     });
 
+    it('lands cost-router state under the shared state root', () => {
+      process.env.ATLAS_STATE_ROOT = ABSOLUTE_STATE_ROOT;
+      expect(resolveStateDir('cost-router')).toBe(
+        resolve(ABSOLUTE_STATE_ROOT, 'cost-router')
+      );
+    });
+
     it('the legacy per-store env var wins over ATLAS_STATE_ROOT', () => {
       process.env.ATLAS_STATE_ROOT = ABSOLUTE_STATE_ROOT;
       process.env.ATLAS_EXEC_GRAPH_DIR = ABSOLUTE_LEGACY_ROOT;
@@ -165,12 +172,13 @@ describe('atlas/state-root', () => {
       );
     });
 
-    it('names the eight stores in the initial migration registry', () => {
+    it('names the nine stores in the current migration registry', () => {
       expect(Object.keys(STATE_STORES).sort()).toEqual(
         [
           'exec-graph',
           'evidence',
           'goal-budgets',
+          'cost-router',
           'swarm-runs',
           'operator-state',
           'operator-runs',
