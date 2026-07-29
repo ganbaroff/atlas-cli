@@ -5,9 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   DEFAULT_PROVIDER_CLASS_TABLE,
+  DEFAULT_ROUTE_AVAILABILITY,
   isWeakerClass,
   resolveRoute,
-  runRoutedAttempt,
   runTrustedRoutedAttempt,
   signClearanceException,
   type ClearanceException,
@@ -16,6 +16,7 @@ import {
   type ProviderClass,
   type TrustedRoutedAttemptParams,
 } from '../atlas/cost-router-classify.js';
+import { withTrustedTables } from '../atlas/cost-router-test-seam.js';
 import { createGoalRouterRecord, loadGoalRouterRecord } from '../atlas/cost-router-state.js';
 
 const NOW = '2026-07-30T00:00:00.000Z';
@@ -72,21 +73,24 @@ describe('atlas/cost-router-classify: M2C destination-bound clearance', () => {
       const attempt = vi.fn().mockReturnValue({ ok: false, failure: { isTransportFailure: true } });
 
       await expect(
-        runRoutedAttempt({
-          route,
-          goalId,
-          taskId: 'task-clearance-failover-1',
-          now: NOW,
-          currentProvider: { providerId: 'keyed-1', tier: 'free' },
-          failoverCandidates: [{ providerId: 'weak-1', tier: 'cheap' }],
-          attempt,
-          options: { rootDir },
-          briefClearance: KEYED_SERVICE,
-          providerClasses: {
-            'keyed-1': KEYED_SERVICE,
-            'weak-1': IDENTITY_SESSION,
+        withTrustedTables(
+          {
+            availability: DEFAULT_ROUTE_AVAILABILITY,
+            providerClasses: { 'keyed-1': KEYED_SERVICE, 'weak-1': IDENTITY_SESSION },
           },
-        }),
+          () =>
+            runTrustedRoutedAttempt({
+              route,
+              goalId,
+              taskId: 'task-clearance-failover-1',
+              now: NOW,
+              currentProvider: { providerId: 'keyed-1', tier: 'free' },
+              failoverCandidates: [{ providerId: 'weak-1', tier: 'cheap' }],
+              attempt,
+              options: { rootDir },
+              briefClearance: KEYED_SERVICE,
+            }),
+        ),
       ).rejects.toMatchObject({ reason: 'destination_class_too_weak' });
 
       expect(attempt).toHaveBeenCalledTimes(2);
@@ -108,21 +112,27 @@ describe('atlas/cost-router-classify: M2C destination-bound clearance', () => {
         return { ok: true };
       });
 
-      const result = await runRoutedAttempt({
-        route,
-        goalId,
-        taskId: 'task-final-class-1',
-        now: NOW,
-        currentProvider: { providerId: 'sess-1', tier: 'free' },
-        failoverCandidates: [{ providerId: 'keyed-1', tier: 'cheap' }],
-        attempt,
-        options: { rootDir },
-        briefClearance: IDENTITY_SESSION,
-        providerClasses: {
-          'sess-1': IDENTITY_SESSION,
-          'keyed-1': KEYED_SERVICE, // strictly stronger than required, not "the original"
+      const result = await withTrustedTables(
+        {
+          availability: DEFAULT_ROUTE_AVAILABILITY,
+          providerClasses: {
+            'sess-1': IDENTITY_SESSION,
+            'keyed-1': KEYED_SERVICE, // strictly stronger than required, not "the original"
+          },
         },
-      });
+        () =>
+          runTrustedRoutedAttempt({
+            route,
+            goalId,
+            taskId: 'task-final-class-1',
+            now: NOW,
+            currentProvider: { providerId: 'sess-1', tier: 'free' },
+            failoverCandidates: [{ providerId: 'keyed-1', tier: 'cheap' }],
+            attempt,
+            options: { rootDir },
+            briefClearance: IDENTITY_SESSION,
+          }),
+      );
 
       expect(result.status).toBe('succeeded');
       expect(result.finalProviderId).toBe('keyed-1');
@@ -148,18 +158,24 @@ describe('atlas/cost-router-classify: M2C destination-bound clearance', () => {
         'test-fake-signing-key-not-real',
       );
 
-      const result = await runRoutedAttempt({
-        route,
-        goalId,
-        taskId: 'task-exception-1',
-        now: NOW,
-        currentProvider: { providerId: 'agentic-1', tier: 'cheap' },
-        attempt,
-        options: { rootDir },
-        briefClearance: KEYED_SERVICE,
-        providerClasses: { 'agentic-1': IDENTITY_UNBOUNDED_AGENTIC },
-        clearanceException: exception,
-      });
+      const result = await withTrustedTables(
+        {
+          availability: DEFAULT_ROUTE_AVAILABILITY,
+          providerClasses: { 'agentic-1': IDENTITY_UNBOUNDED_AGENTIC },
+        },
+        () =>
+          runTrustedRoutedAttempt({
+            route,
+            goalId,
+            taskId: 'task-exception-1',
+            now: NOW,
+            currentProvider: { providerId: 'agentic-1', tier: 'cheap' },
+            attempt,
+            options: { rootDir },
+            briefClearance: KEYED_SERVICE,
+            clearanceException: exception,
+          }),
+      );
 
       expect(result.status).toBe('succeeded');
       expect(attempt).toHaveBeenCalledTimes(1);
@@ -179,6 +195,10 @@ describe('atlas/cost-router-classify: M2C destination-bound clearance', () => {
       approvedBy: 'the-calling-code-itself',
       permittedClass: IDENTITY_UNBOUNDED_AGENTIC,
     };
+    const agenticTables = {
+      availability: DEFAULT_ROUTE_AVAILABILITY,
+      providerClasses: { 'agentic-1': IDENTITY_UNBOUNDED_AGENTIC },
+    };
 
     it('refuses an unsigned exception, even with a key configured, with its own named reason', async () => {
       vi.stubEnv('ATLAS_CLEARANCE_SIGNING_KEY', 'test-fake-signing-key-not-real');
@@ -189,18 +209,19 @@ describe('atlas/cost-router-classify: M2C destination-bound clearance', () => {
       const unsigned: ClearanceException = { ...baseFields };
 
       await expect(
-        runRoutedAttempt({
-          route,
-          goalId,
-          taskId: 'task-unsigned-1',
-          now: NOW,
-          currentProvider: { providerId: 'agentic-1', tier: 'cheap' },
-          attempt,
-          options: { rootDir },
-          briefClearance: KEYED_SERVICE,
-          providerClasses: { 'agentic-1': IDENTITY_UNBOUNDED_AGENTIC },
-          clearanceException: unsigned,
-        }),
+        withTrustedTables(agenticTables, () =>
+          runTrustedRoutedAttempt({
+            route,
+            goalId,
+            taskId: 'task-unsigned-1',
+            now: NOW,
+            currentProvider: { providerId: 'agentic-1', tier: 'cheap' },
+            attempt,
+            options: { rootDir },
+            briefClearance: KEYED_SERVICE,
+            clearanceException: unsigned,
+          }),
+        ),
       ).rejects.toMatchObject({ reason: 'exception_unsigned' });
       expect(attempt).not.toHaveBeenCalled();
     });
@@ -215,18 +236,19 @@ describe('atlas/cost-router-classify: M2C destination-bound clearance', () => {
       const tampered: ClearanceException = { ...signed, approvedBy: 'a-different-approver' };
 
       await expect(
-        runRoutedAttempt({
-          route,
-          goalId,
-          taskId: 'task-missigned-1',
-          now: NOW,
-          currentProvider: { providerId: 'agentic-1', tier: 'cheap' },
-          attempt,
-          options: { rootDir },
-          briefClearance: KEYED_SERVICE,
-          providerClasses: { 'agentic-1': IDENTITY_UNBOUNDED_AGENTIC },
-          clearanceException: tampered,
-        }),
+        withTrustedTables(agenticTables, () =>
+          runTrustedRoutedAttempt({
+            route,
+            goalId,
+            taskId: 'task-missigned-1',
+            now: NOW,
+            currentProvider: { providerId: 'agentic-1', tier: 'cheap' },
+            attempt,
+            options: { rootDir },
+            briefClearance: KEYED_SERVICE,
+            clearanceException: tampered,
+          }),
+        ),
       ).rejects.toMatchObject({ reason: 'exception_signature_mismatch' });
       expect(attempt).not.toHaveBeenCalled();
     });
@@ -239,34 +261,36 @@ describe('atlas/cost-router-classify: M2C destination-bound clearance', () => {
       const signed = signClearanceException(baseFields, 'test-fake-signing-key-not-real');
 
       const routeFirst = resolveRoute({ taskId: 'task-replay-1', needsLocalWorker: true });
-      const first = await runRoutedAttempt({
-        route: routeFirst,
-        goalId,
-        taskId: 'task-replay-1',
-        now: NOW,
-        currentProvider: { providerId: 'agentic-1', tier: 'cheap' },
-        attempt,
-        options: { rootDir },
-        briefClearance: KEYED_SERVICE,
-        providerClasses: { 'agentic-1': IDENTITY_UNBOUNDED_AGENTIC },
-        clearanceException: signed,
-      });
-      expect(first.status).toBe('succeeded');
-
-      const routeSecond = resolveRoute({ taskId: 'task-replay-2', needsLocalWorker: true });
-      await expect(
-        runRoutedAttempt({
-          route: routeSecond,
+      const first = await withTrustedTables(agenticTables, () =>
+        runTrustedRoutedAttempt({
+          route: routeFirst,
           goalId,
-          taskId: 'task-replay-2',
+          taskId: 'task-replay-1',
           now: NOW,
           currentProvider: { providerId: 'agentic-1', tier: 'cheap' },
           attempt,
           options: { rootDir },
           briefClearance: KEYED_SERVICE,
-          providerClasses: { 'agentic-1': IDENTITY_UNBOUNDED_AGENTIC },
           clearanceException: signed,
         }),
+      );
+      expect(first.status).toBe('succeeded');
+
+      const routeSecond = resolveRoute({ taskId: 'task-replay-2', needsLocalWorker: true });
+      await expect(
+        withTrustedTables(agenticTables, () =>
+          runTrustedRoutedAttempt({
+            route: routeSecond,
+            goalId,
+            taskId: 'task-replay-2',
+            now: NOW,
+            currentProvider: { providerId: 'agentic-1', tier: 'cheap' },
+            attempt,
+            options: { rootDir },
+            briefClearance: KEYED_SERVICE,
+            clearanceException: signed,
+          }),
+        ),
       ).rejects.toMatchObject({ reason: 'exception_signature_replayed' });
       expect(attempt).toHaveBeenCalledTimes(1);
     });
@@ -284,46 +308,61 @@ describe('atlas/cost-router-classify: M2C destination-bound clearance', () => {
       };
 
       await expect(
-        runRoutedAttempt({
-          route,
-          goalId,
-          taskId: 'task-nokey-1',
-          now: NOW,
-          currentProvider: { providerId: 'agentic-1', tier: 'cheap' },
-          attempt,
-          options: { rootDir },
-          briefClearance: KEYED_SERVICE,
-          providerClasses: { 'agentic-1': IDENTITY_UNBOUNDED_AGENTIC },
-          clearanceException: unverifiable,
-        }),
+        withTrustedTables(agenticTables, () =>
+          runTrustedRoutedAttempt({
+            route,
+            goalId,
+            taskId: 'task-nokey-1',
+            now: NOW,
+            currentProvider: { providerId: 'agentic-1', tier: 'cheap' },
+            attempt,
+            options: { rootDir },
+            briefClearance: KEYED_SERVICE,
+            clearanceException: unverifiable,
+          }),
+        ),
       ).rejects.toMatchObject({ reason: 'exception_signing_key_not_configured' });
       expect(attempt).not.toHaveBeenCalled();
     });
   });
 
-  describe('M2C repair: the injectable-table entry point is test-only, enforced not conventional', () => {
-    it('refuses the forged-availability attack that previously entered disabled route T1, when the entry point is called outside a Vitest runtime', async () => {
+  describe('M2C repair, third refutation: the injectable-table entry point no longer exists on the public module', () => {
+    it('exports no runRoutedAttempt from cost-router-classify.ts', async () => {
+      const moduleExports: Record<string, unknown> = await import('../atlas/cost-router-classify.js');
+      expect(Object.keys(moduleExports)).not.toContain('runRoutedAttempt');
+    });
+
+    it('refuses the previously-successful forged-availability attack (which entered disabled route T1) even with VITEST=true and a cast that smuggles an availability field onto the trusted params', async () => {
       const goalId = 'goal-testonly-seam';
       await createGoalRouterRecord(goalId, NOW, { rootDir });
       const forgedAvailability = { T0: true, T1: true, T2: true, T3: true };
+      // Minting against the forged table only proves resolveRoute is pure
+      // and does what it's told; the question is whether that forgery can
+      // reach the tables runTrustedRoutedAttempt actually enforces with.
       const route = resolveRoute({ taskId: 'task-testonly-seam-1', needsWebResearch: true }, forgedAvailability);
       const attempt = vi.fn().mockReturnValue({ ok: true });
 
       const priorVitestFlag = process.env['VITEST'];
-      delete process.env['VITEST'];
+      // Set the exact flag the earlier (now-removed) repair trusted, to
+      // prove the fix does not depend on this variable one way or another.
+      process.env['VITEST'] = 'true';
       try {
-        await expect(
-          runRoutedAttempt({
-            route,
-            goalId,
-            taskId: 'task-testonly-seam-1',
-            now: NOW,
-            currentProvider: { providerId: 'sneaky-1', tier: 'free' },
-            attempt,
-            options: { rootDir },
-            availability: forgedAvailability,
-          }),
-        ).rejects.toMatchObject({ reason: 'test_only_entry_point' });
+        const smuggled = {
+          route,
+          goalId,
+          taskId: 'task-testonly-seam-1',
+          now: NOW,
+          currentProvider: { providerId: 'sneaky-1', tier: 'free' as const },
+          attempt,
+          options: { rootDir },
+          briefClearance: KEYED_SERVICE,
+          // TrustedRoutedAttemptParams declares no `availability` field;
+          // only a cast can attach one, and runTrustedRoutedAttempt never
+          // reads an unknown property off its params object.
+          availability: forgedAvailability,
+        } as unknown as TrustedRoutedAttemptParams;
+
+        await expect(runTrustedRoutedAttempt(smuggled)).rejects.toMatchObject({ reason: 'route_disabled' });
       } finally {
         if (priorVitestFlag === undefined) {
           delete process.env['VITEST'];
@@ -354,8 +393,9 @@ describe('atlas/cost-router-classify: M2C destination-bound clearance', () => {
         attempt,
         options: { rootDir },
         briefClearance: KEYED_SERVICE,
-        // TrustedRoutedAttemptParams declares no such fields; this proves the
-        // parameter is simply not reachable through the supported entry point.
+        // TrustedRoutedAttemptParams declares no such fields; this proves
+        // the parameter is simply not reachable through the supported
+        // entry point.
         availability: forgedAvailability,
         providerClasses: forgedProviderClasses,
       } as unknown as TrustedRoutedAttemptParams;
@@ -386,28 +426,6 @@ describe('atlas/cost-router-classify: M2C destination-bound clearance', () => {
 
       expect(result.status).toBe('succeeded');
       expect(result.finalProviderClass).toEqual(DEFAULT_PROVIDER_CLASS_TABLE[trustedProviderId]);
-    });
-  });
-
-  describe('backward compatibility: no clearance regime declared', () => {
-    it('behaves exactly as before M2C when briefClearance is not set', async () => {
-      const goalId = 'goal-clearance-optional';
-      await createGoalRouterRecord(goalId, NOW, { rootDir });
-      const route = resolveRoute({ taskId: 'task-optional-1', needsLocalWorker: true });
-      const attempt = vi.fn().mockReturnValue({ ok: true });
-
-      const result = await runRoutedAttempt({
-        route,
-        goalId,
-        taskId: 'task-optional-1',
-        now: NOW,
-        currentProvider: { providerId: 'whatever-1', tier: 'free' },
-        attempt,
-        options: { rootDir },
-      });
-
-      expect(result.status).toBe('succeeded');
-      expect(result.finalProviderClass).toBeUndefined();
     });
   });
 });

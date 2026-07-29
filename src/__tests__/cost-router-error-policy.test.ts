@@ -6,17 +6,41 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   classifyFailure,
   DEFAULT_ROUTE_AVAILABILITY,
+  resolveRoute,
+  runTrustedRoutedAttempt,
+  selectFailoverProvider,
   type AvailableRoute,
   type ProviderAttemptResult,
   type ProviderCandidate,
+  type ProviderClass,
   type RouteAvailability,
-  resolveRoute,
-  runRoutedAttempt,
-  selectFailoverProvider,
 } from '../atlas/cost-router-classify.js';
+import { withTrustedTables } from '../atlas/cost-router-test-seam.js';
 import { createGoalRouterRecord } from '../atlas/cost-router-state.js';
 
 const NOW = '2026-07-30T00:00:00.000Z';
+
+/**
+ * Every gate in this file is about availability/error-bucket/retry
+ * behaviour, never clearance — so every provider used here gets the
+ * identical, strongest-possible declared class. `isWeakerClass` is then
+ * always false between any two of them, which keeps the M2C clearance gate
+ * a no-op throughout and lets each test isolate the one gate it names.
+ */
+const STRONG_CLASS: ProviderClass = Object.freeze({
+  identityBearing: false,
+  retentionTerm: 'none',
+  canActBeyondBrief: false,
+});
+
+function trustedTables(
+  providerIds: readonly string[],
+  availability: RouteAvailability = DEFAULT_ROUTE_AVAILABILITY,
+): { availability: RouteAvailability; providerClasses: Record<string, ProviderClass> } {
+  const providerClasses: Record<string, ProviderClass> = {};
+  for (const id of providerIds) providerClasses[id] = STRONG_CLASS;
+  return { availability, providerClasses };
+}
 
 describe('atlas/cost-router-classify: M2B error buckets and availability enforcement', () => {
   let sandboxDir: string;
@@ -48,15 +72,18 @@ describe('atlas/cost-router-classify: M2B error buckets and availability enforce
       const route = resolveRoute({ taskId: 'task-denial-1', needsLocalWorker: true });
       const attempt = vi.fn().mockReturnValue({ ok: false, failure: { isDenial: true } });
 
-      const result = await runRoutedAttempt({
-        route,
-        goalId,
-        taskId: 'task-denial-1',
-        now: NOW,
-        currentProvider: { providerId: 'p1', tier: 'free' },
-        attempt,
-        options: { rootDir },
-      });
+      const result = await withTrustedTables(trustedTables(['p1']), () =>
+        runTrustedRoutedAttempt({
+          route,
+          goalId,
+          taskId: 'task-denial-1',
+          now: NOW,
+          currentProvider: { providerId: 'p1', tier: 'free' },
+          attempt,
+          options: { rootDir },
+          briefClearance: STRONG_CLASS,
+        }),
+      );
 
       expect(result.status).toBe('failed');
       expect(result.bucket).toBe('denial');
@@ -78,19 +105,22 @@ describe('atlas/cost-router-classify: M2B error buckets and availability enforce
         return { ok: true };
       });
 
-      const result = await runRoutedAttempt({
-        route,
-        goalId,
-        taskId: 'task-transport-1',
-        now: NOW,
-        currentProvider: { providerId: 'p1', tier: 'free' },
-        failoverCandidates: [
-          { providerId: 'premium-1', tier: 'premium' },
-          { providerId: 'cheap-1', tier: 'cheap' },
-        ],
-        attempt,
-        options: { rootDir },
-      });
+      const result = await withTrustedTables(trustedTables(['p1', 'cheap-1']), () =>
+        runTrustedRoutedAttempt({
+          route,
+          goalId,
+          taskId: 'task-transport-1',
+          now: NOW,
+          currentProvider: { providerId: 'p1', tier: 'free' },
+          failoverCandidates: [
+            { providerId: 'premium-1', tier: 'premium' },
+            { providerId: 'cheap-1', tier: 'cheap' },
+          ],
+          attempt,
+          options: { rootDir },
+          briefClearance: STRONG_CLASS,
+        }),
+      );
 
       expect(result.status).toBe('succeeded');
       expect(result.callsByProvider).toEqual({ p1: 2, 'cheap-1': 1 });
@@ -106,16 +136,19 @@ describe('atlas/cost-router-classify: M2B error buckets and availability enforce
       const route = resolveRoute({ taskId: 'task-unknown-1', needsLocalWorker: true });
       const attempt = vi.fn().mockReturnValue({ ok: false, failure: {} });
 
-      const result = await runRoutedAttempt({
-        route,
-        goalId,
-        taskId: 'task-unknown-1',
-        now: NOW,
-        currentProvider: { providerId: 'p1', tier: 'free' },
-        failoverCandidates: [{ providerId: 'cheap-1', tier: 'cheap' }],
-        attempt,
-        options: { rootDir },
-      });
+      const result = await withTrustedTables(trustedTables(['p1', 'cheap-1']), () =>
+        runTrustedRoutedAttempt({
+          route,
+          goalId,
+          taskId: 'task-unknown-1',
+          now: NOW,
+          currentProvider: { providerId: 'p1', tier: 'free' },
+          failoverCandidates: [{ providerId: 'cheap-1', tier: 'cheap' }],
+          attempt,
+          options: { rootDir },
+          briefClearance: STRONG_CLASS,
+        }),
+      );
 
       expect(result.bucket).toBe('unknown');
       expect(result.status).toBe('failed');
@@ -129,7 +162,7 @@ describe('atlas/cost-router-classify: M2B error buckets and availability enforce
       const route = resolveRoute({ taskId: 'task-async-1', needsLocalWorker: true });
       const attempt = vi.fn();
 
-      const result = await runRoutedAttempt({
+      const result = await runTrustedRoutedAttempt({
         route,
         goalId: 'goal-async-unused',
         taskId: 'task-async-1',
@@ -137,6 +170,7 @@ describe('atlas/cost-router-classify: M2B error buckets and availability enforce
         currentProvider: { providerId: 'p1', tier: 'free' },
         isAsyncExpired: true,
         attempt,
+        briefClearance: STRONG_CLASS,
       });
 
       expect(result.status).toBe('failed');
@@ -153,16 +187,19 @@ describe('atlas/cost-router-classify: M2B error buckets and availability enforce
       const route = resolveRoute({ taskId: 'task-premium-only-1', needsLocalWorker: true });
       const attempt = vi.fn().mockReturnValue({ ok: false, failure: { isTransportFailure: true } });
 
-      const result = await runRoutedAttempt({
-        route,
-        goalId,
-        taskId: 'task-premium-only-1',
-        now: NOW,
-        currentProvider: { providerId: 'p1', tier: 'free' },
-        failoverCandidates: [{ providerId: 'premium-1', tier: 'premium' }],
-        attempt,
-        options: { rootDir },
-      });
+      const result = await withTrustedTables(trustedTables(['p1']), () =>
+        runTrustedRoutedAttempt({
+          route,
+          goalId,
+          taskId: 'task-premium-only-1',
+          now: NOW,
+          currentProvider: { providerId: 'p1', tier: 'free' },
+          failoverCandidates: [{ providerId: 'premium-1', tier: 'premium' }],
+          attempt,
+          options: { rootDir },
+          briefClearance: STRONG_CLASS,
+        }),
+      );
 
       expect(result.status).toBe('failed');
       expect(result.bucket).toBe('transport');
@@ -178,13 +215,14 @@ describe('atlas/cost-router-classify: M2B error buckets and availability enforce
       const attempt = vi.fn();
 
       await expect(
-        runRoutedAttempt({
+        runTrustedRoutedAttempt({
           route: forged,
           goalId: 'goal-forged',
           taskId: 'task-forged-1',
           now: NOW,
           currentProvider: { providerId: 'p1', tier: 'free' },
           attempt,
+          briefClearance: STRONG_CLASS,
         }),
       ).rejects.toMatchObject({ reason: 'availability_not_checked' });
 
@@ -213,7 +251,7 @@ describe('atlas/cost-router-classify: M2B error buckets and availability enforce
 
       const attempt = vi.fn();
       await expect(
-        runRoutedAttempt({
+        runTrustedRoutedAttempt({
           route: forged,
           goalId,
           taskId: 'task-forge-spread-1',
@@ -221,6 +259,7 @@ describe('atlas/cost-router-classify: M2B error buckets and availability enforce
           currentProvider: { providerId: 'p1', tier: 'free' },
           attempt,
           options: { rootDir },
+          briefClearance: STRONG_CLASS,
         }),
       ).rejects.toMatchObject({ reason: 'availability_not_checked' });
 
@@ -240,7 +279,7 @@ describe('atlas/cost-router-classify: M2B error buckets and availability enforce
 
       const attempt = vi.fn();
       await expect(
-        runRoutedAttempt({
+        runTrustedRoutedAttempt({
           route: forged,
           goalId,
           taskId: 'task-forge-assign-1',
@@ -248,6 +287,7 @@ describe('atlas/cost-router-classify: M2B error buckets and availability enforce
           currentProvider: { providerId: 'p1', tier: 'free' },
           attempt,
           options: { rootDir },
+          briefClearance: STRONG_CLASS,
         }),
       ).rejects.toMatchObject({ reason: 'availability_not_checked' });
 
@@ -263,7 +303,7 @@ describe('atlas/cost-router-classify: M2B error buckets and availability enforce
 
       const attempt = vi.fn();
       await expect(
-        runRoutedAttempt({
+        runTrustedRoutedAttempt({
           route: cloned,
           goalId,
           taskId: 'task-clone-1',
@@ -271,6 +311,7 @@ describe('atlas/cost-router-classify: M2B error buckets and availability enforce
           currentProvider: { providerId: 'p1', tier: 'free' },
           attempt,
           options: { rootDir },
+          briefClearance: STRONG_CLASS,
         }),
       ).rejects.toMatchObject({ reason: 'availability_not_checked' });
 
@@ -290,16 +331,18 @@ describe('atlas/cost-router-classify: M2B error buckets and availability enforce
 
       const attempt = vi.fn();
       await expect(
-        runRoutedAttempt({
-          route: real,
-          goalId,
-          taskId: 'task-flip-1',
-          now: NOW,
-          currentProvider: { providerId: 'p1', tier: 'free' },
-          attempt,
-          options: { rootDir },
-          availability: flipped,
-        }),
+        withTrustedTables(trustedTables(['p1'], flipped), () =>
+          runTrustedRoutedAttempt({
+            route: real,
+            goalId,
+            taskId: 'task-flip-1',
+            now: NOW,
+            currentProvider: { providerId: 'p1', tier: 'free' },
+            attempt,
+            options: { rootDir },
+            briefClearance: STRONG_CLASS,
+          }),
+        ),
       ).rejects.toMatchObject({ reason: 'route_disabled' });
 
       expect(attempt).not.toHaveBeenCalled();
@@ -311,18 +354,39 @@ describe('atlas/cost-router-classify: M2B error buckets and availability enforce
       const route = resolveRoute({ taskId: 'task-happy-repair-1', deterministicTool: 'echo' });
       const attempt = vi.fn().mockReturnValue({ ok: true });
 
-      const result = await runRoutedAttempt({
-        route,
-        goalId,
-        taskId: 'task-happy-repair-1',
-        now: NOW,
-        currentProvider: { providerId: 'p1', tier: 'free' },
-        attempt,
-        options: { rootDir },
-      });
+      const result = await withTrustedTables(trustedTables(['p1']), () =>
+        runTrustedRoutedAttempt({
+          route,
+          goalId,
+          taskId: 'task-happy-repair-1',
+          now: NOW,
+          currentProvider: { providerId: 'p1', tier: 'free' },
+          attempt,
+          options: { rootDir },
+          briefClearance: STRONG_CLASS,
+        }),
+      );
 
       expect(result.status).toBe('succeeded');
       expect(attempt).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('M2C repair, third refutation: the public module exports no injectable-table entry point', () => {
+    it('does not export runRoutedAttempt, RunRoutedAttemptParams, or any equivalent injectable-table entry from cost-router-classify.ts', async () => {
+      const moduleExports: Record<string, unknown> = await import('../atlas/cost-router-classify.js');
+      const exportedNames = Object.keys(moduleExports);
+
+      expect(exportedNames).not.toContain('runRoutedAttempt');
+      // RunRoutedAttemptParams is a type-only export, so it can never
+      // appear as a runtime key regardless of this check — the assertion
+      // above is the real mechanical control. This also rules out a
+      // renamed sibling reintroducing the same hole under another name.
+      const suspiciousNames = exportedNames.filter((name) =>
+        /injectable|withavailability|withproviderclasses|unsaferouted|routedattempt$/i.test(name) &&
+        name !== 'runTrustedRoutedAttempt',
+      );
+      expect(suspiciousNames).toEqual([]);
     });
   });
 });

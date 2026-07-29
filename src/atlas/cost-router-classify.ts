@@ -31,6 +31,7 @@ import {
 } from './cost-router-state.js';
 import { createNonceLedger, type NonceLedger } from './queue-auth.js';
 import { resolveStateDir } from './state-root.js';
+import { resolveTrustedTables } from './cost-router-test-seam.js';
 
 export type RouteTier = 'T0' | 'T1' | 'T2' | 'T3';
 
@@ -72,11 +73,7 @@ export type RouteRefusalReason =
   | 'route_disabled'
   /** M2B: a value claiming to be an `AvailableRoute` never actually passed
    *  through `resolveRoute`'s availability check (brand missing/forged). */
-  | 'availability_not_checked'
-  /** M2C repair: `runRoutedAttempt`'s injectable-table entry point was called
-   *  outside a Vitest runtime — the only legitimate caller is this module's
-   *  own test suite. Production code must use `runTrustedRoutedAttempt`. */
-  | 'test_only_entry_point';
+  | 'availability_not_checked';
 
 export class RouteRefusalError extends Error {
   constructor(
@@ -600,7 +597,7 @@ export function assertDestinationClearance(
   );
 }
 
-/** Table of providerId -> declared ProviderClass, consulted by `runRoutedAttempt`. */
+/** Table of providerId -> declared ProviderClass, consulted internally when resolving a routed attempt. */
 export type ProviderClassTable = Readonly<Record<string, ProviderClass>>;
 
 /**
@@ -625,7 +622,16 @@ export const DEFAULT_PROVIDER_CLASS_TABLE: ProviderClassTable = Object.freeze({
 
 export type ProviderAttemptResult = { ok: true } | { ok: false; failure: FailureInput };
 
-export interface RunRoutedAttemptParams {
+/**
+ * M2C repair, third refutation: not exported. The only caller that
+ * constructs one is `runTrustedRoutedAttempt` below, which always resolves
+ * `availability`/`providerClasses` through `resolveTrustedTables()`
+ * (`cost-router-test-seam.ts`) before calling in — both fields are
+ * mandatory here because there is no longer a caller that would need them
+ * optional. There is no reachable path from outside this module to this
+ * type at all.
+ */
+interface RouteAttemptExecutionParams {
   /** Must come from `resolveRoute` — see `assertRouteAvailabilityChecked`. */
   route: AvailableRoute;
   goalId: string;
@@ -644,30 +650,22 @@ export interface RunRoutedAttemptParams {
    * provider call, even for a genuinely branded `route`. A carried
    * `AvailableRoute` token alone is not trusted forever — availability can
    * change between `resolveRoute` and this call, so this call re-validates
-   * live rather than replaying a stale grant. Defaults to the same table
-   * `resolveRoute` defaults to.
+   * live rather than replaying a stale grant. Always the value
+   * `runTrustedRoutedAttempt` resolved via `resolveTrustedTables()`.
    */
-  availability?: RouteAvailability;
-  /**
-   * M2C: the provider class this brief is cleared for. Optional so pre-M2C
-   * callers (and the existing test suite) keep working unchanged — when
-   * omitted, no clearance check runs at all. Production code should not set
-   * this directly; use `runTrustedRoutedAttempt`, which requires it.
-   */
+  availability: RouteAvailability;
+  /** M2C: the provider class this brief is cleared for. */
   briefClearance?: ProviderClass;
   /**
    * M2C: table resolving providerId -> declared ProviderClass, consulted
-   * only when `briefClearance` is set. Defaults to this module's own
-   * `DEFAULT_PROVIDER_CLASS_TABLE`. M2C repair: this parameter — and
-   * `availability` above — is the injectable-table hole an independent
-   * review found reachable by any outside importer of `runRoutedAttempt`.
-   * The fix is not a comment or a naming convention: `runRoutedAttempt`
-   * itself now refuses to run outside a Vitest runtime (see the guard at
-   * the top of its body), so this parameter is only ever live during the
-   * test suite. `runTrustedRoutedAttempt` has no such parameter at all and
-   * carries no such guard — it is the real production entry point.
+   * only when `briefClearance` is set. Always the value
+   * `runTrustedRoutedAttempt` resolved via `resolveTrustedTables()` — the
+   * only way to make this anything other than
+   * `DEFAULT_PROVIDER_CLASS_TABLE` is `withTrustedTables()` in
+   * `cost-router-test-seam.ts`, reachable only by a caller that imports
+   * that file directly, never by a caller that imports only this module.
    */
-  providerClasses?: ProviderClassTable;
+  providerClasses: ProviderClassTable;
   /** M2C: explicit operator exception permitting a specific weaker class for this send. */
   clearanceException?: ClearanceException;
 }
@@ -688,12 +686,17 @@ export interface RoutedAttemptResult {
 }
 
 /**
- * The only supported way to spend a provider attempt against a resolved
- * route. Requires an `AvailableRoute` (unreachable except via
- * `resolveRoute`), classifies any failure into exactly one bucket via
- * `classifyFailure`, and applies the bucket's retry rule against the M1
- * durable retry ledger (`recordRetryEvent`) rather than a second,
- * parallel counter:
+ * M2C repair, third refutation: the only implementation that spends a
+ * provider attempt against a resolved route. Not exported — its sole
+ * caller is `runTrustedRoutedAttempt` below, which always resolves
+ * `availability`/`providerClasses` through `resolveTrustedTables()`
+ * (`cost-router-test-seam.ts`) before calling in, so there is no parameter
+ * on any exported function through which a caller could hand this
+ * mandatory table pair a substitute. Requires an `AvailableRoute`
+ * (unreachable except via `resolveRoute`), classifies any failure into
+ * exactly one bucket via `classifyFailure`, and applies the bucket's retry
+ * rule against the M1 durable retry ledger (`recordRetryEvent`) rather than
+ * a second, parallel counter:
  *
  *  - `denial` / `unknown`  -> one attempt, zero retries, ledger `denial`.
  *  - `async-expired`       -> zero provider calls, no ledger write.
@@ -703,31 +706,16 @@ export interface RoutedAttemptResult {
  *                             `provider_failover`). No premium failover, no
  *                             third attempt on any provider.
  */
-export async function runRoutedAttempt(
-  params: RunRoutedAttemptParams,
+async function executeRoutedAttempt(
+  params: RouteAttemptExecutionParams,
 ): Promise<RoutedAttemptResult> {
-  // M2C repair: this is the injectable-table entry point an independent
-  // review found reachable by any outside importer (forge an availability
-  // table, enter a disabled route, no refusal). Production code has no
-  // legitimate reason to call this function — it must go through
-  // `runTrustedRoutedAttempt`. This is an enforced control, not a naming
-  // convention: outside a Vitest runtime, every call refuses before doing
-  // anything else, closing the back door the earlier review found.
-  if (process.env['VITEST'] !== 'true') {
-    throw new RouteRefusalError(
-      'test_only_entry_point',
-      params.route?.route,
-      'runRoutedAttempt is test-only (requires a Vitest runtime); production code must use runTrustedRoutedAttempt',
-    );
-  }
-
   assertRouteAvailabilityChecked(params.route);
   // Defence-in-depth #2: re-check live availability even for a genuinely
   // branded route, so a token minted before an availability change cannot
   // be replayed to spend a provider call after the route was disabled.
-  checkRouteAvailability(params.route.route, params.availability ?? DEFAULT_ROUTE_AVAILABILITY);
+  checkRouteAvailability(params.route.route, params.availability);
 
-  const providerClasses = params.providerClasses ?? DEFAULT_PROVIDER_CLASS_TABLE;
+  const providerClasses = params.providerClasses;
   const classOf = (provider: ProviderCandidate): ProviderClass | undefined =>
     providerClasses[provider.providerId];
 
@@ -877,20 +865,30 @@ export async function runRoutedAttempt(
 
 /**
  * M2C: the only supported entry point for running routed work from outside
- * this module. Unlike `runRoutedAttempt`, this parameter type carries no
- * `availability` and no `providerClasses` field — there is no reachable way
- * to hand it a substitute table. It always resolves both tables from this
- * module's own trusted constants (`DEFAULT_ROUTE_AVAILABILITY`,
- * `DEFAULT_PROVIDER_CLASS_TABLE`).
+ * this module — and, after the third M2C repair, the only exported
+ * function in this module that can spend a provider attempt at all. This
+ * parameter type carries no `availability` and no `providerClasses` field —
+ * there is no reachable way to hand it a substitute table.
  *
  * This is the same technique `resolveRoute`/`RESOLVED_ROUTES` uses to make a
  * forged `AvailableRoute` unreachable: the unsafe path (an injectable table)
  * simply does not exist on this call's type, rather than being a documented
- * rule callers are trusted to follow. `runRoutedAttempt` stays exported with
- * its injectable tables so the test suite can exercise both the
- * availability gate and the clearance gate against fixtures without live
- * provider state — but that reachability is now enforced, not just named:
- * see the Vitest-runtime guard at the top of `runRoutedAttempt`'s body.
+ * rule callers are trusted to follow. Two earlier attempts at this same fix
+ * kept an injectable-table entry point exported anyway — first behind a
+ * comment, then behind a `process.env.VITEST === 'true'` runtime check —
+ * and both were refuted: a comment enforces nothing, and an environment
+ * variable is caller-controlled data a plain script can set on itself, not
+ * an authenticated signal. This repair removes that entry point from the
+ * module's exports entirely (see `executeRoutedAttempt` above, which is not
+ * exported). The tables this function resolves come from
+ * `resolveTrustedTables()` in `cost-router-test-seam.ts` — the only
+ * function that can make that resolution return anything other than this
+ * module's own `DEFAULT_ROUTE_AVAILABILITY` / `DEFAULT_PROVIDER_CLASS_TABLE`
+ * is `withTrustedTables()`, exported only from that seam file, which this
+ * module does not import or re-export. A caller that imports only
+ * `cost-router-classify.ts` — the entire public surface — has no path to an
+ * injectable table: not a parameter, not an environment variable, not a
+ * cast.
  */
 export interface TrustedRoutedAttemptParams {
   route: AvailableRoute;
@@ -910,7 +908,11 @@ export interface TrustedRoutedAttemptParams {
 export async function runTrustedRoutedAttempt(
   params: TrustedRoutedAttemptParams,
 ): Promise<RoutedAttemptResult> {
-  return runRoutedAttempt({
+  const { availability, providerClasses } = resolveTrustedTables({
+    availability: DEFAULT_ROUTE_AVAILABILITY,
+    providerClasses: DEFAULT_PROVIDER_CLASS_TABLE,
+  });
+  return executeRoutedAttempt({
     route: params.route,
     goalId: params.goalId,
     taskId: params.taskId,
@@ -922,7 +924,7 @@ export async function runTrustedRoutedAttempt(
     options: params.options,
     briefClearance: params.briefClearance,
     clearanceException: params.clearanceException,
-    availability: DEFAULT_ROUTE_AVAILABILITY,
-    providerClasses: DEFAULT_PROVIDER_CLASS_TABLE,
+    availability,
+    providerClasses,
   });
 }
