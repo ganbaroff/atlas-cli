@@ -52,6 +52,7 @@ export const asyncResearchHandleSchema = z.object({
   submittedAt: timestampSchema,
   expiresAt: timestampSchema,
   nextResumeAt: timestampSchema,
+  resumeClaimedAt: timestampSchema.optional(),
   inspectionCount: nonNegativeIntegerSchema,
   maxInspections: nonNegativeIntegerSchema,
   outputRef: z.string().min(1),
@@ -168,6 +169,14 @@ export const durableGoalRouterRecordSchema = z.object({
       Date.parse(handle.nextResumeAt) < Date.parse(handle.submittedAt) ||
       Date.parse(handle.nextResumeAt) > Date.parse(handle.expiresAt) ||
       Date.parse(handle.expiresAt) <= Date.parse(handle.submittedAt) ||
+      (
+        handle.resumeClaimedAt !== undefined &&
+        (
+          Date.parse(handle.resumeClaimedAt) < Date.parse(handle.nextResumeAt) ||
+          Date.parse(handle.resumeClaimedAt) > Date.parse(handle.expiresAt) ||
+          handle.inspectionCount < 1
+        )
+      ) ||
       handle.inspectionCount > handle.maxInspections ||
       handle.maxInspections < 1
     ) {
@@ -211,6 +220,9 @@ export type GoalRouterStateErrorCode =
   | 'async_handle_exists'
   | 'async_handle_expired'
   | 'goal_research_budget_exhausted'
+  | 'async_resume_not_scheduled'
+  | 'async_resume_not_due'
+  | 'async_resume_already_claimed'
   | 'goal_local_slice_budget_exhausted'
   | 'task_id_invalid'
   | 'retry_event_invalid'
@@ -593,6 +605,7 @@ export async function registerAsyncResearchHandle(
     submittedAt > observedAt ||
     nextResumeAt < submittedAt ||
     nextResumeAt > expiresAt ||
+    handle.resumeClaimedAt !== undefined ||
     handle.maxInspections < 1 ||
     (handle.state !== 'submitted' && handle.state !== 'scheduled')
   ) {
@@ -642,6 +655,144 @@ export async function registerAsyncResearchHandle(
       ],
     };
   });
+}
+
+export type AsyncResumeClaimResult =
+  | {
+      status: 'claimed';
+      handle: AsyncResearchHandle;
+      record: DurableGoalRouterRecord;
+    }
+  | {
+      status: 'async_expired';
+      reason: 'unknown' | 'expired' | 'inspection_budget_exhausted';
+      handleId: string;
+      record: DurableGoalRouterRecord;
+    };
+
+export async function claimScheduledAsyncResume(
+  goalId: string,
+  handleId: string,
+  now: string,
+  options?: GoalRouterStateOptions,
+): Promise<AsyncResumeClaimResult> {
+  assertTimestamp(now);
+  if (!handleId.trim()) {
+    throw new GoalRouterStateError(
+      'async_handle_invalid',
+      'asynchronous handle id must not be empty'
+    );
+  }
+
+  const path = resolveGoalPath(goalId, options);
+  return withGoalLock(path, () => {
+    const current = readRecordAtPath(path, goalId);
+    const handleIndex = current.openAsyncHandles.findIndex(
+      (candidate) => candidate.handleId === handleId
+    );
+    if (handleIndex < 0) {
+      return {
+        status: 'async_expired' as const,
+        reason: 'unknown' as const,
+        handleId,
+        record: current,
+      };
+    }
+
+    const handle = current.openAsyncHandles[handleIndex];
+    const persistTerminal = (
+      state: 'expired' | 'failed',
+      reason: 'expired' | 'inspection_budget_exhausted',
+    ): AsyncResumeClaimResult => {
+      if (handle.state === state) {
+        return {
+          status: 'async_expired',
+          reason,
+          handleId,
+          record: current,
+        };
+      }
+
+      const {
+        resumeClaimedAt: _claimedAt,
+        ...withoutClaim
+      } = handle;
+      const terminalHandle: AsyncResearchHandle = {
+        ...withoutClaim,
+        state,
+      };
+      const openAsyncHandles = [...current.openAsyncHandles];
+      openAsyncHandles[handleIndex] = terminalHandle;
+      const record = durableGoalRouterRecordSchema.parse({
+        ...current,
+        openAsyncHandles,
+        revision: current.revision + 1,
+        updatedAt: now,
+      });
+      writeRecordAtomically(path, record);
+      return {
+        status: 'async_expired',
+        reason,
+        handleId,
+        record,
+      };
+    };
+
+    if (handle.state === 'expired') {
+      return persistTerminal('expired', 'expired');
+    }
+    if (
+      handle.state === 'failed' &&
+      handle.inspectionCount >= handle.maxInspections
+    ) {
+      return persistTerminal('failed', 'inspection_budget_exhausted');
+    }
+    if (Date.parse(now) >= Date.parse(handle.expiresAt)) {
+      return persistTerminal('expired', 'expired');
+    }
+    if (handle.state !== 'scheduled') {
+      throw new GoalRouterStateError(
+        'async_resume_not_scheduled',
+        `handle ${handleId} has no scheduled resume`
+      );
+    }
+    if (handle.resumeClaimedAt !== undefined) {
+      throw new GoalRouterStateError(
+        'async_resume_already_claimed',
+        `handle ${handleId} already claimed this resume event`
+      );
+    }
+    if (Date.parse(now) < Date.parse(handle.nextResumeAt)) {
+      throw new GoalRouterStateError(
+        'async_resume_not_due',
+        `handle ${handleId} is not due until ${handle.nextResumeAt}`
+      );
+    }
+    if (handle.inspectionCount >= handle.maxInspections) {
+      return persistTerminal('failed', 'inspection_budget_exhausted');
+    }
+
+    const claimedHandle: AsyncResearchHandle = {
+      ...handle,
+      resumeClaimedAt: now,
+      inspectionCount: handle.inspectionCount + 1,
+    };
+    const openAsyncHandles = [...current.openAsyncHandles];
+    openAsyncHandles[handleIndex] = claimedHandle;
+    const record = durableGoalRouterRecordSchema.parse({
+      ...current,
+      openAsyncHandles,
+      revision: current.revision + 1,
+      updatedAt: now,
+    });
+    writeRecordAtomically(path, record);
+
+    return {
+      status: 'claimed' as const,
+      handle: claimedHandle,
+      record,
+    };
+  }, options?.lockWaitMs);
 }
 
 export async function consumeLocalSlice(

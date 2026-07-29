@@ -451,6 +451,7 @@ interface AsyncResearchHandle {
   submittedAt: string;
   expiresAt: string;
   nextResumeAt: string;
+  resumeClaimedAt?: string;
   inspectionCount: number;
   maxInspections: number;
   outputRef: string;
@@ -463,15 +464,19 @@ interface AsyncResearchHandle {
 3. Exactly one deterministic resume event is scheduled in
    `nextResumeAt`; the premium model turn ends.
 4. No status probe occurs before that event.
-5. The scheduler cold-reads the handle and either:
+5. At or after `nextResumeAt`, the scheduler cold-reads and atomically claims
+   that event by persisting `resumeClaimedAt` and incrementing
+   `inspectionCount` before an adapter may inspect the provider. Early or
+   duplicate claims fail closed without a provider call.
+6. The holder of that durable claim either:
    - collects a completed result;
-   - records one bounded inspection and schedules one later resume according to
-     the predeclared backoff, while below `maxInspections` and `expiresAt`; or
+   - clears the claim marker and schedules one later resume according to the
+     predeclared backoff, while below `maxInspections` and `expiresAt`; or
    - closes it as failed/expired.
-6. Completed result is normalized into claims, citations, dissent, unknowns,
+7. Completed result is normalized into claims, citations, dissent, unknowns,
    and provider metadata.
-7. Local verifier checks material local claims and cited web claims.
-8. Only a terminal normalized receipt may open the next premium phase, and only
+8. Local verifier checks material local claims and cited web claims.
+9. Only a terminal normalized receipt may open the next premium phase, and only
    with a valid objective T3 trigger.
 
 No model is allowed to hold full context while polling.

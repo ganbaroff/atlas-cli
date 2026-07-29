@@ -6,12 +6,15 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { fileURLToPath } from 'node:url';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   acquirePremiumOwner,
+  claimScheduledAsyncResume,
   consumeLocalSlice,
   createGoalRouterRecord,
   loadGoalRouterRecord,
@@ -22,6 +25,11 @@ import {
 
 const NOW = '2026-07-30T00:00:00.000Z';
 const LATER = '2026-07-30T00:05:00.000Z';
+const DUE = '2026-07-30T00:30:00.000Z';
+const AFTER_EXPIRY = '2026-07-30T00:46:00.000Z';
+const CHILD_FIXTURE = fileURLToPath(
+  new URL('./fixtures/cost-router-state-child.ts', import.meta.url)
+);
 const OWNER = {
   phaseId: 'phase-001',
   taskId: 'task-001',
@@ -276,6 +284,51 @@ describe('atlas/cost-router-state', () => {
     });
   });
 
+  describe('fresh-process restart durability', () => {
+    it('preserves owner and counters and rejects a conflicting child owner', async () => {
+      await createGoalRouterRecord('goal-restart', NOW, { rootDir });
+      await consumeLocalSlice('goal-restart', NOW, { rootDir });
+      await recordRetryEvent(
+        'goal-restart',
+        'task-001',
+        'transport_retry',
+        NOW,
+        { rootDir }
+      );
+      await acquirePremiumOwner('goal-restart', OWNER, NOW, { rootDir });
+
+      const child = spawnSync(
+        process.execPath,
+        [
+          '--import',
+          'tsx',
+          CHILD_FIXTURE,
+          'inspect-and-conflict',
+          rootDir,
+          'goal-restart',
+          LATER,
+        ],
+        {
+          cwd: process.cwd(),
+          encoding: 'utf8',
+          timeout: 10_000,
+        }
+      );
+
+      expect(child.error).toBeUndefined();
+      expect(child.status, child.stderr).toBe(0);
+      expect(JSON.parse(child.stdout.trim())).toEqual({
+        goalId: 'goal-restart',
+        revision: 3,
+        activeTaskId: 'task-001',
+        usedLocalSlices: 1,
+        usedPremiumEscalations: 1,
+        transportRetries: 1,
+        conflictCode: 'premium_owner_active',
+      });
+    });
+  });
+
   describe('bounded asynchronous research handles', () => {
     it('persists one handle and its research counter across cold-read', async () => {
       await createGoalRouterRecord('goal-research-1', NOW, { rootDir });
@@ -359,6 +412,227 @@ describe('atlas/cost-router-state', () => {
           { rootDir }
         )
       ).rejects.toMatchObject({ code: 'async_handle_expired' });
+    });
+  });
+
+  describe('exact-once scheduled resume claims', () => {
+    it('refuses an early claim without mutating the handle', async () => {
+      await createGoalRouterRecord('goal-resume-early', NOW, { rootDir });
+      await registerAsyncResearchHandle(
+        'goal-resume-early',
+        { ...HANDLE, goalId: 'goal-resume-early' },
+        NOW,
+        { rootDir }
+      );
+
+      await expect(
+        claimScheduledAsyncResume(
+          'goal-resume-early',
+          'handle-001',
+          LATER,
+          { rootDir }
+        )
+      ).rejects.toMatchObject({ code: 'async_resume_not_due' });
+
+      const coldRead = loadGoalRouterRecord('goal-resume-early', { rootDir });
+      expect(coldRead.revision).toBe(1);
+      expect(coldRead.openAsyncHandles[0]).toMatchObject({
+        inspectionCount: 0,
+      });
+      expect(coldRead.openAsyncHandles[0]).not.toHaveProperty('resumeClaimedAt');
+    });
+
+    it('persists one due claim before returning authorization', async () => {
+      await createGoalRouterRecord('goal-resume-due', NOW, { rootDir });
+      await registerAsyncResearchHandle(
+        'goal-resume-due',
+        { ...HANDLE, goalId: 'goal-resume-due' },
+        NOW,
+        { rootDir }
+      );
+
+      const result = await claimScheduledAsyncResume(
+        'goal-resume-due',
+        'handle-001',
+        DUE,
+        { rootDir }
+      );
+      const coldRead = loadGoalRouterRecord('goal-resume-due', { rootDir });
+
+      expect(result.status).toBe('claimed');
+      if (result.status !== 'claimed') throw new Error('expected claimed');
+      expect(result.handle).toMatchObject({
+        resumeClaimedAt: DUE,
+        inspectionCount: 1,
+      });
+      expect(result.record.revision).toBe(2);
+      expect(coldRead.openAsyncHandles[0]).toEqual(result.handle);
+    });
+
+    it('refuses a second claim for the same scheduled event after cold-read', async () => {
+      await createGoalRouterRecord('goal-resume-twice', NOW, { rootDir });
+      await registerAsyncResearchHandle(
+        'goal-resume-twice',
+        { ...HANDLE, goalId: 'goal-resume-twice' },
+        NOW,
+        { rootDir }
+      );
+      await claimScheduledAsyncResume(
+        'goal-resume-twice',
+        'handle-001',
+        DUE,
+        { rootDir }
+      );
+      loadGoalRouterRecord('goal-resume-twice', { rootDir });
+
+      await expect(
+        claimScheduledAsyncResume(
+          'goal-resume-twice',
+          'handle-001',
+          DUE,
+          { rootDir }
+        )
+      ).rejects.toMatchObject({ code: 'async_resume_already_claimed' });
+      expect(
+        loadGoalRouterRecord('goal-resume-twice', { rootDir }).revision
+      ).toBe(2);
+    });
+
+    it('serializes concurrent claims so exactly one caller wins', async () => {
+      await createGoalRouterRecord('goal-resume-race', NOW, { rootDir });
+      await registerAsyncResearchHandle(
+        'goal-resume-race',
+        { ...HANDLE, goalId: 'goal-resume-race' },
+        NOW,
+        { rootDir }
+      );
+
+      const results = await Promise.allSettled([
+        claimScheduledAsyncResume(
+          'goal-resume-race',
+          'handle-001',
+          DUE,
+          { rootDir }
+        ),
+        claimScheduledAsyncResume(
+          'goal-resume-race',
+          'handle-001',
+          DUE,
+          { rootDir }
+        ),
+      ]);
+
+      const fulfilled = results.filter((result) => result.status === 'fulfilled');
+      expect(fulfilled).toHaveLength(1);
+      expect(fulfilled[0]).toMatchObject({
+        status: 'fulfilled',
+        value: { status: 'claimed' },
+      });
+      expect(results.find((result) => result.status === 'rejected')).toMatchObject({
+        status: 'rejected',
+        reason: expect.objectContaining({ code: 'async_resume_already_claimed' }),
+      });
+    });
+  });
+
+  describe('local async terminal outcomes', () => {
+    it('resolves an unknown handle locally without a provider call', async () => {
+      await createGoalRouterRecord('goal-resume-unknown', NOW, { rootDir });
+      const providerInspect = vi.fn();
+
+      const result = await claimScheduledAsyncResume(
+        'goal-resume-unknown',
+        'handle-unknown',
+        DUE,
+        { rootDir }
+      );
+      if (result.status === 'claimed') await providerInspect(result.handle);
+
+      expect(result).toMatchObject({
+        status: 'async_expired',
+        reason: 'unknown',
+        handleId: 'handle-unknown',
+        record: { revision: 0 },
+      });
+      expect(providerInspect).not.toHaveBeenCalled();
+    });
+
+    it('persists an expired handle locally without a provider call', async () => {
+      await createGoalRouterRecord('goal-resume-expired', NOW, { rootDir });
+      await registerAsyncResearchHandle(
+        'goal-resume-expired',
+        { ...HANDLE, goalId: 'goal-resume-expired' },
+        NOW,
+        { rootDir }
+      );
+      const providerInspect = vi.fn();
+
+      const result = await claimScheduledAsyncResume(
+        'goal-resume-expired',
+        'handle-001',
+        AFTER_EXPIRY,
+        { rootDir }
+      );
+      if (result.status === 'claimed') await providerInspect(result.handle);
+
+      expect(result).toMatchObject({
+        status: 'async_expired',
+        reason: 'expired',
+        handleId: 'handle-001',
+        record: { revision: 2 },
+      });
+      expect(
+        loadGoalRouterRecord('goal-resume-expired', { rootDir })
+          .openAsyncHandles[0].state
+      ).toBe('expired');
+      expect(providerInspect).not.toHaveBeenCalled();
+    });
+
+    it('closes an exhausted inspection budget without a provider call', async () => {
+      const goalId = 'goal-resume-exhausted';
+      const path = join(rootDir, 'goals', `${goalId}.json`);
+      await createGoalRouterRecord(goalId, NOW, { rootDir });
+      await registerAsyncResearchHandle(
+        goalId,
+        { ...HANDLE, goalId },
+        NOW,
+        { rootDir }
+      );
+      const persisted = JSON.parse(readFileSync(path, 'utf8'));
+      persisted.openAsyncHandles[0].inspectionCount = 2;
+      writeFileSync(path, JSON.stringify(persisted), 'utf8');
+      const providerInspect = vi.fn();
+
+      const result = await claimScheduledAsyncResume(
+        goalId,
+        'handle-001',
+        DUE,
+        { rootDir }
+      );
+      if (result.status === 'claimed') await providerInspect(result.handle);
+
+      expect(result).toMatchObject({
+        status: 'async_expired',
+        reason: 'inspection_budget_exhausted',
+        handleId: 'handle-001',
+        record: { revision: 2 },
+      });
+      expect(
+        loadGoalRouterRecord(goalId, { rootDir }).openAsyncHandles[0].state
+      ).toBe('failed');
+      expect(providerInspect).not.toHaveBeenCalled();
+
+      const repeated = await claimScheduledAsyncResume(
+        goalId,
+        'handle-001',
+        DUE,
+        { rootDir }
+      );
+      expect(repeated).toMatchObject({
+        status: 'async_expired',
+        reason: 'inspection_budget_exhausted',
+        record: { revision: 2 },
+      });
     });
   });
 
