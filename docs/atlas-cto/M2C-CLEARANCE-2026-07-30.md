@@ -189,3 +189,118 @@ holds two placeholder trusted entries (`trusted-keyed-1`,
 real production provider identities yet, and the clearance-rank weighting
 (0/1/2/3 retention, +4 identity, +8 agency) is a first-pass ordering that
 should be reviewed against real provider inventories before M5/M6 wiring.
+
+## M2C repair (2026-07-30) — two independent-review refutations
+
+A follow-up independent review demonstrated that both guards above were,
+in practice, conventions rather than controls. Both are now closed.
+
+### Refutation 1 — the back door was a convention, not a control
+
+**Demonstration.** Section B above described `runRoutedAttempt`'s
+injectable `availability`/`providerClasses` parameters as safe because
+"the fix is a new, single supported entry point" (`runTrustedRoutedAttempt`)
+— but `runRoutedAttempt` itself was still exported, unguarded, with only a
+code comment ("stays reachable here so tests can exercise the gates")
+standing between it and any normal `import`. The review imported it
+directly from outside the module, passed a forged
+`{ T0: true, T1: true, T2: true, T3: true }` availability table, and
+entered route **T1** — disabled by default — with no refusal and no cast
+required. The comment described a rule; nothing enforced it.
+
+**What replaced it.** `runRoutedAttempt` now refuses to run unless
+`process.env.VITEST === 'true'` (the flag Vitest itself sets for every
+test-runtime process) — the very first line of its body, before
+`assertRouteAvailabilityChecked`, before anything else:
+
+```ts
+if (process.env['VITEST'] !== 'true') {
+  throw new RouteRefusalError(
+    'test_only_entry_point',
+    params.route?.route,
+    'runRoutedAttempt is test-only (requires a Vitest runtime); production code must use runTrustedRoutedAttempt',
+  );
+}
+```
+
+This is an enforced runtime gate, not a rename or a stronger comment: the
+same forged-availability call that previously entered T1 now throws
+`RouteRefusalError('test_only_entry_point')` before the availability table
+is even consulted, proven in
+`cost-router-clearance.test.ts` ("the injectable-table entry point is
+test-only, enforced not conventional") by unsetting `process.env.VITEST`
+around the exact call and asserting the refusal. The public,
+production-reachable surface for spending a provider attempt is now
+`runTrustedRoutedAttempt` alone — `runRoutedAttempt` remains exported only
+because ES modules have no package-private visibility across files, and
+Vitest's tests (which always run with `VITEST=true`) still exercise both
+the availability and clearance gates through it, satisfying the same
+"gates must stay testable against fixtures" requirement Section B
+described, now backed by a check instead of a promise.
+
+### Refutation 2 — the operator exception was self-grantable
+
+**Demonstration.** `ClearanceException { reason, approvedBy, permittedClass }`
+was plain data with no authenticity check. Any caller — including the
+router's own code — could construct
+`{ reason: 'x', approvedBy: 'the-calling-code-itself', permittedClass: <whatever class it wanted> }`
+and hand it to `runRoutedAttempt`/`runTrustedRoutedAttempt`, and
+`assertDestinationClearance` would honour it. Nothing distinguished a real
+operator grant from a self-issued one; the operator's authority over
+cross-class sends was nominal.
+
+**What replaced it.** Reused this repository's already-proven operator-held
+signing mechanism verbatim rather than inventing a second scheme:
+`src/atlas/queue-auth.ts`'s pattern of HMAC-SHA256 over a canonical JSON
+payload, a signing key read from the environment **by name only**
+(`ATLAS_CLEARANCE_SIGNING_KEY` — mirrors `ATLAS_QUEUE_SIGNING_KEY`; the
+value is operator-set and never appears in code, tests, logs, receipts, or
+this document), and `queue-auth.ts`'s own `createNonceLedger` for replay
+detection — no new dependency, no second nonce-ledger implementation.
+
+`ClearanceException` gained optional `sig`/`ts`/`nonce` fields. Before any
+provider call is made, `runRoutedAttempt` verifies a supplied exception
+exactly once per attempt (so one signed exception legitimately covering
+both the primary provider and one failover within a single attempt is not
+mistaken for a replay of itself) via `verifyClearanceExceptionSignature`,
+which fails closed with its own named `ClearanceRefusalReason` at every
+step:
+
+- no `ATLAS_CLEARANCE_SIGNING_KEY` configured → `exception_signing_key_not_configured`
+  (verification unavailable **never** means permitted — this was the
+  specific fail-closed requirement, and it is checked before signature
+  shape, before expiry, before the nonce ledger)
+- missing `sig`/`ts`/`nonce` → `exception_unsigned`
+- signature does not match the recomputed HMAC over the canonical fields → `exception_signature_mismatch`
+- signature older than the 24h window (mirrors `queue-auth`'s `MAX_AGE_MS`) → `exception_signature_expired`
+- nonce already spent (`createNonceLedger(...).recordIfFresh`) → `exception_signature_replayed`
+
+Only a verified exception is passed on to `assertDestinationClearance` and
+only a verified exception is what `recordClearanceException` persists onto
+`clearanceLedger` — the accepted exception and the class it permitted are
+still recorded on the durable record exactly as before, now with the
+guarantee that what got recorded actually verified.
+
+`cost-router-clearance.test.ts` ("a clearance exception is not
+self-grantable — it must verify") proves: unsigned refused, mis-signed
+(tampered `approvedBy` after signing) refused, replayed (same signed
+exception reused for a second task) refused, no-key-configured refused
+with zero provider calls in every refusal case, and — in the pre-existing
+"operator exception" test, now updated to sign the exception via
+`signClearanceException` under a stubbed test key — a correctly signed
+exception with a key configured still proceeds and is still recorded.
+
+### Standing lesson
+
+**A door left open "so tests can exercise it" is not a control — it is the
+same shape as the vulnerability, with a comment instead of a lock.** Both
+refutations above were the identical failure pattern from two different
+angles: M2A/M2B already learned this once (the `AvailableRoute` brand had
+to become identity-based via `RESOLVED_ROUTES`, not property-based, because
+a comment/type-cast could forge it) and shipped `runTrustedRoutedAttempt`
+as the intended fix — but left the *old*, unguarded entry point exported
+right next to it, trusting callers to prefer the new one. Trusting callers
+is exactly what a control exists to avoid trusting. The rule going forward
+for this codebase: when a function's only legitimate callers are the test
+suite, that must be true by construction (a runtime gate, an unreachable
+module path, a structural type) — never by a docstring asking politely.
