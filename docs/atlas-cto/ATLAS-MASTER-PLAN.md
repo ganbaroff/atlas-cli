@@ -1,11 +1,96 @@
 # ATLAS — MASTER PLAN (the one plan of record)
 
-> **Status:** proposed · 2026-07-27 · author `fable-orchestrator` (planning seat).
-> **Authority:** this is the PLAN of record. Architecture of record stays `docs/architecture/ATLAS-ARCHITECTURE.md`; decisions stay in `docs/adr/`; status stays in `ATLAS-STATE-NOW.md`; the journal stays `VOLAURA/memory/atlas/codex-loop.md`. Supersedes the June 2026 plans (already banner-stamped) — see ARCHITECTURE §0.1.
-> **Grounded in:** four independent read-only recon sweeps run 2026-07-27 (industry best-practice web research · Atlas CLI product surface · CEO-vision archaeology from primary sources · security/resilience/DR audit). Every gap below traces to a receipt in one of those, or to a check re-run by this seat.
-> **Protocol:** FABLE.GO — this seat plans and issues tokens; an executor writes code; CEO-only gates are named explicitly and never self-approved. Model-choice rule from `VOLAURA/memory/atlas/master-prompt.md` is applied PER PHASE below (security-adjacent phases are Opus from the start, not after a refusal).
+> **Status:** active · refreshed 2026-07-30 by Codex SOL · current milestone M1.
+> **Authority:** this is the one PLAN of record. Architecture stays
+> `docs/architecture/ATLAS-ARCHITECTURE.md`; current status stays in
+> `ATLAS-STATE-NOW.md`; decisions stay in `docs/adr/`; evidence journal stays
+> in `VOLAURA/memory/atlas/codex-loop.md`.
+> **Grounded in:** current compact, local command evidence, preserved recovery
+> receipts, and closed external-review dispositions. The 2026-07-27 research
+> baseline remains below as historical risk inventory.
+> **Protocol:** deterministic tools and subscription research first; Codex SOL
+> owns implementation/verification; bounded workers own only independent
+> mechanical lanes; Yusif owns goals, spend, privacy exceptions, and
+> irreversible gates.
 
 ---
+
+## 0. CEO CONTROL PANEL — where we are going
+
+**Destination:** one Atlas, one codebase, one durable task/evidence authority,
+one Telegram poller, one local PC/browser executor, cost-aware research, and
+product systems as adapters rather than competing brains.
+
+**Current point:** M1 Durable Foundation. Physical consolidation is NO-GO.
+Cost Router implementation and live provider traffic have not started.
+
+```mermaid
+flowchart LR
+    M0["M0 Freeze and preserve<br/>DONE"]
+    M1["M1 Durable foundation<br/>NOW"]
+    M2["M2 Safe runtime and router<br/>NEXT"]
+    M3["M3 Shadow consolidation<br/>NO MOVE"]
+    G{"Yusif cutover gate"}
+    M4["M4 One Atlas cutover"]
+    M5["M5 Live research broker"]
+    M6["M6 Research swarm"]
+    M7["M7 Product, memory, hands"]
+
+    M0 --> M1 --> M2 --> M3 --> G --> M4
+    M2 --> M5 --> M6
+    M4 --> M7
+    M6 --> M7
+```
+
+| Milestone | Status | Scope | Done-bar |
+|---|---|---|---|
+| M0 Freeze and preserve | **DONE** | runner recovery, legacy bundle/ZIP/patch, dirty worktree ref | recoverable checkpoints exist; no source destroyed |
+| M1 Durable foundation | **NOW** | repair state root; durable Cost Router record; objective routes; provider-bound privacy | restart/cold-read tests pass; written spec approved |
+| M2 Safe runtime and router | **NEXT** | pure router, error buckets, goal ceilings, premium lease, runner wrapper/liveness | fake-provider suite passes; no live traffic or silent fallback |
+| M3 Shadow consolidation | **BLOCKED BY M1–M2** | copy/replay, outcome diff, legacy extraction, rollback rehearsal | parity and rollback receipts; no physical move |
+| M4 One Atlas cutover | **CEO GATE** | detach nested worktrees, select canon, update path bindings, one authority | clean restart, rollback, Telegram/runner authority proof |
+| M5 Live research broker | **OFF** | Perplexity quick research; Gemini/ChatGPT deep research | public synthetic tests; no secrets/files; no paid API |
+| M6 Research swarm | **OFF** | multi-provider research behind Cost Router | two source-bearing providers; `READY_FOR_RESEARCH` |
+| M7 Product, memory, hands | **PARKED** | learning engine, portable hands, proactive product loops | starts only after stable One-Atlas foundation |
+
+### M1 work packages
+
+1. **M1A — written contract.** Close Opus review, define route predicates,
+   destination privacy, async handles, error buckets, and goal ceilings.
+2. **M1B — state-root repair.** Reject or stably interpret relative overrides;
+   correct inventory; add CWD-invariance tests.
+3. **M1C — durable router state.** Store goal budget, premium owner,
+   escalation/retry ledgers, and async handles under accepted
+   `ATLAS_STATE_ROOT`.
+4. **M1D — restart proof.** Restart mid-goal; reject duplicate premium owner;
+   resume scheduled handle once; expire locally without provider call.
+
+### Current CEO control
+
+Already approved:
+
+- Policy A: automatic outbound is sanitized public text only;
+- current per-task limits;
+- conditional later untrack of generated `graph.json` and `ledger.jsonl` after
+  copy/replay/ignore proof;
+- no `ATLAS.next`.
+
+Decision requested before implementation planning:
+
+- accept or change this milestone order;
+- accept or change recommended default goal ceiling:
+  4 local slices, 2 external research jobs, 1 active premium owner,
+  1 T3 escalation per task, 0 metered API spend.
+
+Later CEO gates remain physical cutover, paid API activation, weaker-provider
+privacy exception, login/MFA, secret rotation, deployment, scheduler/Railway
+changes, deletion, and move.
+
+### Execution invariant
+
+Only first non-green milestone may execute. Approval of M1 does not authorize
+M2–M7. Every milestone requires its own command receipt and local Codex
+verification.
 
 ## 1. THE IDEA — what we are actually assembling
 
@@ -51,7 +136,7 @@ Every line traces to a CEO statement or a ratified decision. This is the target;
 
 ---
 
-## 3. WHERE WE STAND vs THE WORLD
+## 3. 2026-07-27 RISK BASELINE vs THE WORLD
 
 Industry research (2026-07-27 sweep) extracted **14 patterns that recur across serious systems** (Claude Agent SDK, OpenAI Agents SDK/Operator, LangGraph, Letta, Devin, OpenHands, Cursor, Cline, Manus, Suna, Temporal/Inngest). Scored honestly against ours:
 
@@ -89,7 +174,7 @@ Industry research (2026-07-27 sweep) extracted **14 patterns that recur across s
 
 ---
 
-## 4. STATUS OF EACH CAPABILITY (today, with receipts)
+## 4. 2026-07-27 CAPABILITY BASELINE (not current dashboard)
 
 | Cap | Status | Evidence |
 |---|---|---|
@@ -108,7 +193,12 @@ Industry research (2026-07-27 sweep) extracted **14 patterns that recur across s
 
 ---
 
-## 5. THE PLAN — six phases, in this order, no reordering without a written reason
+## 5. TECHNICAL RISK BACKLOG — mapped into milestones above
+
+This 2026-07-27 P0–P5 decomposition remains useful as a risk inventory, but it
+is not a second execution order. The CEO Control Panel above controls sequence.
+Any old counts, branch tips, or completion claims below require fresh local
+verification before use.
 
 Ordering principle: **nothing new gets built on top of an unsafe, unrecoverable base.** Capability (P5) is last on purpose. Each phase = one FABLE.GO token to an executor; each ends with a machine-checkable acceptance the executor must prove.
 
@@ -133,7 +223,9 @@ Today the system cannot be rebuilt and has no backups. This is the difference be
 **Acceptance:** scratch project stood up from migrations only, agent boots against it, `graph verify` ok · a restore drill completes and is logged with its receipt · CEO gate: applying anything to the live DB.
 
 ### P2 — DURABILITY *(model: Sonnet — mechanical config/refactor)*
-- **P2.1** One `ATLAS_STATE_ROOT`; every store resolves under it (10 stores currently scatter to cwd/`~`; 3 have no override at all — `swarm-exec` bundles, intake drafts, operator-state — those need the resolver added).
+- **P2.1** One `ATLAS_STATE_ROOT`; provisional resolver commit `6f54582` is
+  `MODIFY`, not accepted. Repair relative-path behavior, correct the inventory,
+  then migrate verified runtime stores without claiming an exact store count.
 - **P2.2** Cloud: point that root at the mounted Railway volume so the task graph, budgets, evidence and control state stop dying on redeploy.
 - **P2.3** Decide and enforce git-tracking for `state/evidence/` (currently untracked, silently un-backed-up).
 
@@ -163,32 +255,48 @@ Only after P0-P3. In value order for the charter:
 
 ---
 
-## 6. CEO GATES (only these need you; everything else is executor work)
+## 6. CEO GATES
 
-1. **Live DB apply** — P1.1 migrations against the real Supabase.
-2. **Backup destination** — where backups live, and confirmation that Atlas's own credentials cannot delete them.
-3. **Sandbox decision** — P4 changes how your machine runs the agent.
-4. **Bot token rotation** — outstanding from an earlier leak (BotFather is yours alone).
-5. **Standing, unchanged:** money movement, prod-DB writes, deletions, outbound sends/posts, public release.
+Now:
+
+1. roadmap order and default goal ceilings;
+2. written Cost Router specification before implementation planning.
+
+Later, only when the matching milestone is ready:
+
+3. physical consolidation/cutover;
+4. privacy exception to a weaker provider class;
+5. paid API activation;
+6. live login/MFA/CAPTCHA;
+7. live DB, deployment, scheduler, Railway, Telegram, secret rotation,
+   deletion, move, money, outbound/public action, and sandbox decisions.
 
 ---
 
-## 7. SEAT ROUTING (applied — full rule in [`FABLE-PROTOCOL.md`](FABLE-PROTOCOL.md) §1)
+## 7. SEAT AND COST ROUTING
 
-Phases whose deliverable is a list of things to strengthen (**P0, P1, P4**) start on **Opus 5**
-(`claude-opus-5`) — before the first line, not after a declined request. Mechanical phases
-(**P2, P3**, and most of P5) run on **Sonnet 5** executors. Planning, sequencing and cross-domain
-synthesis stay on the **Fable 5** orchestrator seat.
+- deterministic tools first;
+- sanitized public research through one subscription provider;
+- one bounded LUNA/Sonnet worker only for an independent mechanical lane;
+- Codex SOL owns core implementation and local verification;
+- Fable/Opus only for material planning, architecture conflict, or independent
+  review from compact evidence;
+- no grandchildren, no automatic premium fallback, no premium model waiting on
+  a background job;
+- first invariant block stops the route; ordinary transient gets one retry and
+  one equal-or-better privacy-class failover.
 
-Rationale: the classifier's sensitive-adjacent band overlaps our core domain permanently, and it
-reads the whole thread — so a mid-run switch does not rescue a contaminated session, it costs the
-session. Choosing up front is strictly cheaper. Recovery ladder when a request is declined anyway:
-`FABLE-PROTOCOL.md` §3 (never reword — change seats).
+Full seat rules remain in [`FABLE-PROTOCOL.md`](FABLE-PROTOCOL.md). Cost Router
+contract remains in
+[`../superpowers/specs/2026-07-30-atlas-cost-router-design.md`](../superpowers/specs/2026-07-30-atlas-cost-router-design.md).
 
 ---
 
 ## 8. WHAT THIS PLAN DELIBERATELY DOES NOT DO
 
-- No new capability before P0-P3 are green. The temptation to add voice or a new hand while the queue is unsigned and the DB unbackupable is exactly the pattern that produced this document.
-- No second architecture doc, no competing plan, no new "protocol". This file is edited, not forked.
-- No claim that any phase is done without a same-turn receipt.
+- no new capability before M1–M2 are green;
+- no physical move before shadow parity and rollback proof;
+- no second plan, competing orchestrator, or `ATLAS.next`;
+- no live research before durable router state and privacy gates;
+- no paid API or weaker-provider privacy fallback without Yusif;
+- no completion claim without command evidence and Codex verification.

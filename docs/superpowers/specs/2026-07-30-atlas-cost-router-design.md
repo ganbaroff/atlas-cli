@@ -1,7 +1,7 @@
 # ATLAS Cost Router and Research Broker Design
 
 **Date:** 2026-07-30
-**Status:** core direction approved; written design awaiting Yusif review
+**Status:** revised after external adversarial review; awaiting Yusif review
 **Owner:** Codex SOL
 **Decision authority:** Yusif
 **Target:** existing ATLAS/atlas-cli codebase; no `ATLAS.next`
@@ -68,6 +68,20 @@ Current deterministic verification:
 - focused research-swarm routing/lifecycle/eval/provider-health suite:
   19/19 passed;
 - these tests prove fail-closed mechanics, not live provider availability.
+
+External review closure:
+
+- two bounded no-tool reviews completed on `claude-opus-5`; two attempts on
+  `claude-fable-5` failed with server-side `529` and produced no review;
+- both Opus reviews saw the compact prompt, not this complete specification;
+- Codex accepted durable goal-level router state, destination-bound privacy,
+  objective route predicates, explicit error buckets, and fail-closed
+  unavailable routes;
+- Codex modified the proposed async rule to one durable scheduled resume at a
+  time with a bounded inspection count, rather than one total inspection;
+- Codex rejected claims that this full design had no pre-send privacy gate or
+  treated browser subscriptions as APIs. Those controls already existed but
+  needed stronger destination and retention binding.
 
 ## 3. Approved Decisions
 
@@ -142,10 +156,12 @@ use premium reasoning as an idle process manager.
 ```text
 Task
   -> Cost Router
-      -> Privacy Gate
-      -> Task Class + Budget
+      -> Objective Task Predicate
+      -> Task Class + Goal Budget
       -> Capability/Health Check
-      -> Work Order
+      -> Candidate Provider Profile
+      -> Destination-Bound Privacy Gate
+      -> Immutable Work Order
           -> T0 Deterministic Tool
           -> T1 Subscription Browser Research
           -> T2 Bounded Local Worker
@@ -171,7 +187,9 @@ Every routed task has one immutable work order:
 ```ts
 interface CostRouterWorkOrder {
   schemaVersion: 1;
+  goalId: string;
   taskId: string;
+  phaseId: string;
   taskClass:
     | "lookup"
     | "deep_research"
@@ -188,6 +206,10 @@ interface CostRouterWorkOrder {
     | "premium"
     | "research_swarm";
   selectedProvider: string;
+  providerProfileId: string;
+  providerProfileHash: string;
+  routeTrigger: string;
+  privacyDecisionId?: string;
   costClass: "zero_marginal" | "subscription_included" | "metered_blocked";
   limits: {
     wallClockMs: number;
@@ -207,6 +229,82 @@ interface CostRouterWorkOrder {
 The implementation may add derived fields but may not weaken the approved
 limits or privacy policy without a new decision.
 
+### 5.1 Objective route predicates
+
+The classifier is a pure function over structured task metadata. It performs no
+model call. Missing or contradictory metadata returns
+`route_blocked:needs_classification`; it never promotes itself to T3.
+
+| Predicate | Route | Required recorded trigger |
+|---|---|---|
+| registered deterministic capability fully satisfies request | T0 | capability ID |
+| `requiresFreshWeb=true`, `sensitivity=public`, one-provider evidence sufficient | T1 lookup | `fresh_public_web` |
+| `requiresDeepResearch=true`, `sensitivity=public`, managed background job available | T1 deep research | `deep_public_research` |
+| approved local plan, owned paths, bounded mechanical change | T2 mechanical | plan and scope IDs |
+| approved local plan, bounded complex slice | T2 complex | plan and slice IDs |
+| unresolved architecture decision with alternatives | T3 | architecture decision ID |
+| two verified receipts materially conflict | T3 | conflicting receipt IDs |
+| independent verification explicitly required by gate | T3 | gate ID |
+| `multiProviderRequired=true` and live gate is `READY_FOR_RESEARCH` | research swarm | evaluation ID |
+
+Natural-language ambiguity is not a T3 trigger. A task may enter T3 only with
+one objective trigger above in its immutable work order. One task may escalate
+to T3 at most once.
+
+A phase is the interval from one accepted immutable work order to its terminal
+receipt. Phases for the same goal cannot overlap premium ownership. A new phase
+requires the previous phase's terminal receipt; renaming or splitting a task
+does not reset its escalation ledger.
+
+### 5.2 Durable goal router record
+
+All counters and open handles are durable before any live route is enabled.
+Logical storage path:
+
+```text
+<ATLAS_STATE_ROOT>/cost-router/goals/<goal-id>.json
+```
+
+The accepted state-root resolver must provide the path. Writes use one
+single-writer lock, monotonic revision, atomic replace, and cold-read
+validation.
+
+```ts
+interface DurableGoalRouterRecord {
+  schemaVersion: 1;
+  goalId: string;
+  revision: number;
+  activePremiumOwner?: {
+    phaseId: string;
+    taskId: string;
+    seat: "fable" | "opus" | "codex-sol";
+    acquiredAt: string;
+    expiresAt: string;
+  };
+  escalationLedger: Record<string, 0 | 1>;
+  budget: {
+    maxLocalSlices: number;
+    usedLocalSlices: number;
+    maxResearchJobs: number;
+    usedResearchJobs: number;
+    maxPremiumEscalations: number;
+    usedPremiumEscalations: number;
+    meteredSpendLimitUsd: 0;
+  };
+  retryLedger: Record<string, {
+    denialAttempts: number;
+    transportRetries: number;
+    providerFailovers: number;
+  }>;
+  openAsyncHandles: AsyncResearchHandle[];
+  updatedAt: string;
+}
+```
+
+Every goal must carry explicit non-null ceilings. Missing, corrupt, expired, or
+unwritable goal state blocks routing. Initial ceiling values remain a Yusif
+review item; they are configuration, not a reason to weaken per-task limits.
+
 ## 6. Task Classes and Limits
 
 | Task class | Default route | Limit | Completion evidence |
@@ -219,12 +317,15 @@ limits or privacy policy without a new decision.
 | `multi_provider_research` | existing ATLAS research-swarm | disabled until live gate | two-provider source-bearing receipt |
 
 A long task is split before dispatch when its local execution scope exceeds one
-bounded slice. Runtime extension is not a substitute for decomposition.
+bounded slice. Runtime extension is not a substitute for decomposition. A
+split consumes the parent goal's durable slice ceiling; creating more task IDs
+cannot reset that ceiling.
 
 ## 7. Pre-Send Privacy Gate
 
-Privacy Gate runs before provider selection and before any browser or network
-action.
+Privacy Gate runs after a candidate provider profile is selected but before
+any browser or network action. The brief composer and privacy checker are
+separate deterministic components. Neither can certify its own output.
 
 It performs:
 
@@ -233,10 +334,21 @@ It performs:
 3. local path, repository identity, transcript, log, diff, and code detection;
 4. public-brief construction;
 5. a second scan of the exact outbound text;
-6. an allow/deny receipt containing reason codes and an outbound-content hash.
+6. provider-profile validation;
+7. an allow/deny decision bound to the exact outbound bytes and destination.
 
 The outbound text is the only task content a provider adapter receives.
 Adapters cannot access the original local prompt.
+
+The decision ID commits to:
+
+```text
+SHA256(outbound bytes + destination provider ID + provider-profile hash)
+```
+
+Any retry or failover to another destination requires a new decision. A
+provider with weaker or unknown identity, retention, or navigation controls is
+not an automatic cheap failover; it requires a Yusif privacy exception.
 
 Fail-closed conditions:
 
@@ -245,6 +357,7 @@ Fail-closed conditions:
 - the brief depends on an attachment or local file;
 - the sanitizer or receipt store is unavailable;
 - destination provider is not explicitly registered;
+- provider retention or identity profile is stale or unknown;
 - exact destination cannot be determined.
 
 Privacy receipt stores classifications and hashes, never detected secret
@@ -296,27 +409,79 @@ ATLAS must label this route `subscription_browser`, not `api`. Usage receipts
 record job count and provider-reported quota signals when visible. They must
 not fabricate dollar cost for subscription usage.
 
+Each destination has a versioned profile:
+
+```ts
+interface ProviderPrivacyProfile {
+  schemaVersion: 1;
+  providerId: string;
+  route: "subscription_browser" | "api";
+  identityExposure:
+    | "logged_in_consumer_identity"
+    | "service_account"
+    | "contractual_api_identity";
+  retentionBasis: "consumer_terms" | "api_terms" | "unknown";
+  termsUrl: string;
+  termsReviewedAt: string;
+  adapterNavigation: "provider_ui_only";
+  remoteResearchNavigation: "public_web" | "unknown";
+  allowedSensitivity: "public_only";
+}
+```
+
+Browser adapters may submit the approved brief and inspect or collect the
+matching job. They may not follow provider-suggested actions, broaden the
+question, upload context, or navigate outside the provider research UI.
+
 ## 9. Asynchronous Research Lifecycle
 
-Deep Research submission and waiting are separate operations.
+Deep Research submission and resumption are separate operations. The premium
+seat never owns the wait.
+
+```ts
+interface AsyncResearchHandle {
+  handleId: string;
+  goalId: string;
+  taskId: string;
+  phaseId: string;
+  providerId: string;
+  providerProfileHash: string;
+  remoteJobId?: string;
+  remoteUrl?: string;
+  submittedAt: string;
+  expiresAt: string;
+  nextResumeAt: string;
+  inspectionCount: number;
+  maxInspections: number;
+  outputRef: string;
+  state: "submitted" | "scheduled" | "completed" | "failed" | "expired";
+}
+```
 
 1. Cost Router persists the sanitized work order.
-2. Browser adapter submits one job and records remote job ID or URL.
-3. Premium model turn ends.
-4. A deterministic scheduler inspects job state in event windows no longer
-   than 60 seconds.
-5. Completed result is normalized into claims, citations, dissent, unknowns,
+2. Browser adapter submits one job and atomically persists its durable handle.
+3. Exactly one deterministic resume event is scheduled in
+   `nextResumeAt`; the premium model turn ends.
+4. No status probe occurs before that event.
+5. The scheduler cold-reads the handle and either:
+   - collects a completed result;
+   - records one bounded inspection and schedules one later resume according to
+     the predeclared backoff, while below `maxInspections` and `expiresAt`; or
+   - closes it as failed/expired.
+6. Completed result is normalized into claims, citations, dissent, unknowns,
    and provider metadata.
-6. Local verifier checks material local claims and cited web claims.
-7. The next owner receives the normalized receipt.
+7. Local verifier checks material local claims and cited web claims.
+8. Only a terminal normalized receipt may open the next premium phase, and only
+   with a valid objective T3 trigger.
 
 No model is allowed to hold full context while polling.
 
 An external managed job may remain `in_progress` within its approved 45-minute
-window even when it exposes no intermediate evidence, because no premium model
-is waiting. This is a heartbeat, not completion evidence and not grounds for
-extension. At 45 minutes ATLAS marks the attempt timed out. If the site offers
-no safe cancel operation, the receipt records `remote_may_continue`; ATLAS must
+window because no premium model is waiting. Each handle has only one live
+resume event and a bounded inspection count, so silence cannot become an
+unbounded polling loop. At expiry, an expired or unknown handle resolves
+locally to `async_expired` without another provider call. If the site offers no
+safe cancel operation, the receipt records `remote_may_continue`; ATLAS must
 not submit a duplicate job automatically.
 
 ## 10. Progress and Stop Rules
@@ -342,14 +507,37 @@ be represented as a new work order.
 
 - permission, policy, seat, invariant, privacy, or capability denial:
   zero retries, immediate terminal receipt;
+- ambiguous, unclassified, authentication, and HTTP authorization errors:
+  denial bucket, zero retries;
 - ordinary network or provider transient:
   one same-provider retry;
 - continued transient:
-  one failover to a different cheap provider;
+  one failover to a different cheap provider only after a new
+  destination-bound privacy decision;
+- expired or unknown async handle:
+  local `async_expired` terminal receipt, zero provider calls;
+- disabled or unavailable research route:
+  named blocker and refusal; never answer from local model memory;
 - no automatic Fable, Opus, Sonnet, or Codex premium fallback;
 - identical denial never receives a rewritten prompt;
 - missing or corrupt enforcement state fails closed;
 - uncertain worker liveness is `UNKNOWN`, never `DEAD`.
+
+### 10.3 Error-shape table
+
+| Observable shape | Bucket | Same-provider attempts | Next action |
+|---|---|---:|---|
+| policy, permission, seat, invariant, privacy, capability, authentication | `denial` | 1 | terminal blocker |
+| HTTP 401/403, ambiguous, or unclassified | `denial` | 1 | terminal blocker |
+| connection reset, DNS failure, timeout, HTTP 408, known retryable 5xx/529 | `transport` | 2 | one equal-or-stronger privacy-class failover |
+| HTTP 429 with explicit retry signal allowed by provider profile | `transport` | 2 | one equal-or-stronger privacy-class failover |
+| quota exhausted or 429 without an allowed retry signal | `route_unavailable` | 1 | one equal-or-stronger subscription route or blocker |
+| async handle missing, corrupt, unknown, or expired | `async_expired` | 0 | local terminal receipt; no provider call |
+| research route disabled or no provider capability | `route_unavailable` | 0 | named blocker; no model substitute |
+| goal or task ceiling exhausted | `budget` | 0 | named blocker; require a new approved budget |
+
+Any shape not matched by this table is `denial`. Provider failover always
+re-runs the destination-bound privacy gate.
 
 ## 11. Fable Enforcement
 
@@ -373,8 +561,13 @@ Every external result normalizes to:
 ```ts
 interface ExternalResearchReceipt {
   schemaVersion: 1;
+  goalId: string;
   taskId: string;
+  phaseId: string;
   provider: string;
+  providerProfileId: string;
+  providerProfileHash: string;
+  routeTrigger: string;
   route: "subscription_browser" | "api";
   costClass: "subscription_included" | "metered";
   submittedAt: string;
@@ -384,13 +577,25 @@ interface ExternalResearchReceipt {
     | "success"
     | "insufficient_evidence"
     | "timeout"
+    | "async_expired"
+    | "route_unavailable"
+    | "budget_blocked"
     | "provider_failure"
     | "policy_blocked"
     | "remote_may_continue";
+  errorBucket:
+    | "none"
+    | "denial"
+    | "transport"
+    | "async_expired"
+    | "route_unavailable"
+    | "budget";
   privacy: {
     outboundAllowed: boolean;
     reasonCodes: string[];
     outboundHash?: string;
+    decisionId?: string;
+    destinationProviderId?: string;
   };
   attempts: number;
   failovers: number;
@@ -461,15 +666,18 @@ slices, not one long mission.
 
 ### Slice B — pure Cost Router core
 
-- implement typed task classification, work orders, limits, and retry policy;
-- implement pre-send Privacy Gate;
+- implement model-free route predicates, immutable work orders, phase
+  definition, goal ceilings, and error buckets;
+- implement separate brief composer and destination-bound pre-send Privacy
+  Gate;
 - use dependency-injected provider capabilities;
 - no live network call.
 
 ### Slice C — durable job state
 
 - depend on an accepted, repaired `ATLAS_STATE_ROOT` resolver;
-- persist work orders, job references, and receipts outside code checkout;
+- persist goal router records, premium leases, escalation/retry/slice ledgers,
+  async handles, work orders, and receipts outside code checkout;
 - cold-read and replay without repository state.
 
 Current provisional commit `6f54582` does not satisfy this dependency. It must
@@ -499,18 +707,34 @@ consolidation authority.
 
 ### Unit tests
 
+- same structured input yields the same route without any model call;
+- T3 without an objective recorded trigger is refused;
+- a second T3 escalation for one task is refused;
 - deterministic classification for every task class;
 - privacy allow/deny matrix;
-- exact outbound text is scanned and hashed;
+- exact outbound text and destination profile are scanned and hashed;
+- destination change invalidates the prior privacy decision;
 - invariant failures receive zero retries;
 - transient failure receives one retry and one failover;
+- ambiguous/unclassified failure receives zero retries;
 - premium fallback is absent;
 - receipt status cannot be self-declared by a provider;
 - timeout and `remote_may_continue` states are distinct.
 
 ### Integration tests
 
+- restart mid-goal preserves active premium ownership, escalation count, retry
+  ledger, and goal ceilings;
+- second premium owner for an active phase is refused after restart;
 - fake subscription provider: submit, background inspect, collect;
+- async handle cold-resumes exactly once per scheduled event; no probe occurs
+  before `nextResumeAt`;
+- expired or unknown async handle fails locally with no provider call;
+- exhausted goal ceiling refuses another slice with a named blocker;
+- failover to a weaker or unknown provider privacy class requires a Yusif
+  exception and cannot run automatically;
+- disabled or unavailable research route refuses without invoking a local
+  model;
 - lost authentication fails closed;
 - changed UI selector fails closed;
 - scheduler resumes from durable job reference;
@@ -537,9 +761,14 @@ attachments, deployment, Telegram action, repository move, or paid API call.
 | site asks for login/MFA/CAPTCHA | visible handoff to Yusif; no credential capture |
 | provider quota exhausted | mark provider unavailable; try one other subscription |
 | provider UI changed | fail closed; no guessed selector loop |
+| HTTP authorization, ambiguous, or unclassified error | denial; zero retry |
 | privacy classifier uncertain | local-only route |
+| destination profile changed or is unknown | re-check or privacy blocker |
 | receipt store unavailable | no external submission |
+| async handle unknown or expired | local `async_expired`; no provider call |
 | background job exceeds 45 minutes | timeout or `remote_may_continue`; no duplicate |
+| goal ceiling exhausted | named budget blocker; no new slice |
+| research route disabled or unavailable | named blocker; no local-model substitute |
 | provider returns uncited prose | `insufficient_evidence` |
 | external claim describes local repo | `unverified` until local command evidence |
 | all cheap routes fail | blocker; no silent premium fallback |

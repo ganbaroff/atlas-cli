@@ -1,63 +1,101 @@
-# ATLAS — STATE NOW (post-compaction orientation)
-_Last written: 2026-07-25 by proof-closure M6→M10. Read this FIRST on resume._
+# ATLAS — STATE NOW
 
-## PURPOSE (current mission)
-**APP-RUN-01** — portable agent-factory (ADR-0009). Binding plan: M-module map in
-`C:\Projects\VOLAURA\memory\atlas\codex-loop.md`.
+Updated: 2026-07-30 Baku
 
-## MODULE MAP STATE (updated 2026-07-25 proof-closure)
-- **M1 Trust Floor — CLOSED** `c47a2ea`
-- **M2 Browser Hand — CLOSED** `b21228b` (Git-Bash audit debt)
-- **M3 Goal Runner — CLOSED** `0983154` (Git-Bash audit debt)
-- **M7 Control+Notify+Supervised-Assist — CLOSED** `8456289`
-- **Research-swarm — INTEGRATED** `4c25cac` (RESEARCH_ONLY_LIMITED · M6-health wired — `SWARM-HONESTY-RECEIPT-2026-07-25.md`)
-- **M4 Durable memory — CLOSED** `8815b3f` / verifier PASS-WITH-EXCEPTION
-- **M6 Provider health+spend — CLOSED** `41312f5` / independent verifier PASS-WITH-EXCEPTION
-- **M5 Manifest SDK + M4 debt — CLOSED** `a7675e2` / independent verifier PASS
-- **M8 Evidence audit — CLOSED** `26820ea` / independent verifier PASS
-- **M9 OPSBOARD integration — CLOSED** `5448b6d` / independent verifier PASS
-- **M10-internal install/upgrade/rollback — CLOSED** (see M10-VERIFIER-RECEIPT-2026-07-25)
-- **Integration tip:** `main` @ **`ae79bf2`** (PR #13 merged, Railway + Supabase live)
-- **Roadmap:** [`POST-M10-ROADMAP.md`](POST-M10-ROADMAP.md) — **Sprints A–E CLOSED** @ `9f0a831`
-- **NEXT:** Railway redeploy from tip · G-ATLAS-USER (parked) · VOLAURA codex-loop append (CEO gate)
+## One sentence
 
-## VERIFIED 2026-07-25 (proof-closure)
-- Full suite: **814 passed, 2 skipped** (incl. M10 lifecycle)
-- Independent re-pass M6→M9: typecheck + build + 811/813 + module DoD replays
-- M9 live exchange: bidirectional receipt (`M9-LIVE-CROSS-REPO-RECEIPT-2026-07-25.md`)
-- M10: install / upgrade / rollback child-process E2E PASS-WITH-EXCEPTION
+ATLAS is preserved and recoverable, but physical consolidation and live
+multi-provider research remain **NO-GO**. Current work is the durable
+foundation: state root plus Cost Router controls. No implementation traffic,
+push, merge, move, deployment, or scheduler cutover is active.
 
-## OPEN / CEO GATES
-1. **b1 Supabase** — **CLOSED** 2026-07-25 (`M6-LIVE-SMOKE-RECEIPT-2026-07-25.md`)
-2. **OPSBOARD remote push** — deferred (CEO: Atlas focus, not OPSBOARD)
-3. **VOLAURA codex-loop append** — consolidated block ready; CEO/verifier-lane writes `codex-loop.md`
-4. **Git-Bash audit debt (M2+M3)** — **CLOSED** 2026-07-25 (`GITBASH-AUDIT-RECEIPT-2026-07-25.md` · 818/820 PASS)
-5. **G-ATLAS-USER** — external distribution only
+## CEO dashboard
 
-## VERIFY COMMANDS
-```
-cd "C:\Users\user\OneDrive\Documents\GitHub\ANUS"
-git checkout main && git pull --ff-only
-npm run typecheck && npm run build
-npm test -- --run
-npm test -- --run src/__tests__/m10-install-lifecycle.test.ts
-node scripts/m9-live-cross-repo.mts
-```
+| Track | Status | Evidence | Next gate |
+|---|---|---|---|
+| Runner recovery | **DONE** | verified checkpoint `243864d`; source fix `57042ed` | preserve until integration |
+| Legacy Atlas preservation | **DONE** | bundle, ZIP, patch, manifest, dirty worktree ref | no deletion |
+| State root | **MODIFY** | provisional `6f54582`; 18/18 tests, but relative override depends on CWD | repair plus restart/cold-read proof |
+| Cost Router design | **IN REVIEW** | design branch; two Opus reviews closed by Codex | Yusif approves/corrects roadmap and ceilings |
+| Cost Router implementation | **NOT STARTED** | no router code or live traffic | written-spec approval first |
+| Physical consolidation | **NO-GO** | nested worktrees, unique legacy state, runtime bindings remain | shadow rehearsal plus CEO cutover gate |
+| Subscription research | **OFF** | Perplexity interactive access only; no durable adapter proof | public synthetic live gate |
+| Research swarm | **OFF** | `RESEARCH_ONLY_LIMITED` | two-provider `READY_FOR_RESEARCH` gate |
+| Product/learning expansion | **PARKED** | not critical path | after stable One-Atlas foundation |
 
-## HOW TO WORK (protocol, read before picking up any work item)
-- [`FABLE-PROTOCOL.md`](FABLE-PROTOCOL.md) — seat routing (which model for which work class, decided
-  BEFORE the first turn), recovery ladder when a request is declined, `FABLE.GO` token grammar,
-  body registry, GOAL-MODE. Closes the reference that `ATLAS-OPERATING-CANON.md` §7 used to leave dangling.
-- [`ATLAS-OPERATING-CANON.md`](ATLAS-OPERATING-CANON.md) — portable behavior gates.
-- [`ATLAS-MASTER-PLAN.md`](ATLAS-MASTER-PLAN.md) — the one forward plan (capability charter, gap
-  table vs industry practice, phases P0–P5). No second plan doc.
-- **Recoverability** — bare machine to running Atlas: [`docs/runbooks/bootstrap.md`](../runbooks/bootstrap.md) (P1.4) ·
-  backup + scheduling: [`docs/runbooks/backup.md`](../runbooks/backup.md) (P1.2) ·
-  restore drill + receipts: [`scripts/restore-drill.mts`](../../scripts/restore-drill.mts) + [`docs/atlas-cto/RESTORE-DRILL-RECEIPT-2026-07-28.md`](RESTORE-DRILL-RECEIPT-2026-07-28.md) (P1.3) ·
-  migration order: [`db/migrations/MANIFEST.md`](../../db/migrations/MANIFEST.md) (P1.1).
+## Exact current point
 
-## HOW TO RESUME
-1. Read this file
-2. M4–M10 internal stack CLOSED — do not re-open without CEO veto
-3. CEO gates (Supabase, OPSBOARD push, VOLAURA codex append) are explicit OPEN items
-4. Next allocation: **Atlas CLI product** (merge PR, Supabase spend, deploy from main)
+We are at **Milestone M1 — Durable Foundation**:
+
+1. correct the written Cost Router contract;
+2. define restart-proof router state, objective routes, provider-bound privacy,
+   bounded async resumes, and fail-closed unavailable behavior;
+3. repair the state-root resolver on a dedicated branch;
+4. run restart and cold-read tests;
+5. only then plan pure router implementation with no live provider traffic.
+
+## External review closure
+
+Source: one sequential `claude-opus-5` no-tool review stream with two
+responses. Two Fable 5 attempts returned server-side `529` and produced no
+review.
+
+Codex disposition:
+
+- **ACCEPT:** durable per-goal router record; goal-level ceilings; objective
+  model-free route predicates; one T3 escalation per task; destination-bound
+  privacy; explicit error buckets; no local-model substitute for unavailable
+  research.
+- **MODIFY:** keep one scheduled resume event at a time with bounded
+  inspections and expiry. Do not require only one total inspection when a
+  legitimate managed job is still running.
+- **REJECT:** claims that full design had no pre-send privacy gate or treated a
+  browser subscription as an API. Full design already separated both, but its
+  destination/retention binding needed strengthening.
+
+## Next execution order
+
+1. **Documentation now:** roadmap and revised Cost Router specification.
+2. **CEO review:** approve or correct roadmap and default goal ceilings.
+3. **State-root repair:** absolute-path contract, inventory correction,
+   CWD-invariance and cold-read tests.
+4. **Pure Cost Router:** classifier, error table, privacy checker, durable
+   records; fake providers only.
+5. **Shadow migration:** copy/replay/outcome diff; no physical move.
+6. **CEO cutover gate:** only after rollback proof.
+7. **Live research broker:** one provider at a time, public synthetic prompts.
+8. **Research swarm:** only after `READY_FOR_RESEARCH`.
+
+## CEO decisions
+
+Needed now:
+
+- confirm or change the roadmap;
+- confirm default per-goal ceilings. Codex recommendation:
+  4 local slices, 2 external research jobs, 1 active premium owner,
+  1 T3 escalation per task, 0 metered API spend.
+
+Needed later:
+
+- physical cutover;
+- login/MFA/CAPTCHA when a live provider gate requires it;
+- any paid API activation;
+- privacy exception to a weaker destination class;
+- secret rotation, deployment, scheduler/Railway changes, deletion, or move.
+
+## Canonical documents
+
+- Forward plan: [`ATLAS-MASTER-PLAN.md`](ATLAS-MASTER-PLAN.md)
+- Cost Router contract:
+  [`../superpowers/specs/2026-07-30-atlas-cost-router-design.md`](../superpowers/specs/2026-07-30-atlas-cost-router-design.md)
+- Resume truth:
+  `C:\Projects\VOLAURA\memory\atlas\CURRENT-COMPACT.md`
+- Cross-instance journal:
+  `C:\Projects\VOLAURA\memory\atlas\codex-loop.md`
+- Seat protocol: [`FABLE-PROTOCOL.md`](FABLE-PROTOCOL.md)
+
+## Resume rule
+
+Read this file, then `CURRENT-COMPACT.md`. Work only on the first non-green
+milestone. Never infer approval for a later milestone from approval of an
+earlier one.
