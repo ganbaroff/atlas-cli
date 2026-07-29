@@ -1,14 +1,10 @@
 /**
  * atlas/state-root.ts — single ATLAS_STATE_ROOT resolver (P2.1 wave A).
  *
- * WHY THIS EXISTS: runtime state currently scatters across ~25 stores, six of
- * which (exec-graph, evidence, goal budgets, swarm-run bundles, operator
- * state, operator runs) resolve relative to the code checkout (cwd or a
- * module-walk to the nearest package.json — see exec-graph/ledger.ts's
- * resolveExecGraphDir() and evidence/ledger.ts's resolveEvidenceDir()). That
- * works today because the checkout IS the runtime home, but it breaks the
- * moment the repo moves out of OneDrive: state would either vanish (new cwd
- * has no matching tree) or split across two checkouts.
+ * WHY THIS EXISTS: runtime path resolution is scattered, and verified stores
+ * still include checkout-relative and legacy hardcoded defaults. That works
+ * today because the checkout acts as runtime home, but a repository move can
+ * make state vanish from the new checkout or split across two checkouts.
  *
  * This module adds ONE checkout-independent resolver. It intentionally does
  * NOT migrate any call site yet — existing resolvers keep their own
@@ -52,7 +48,7 @@ function readAbsoluteOverride(envName: string): string | undefined {
   return normalize(value);
 }
 
-/** Registry of known state stores and (if any) their legacy per-store env var. */
+/** Initial migration registry; not a claim of complete runtime-store inventory. */
 export const STATE_STORES = {
   'exec-graph': 'ATLAS_EXEC_GRAPH_DIR',
   evidence: 'ATLAS_EVIDENCE_DIR',
@@ -60,6 +56,8 @@ export const STATE_STORES = {
   'swarm-runs': undefined,
   'operator-state': undefined,
   'operator-runs': undefined,
+  'intake-drafts': undefined,
+  'task-results': undefined,
 } as const satisfies Readonly<Record<string, string | undefined>>;
 
 export type StateStore = keyof typeof STATE_STORES;

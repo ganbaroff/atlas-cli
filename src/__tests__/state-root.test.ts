@@ -159,7 +159,13 @@ describe('atlas/state-root', () => {
   });
 
   describe('STATE_STORES registry', () => {
-    it('names all six checkout-relative stores from the P2 inventory', () => {
+    it('includes known stores omitted from the first migration inventory', () => {
+      expect(Object.keys(STATE_STORES)).toEqual(
+        expect.arrayContaining(['intake-drafts', 'task-results'])
+      );
+    });
+
+    it('names the eight stores in the initial migration registry', () => {
       expect(Object.keys(STATE_STORES).sort()).toEqual(
         [
           'exec-graph',
@@ -168,6 +174,8 @@ describe('atlas/state-root', () => {
           'swarm-runs',
           'operator-state',
           'operator-runs',
+          'intake-drafts',
+          'task-results',
         ].sort()
       );
     });
