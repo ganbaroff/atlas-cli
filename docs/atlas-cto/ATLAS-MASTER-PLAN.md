@@ -21,9 +21,10 @@
 one Telegram poller, one local PC/browser executor, cost-aware research, and
 product systems as adapters rather than competing brains.
 
-**Current point:** M1 Durable Foundation, package M1C. M1A contract and M1B
-resolver repair are complete on local unpushed branches. Physical
-consolidation is NO-GO. Live provider traffic has not started.
+**Current point:** M1 Durable Foundation, package M1D. M1A contract, M1B
+resolver repair, and M1C durable goal state are complete on local unpushed
+branches. Physical consolidation is NO-GO. Live provider traffic has not
+started.
 
 ```mermaid
 flowchart LR
@@ -60,11 +61,11 @@ flowchart LR
    destination privacy, async handles, error buckets, and goal ceilings.
 2. **M1B — DONE — state-root repair.** Reject relative overrides, correct
    inventory, and prove CWD invariance. Verified branch tip: `1d173d6`.
-3. **M1C — NEXT — durable router state.** Store goal budget, premium owner,
-   escalation/retry ledgers, and async handles under accepted
-   `ATLAS_STATE_ROOT`.
-4. **M1D — restart proof.** Restart mid-goal; reject duplicate premium owner;
-   resume scheduled handle once; expire locally without provider call.
+3. **M1C — DONE — durable router state.** Commit `35e2f52` stores goal
+   ceilings, premium owner, escalation/retry ledgers, and async handles under
+   accepted `ATLAS_STATE_ROOT`; 50/50 focused tests and typecheck pass.
+4. **M1D — NOW — restart proof.** Restart mid-goal; reject duplicate premium
+   owner; resume scheduled handle once; expire locally without provider call.
 
 ### Current CEO control
 
