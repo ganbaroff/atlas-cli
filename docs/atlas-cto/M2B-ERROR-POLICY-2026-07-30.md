@@ -78,3 +78,65 @@ input directly and must keep working); what changed is that nothing which
 ## Status
 
 Closures above are provisional pending independent audit.
+
+## Repair: the symbol-property brand was forgeable (independent review, 2026-07-30)
+
+An independent reviewer refuted the "enforced twice" claim above. The
+compile-time half held; the runtime half did not. `resolveRoute` built its
+branded object as `Object.freeze({ ...match, [ROUTE_AVAILABILITY_CHECKED]:
+true })`. `Object.freeze` only prevents mutating *that* object — it does
+nothing to stop `ROUTE_AVAILABILITY_CHECKED` from being read and copied,
+because it was an **own enumerable symbol property**, and object spread /
+`Object.assign` copy own enumerable properties, symbol-keyed ones included.
+
+The reviewer's exploit: call `resolveRoute` once for an available route
+(T0) to obtain one genuine `AvailableRoute`, then build
+`{ ...realAvailable, route: 'T1', predicate: '...' }` — spreading the real
+object's properties (including the brand symbol) as the base, then
+overriding `route`/`predicate` to claim T1, which is disabled by default.
+The forged object passed `assertRouteAvailabilityChecked` and
+`runRoutedAttempt` spent a real provider call on a route whose availability
+was never actually checked. Live-reproduced, not theoretical: the reviewer
+ran exactly this against `runRoutedAttempt` and confirmed no
+`availability_not_checked` throw and a non-zero provider-spy call count.
+
+**Replacement, defence in depth:**
+
+1. **Identity-based tracking, not a copyable property.** A module-private
+   `RESOLVED_ROUTES = new WeakSet<object>()` is populated only inside
+   `resolveRoute`. `assertRouteAvailabilityChecked` now checks
+   `RESOLVED_ROUTES.has(route)` — object-reference membership, not a
+   property read. Spreading, `Object.assign`-ing, or `JSON.parse(
+   JSON.stringify(...))`-cloning a real `AvailableRoute` all produce a
+   **new** object that was never added to the set, so all three are
+   rejected. `AvailableRoute` keeps a type-only phantom brand (`declare
+   const ... unique symbol`, never given a runtime value) purely so the
+   compiler still flags a bare `RouteMatch` passed where an
+   `AvailableRoute` is required; the compiler-level guarantee is unchanged,
+   only the runtime guarantee moved off a copyable property.
+2. **No trust in a carried token alone.** `runRoutedAttempt` now calls
+   `checkRouteAvailability(params.route.route, params.availability ??
+   DEFAULT_ROUTE_AVAILABILITY)` itself, immediately after
+   `assertRouteAvailabilityChecked`, reusing the existing pure check rather
+   than adding a second one. This means even a *genuinely* branded route
+   (real object identity, really returned by `resolveRoute`) is refused if
+   availability was flipped to disabled between minting and consumption —
+   a stale grant cannot be replayed.
+
+New regression tests in `src/__tests__/cost-router-error-policy.test.ts`
+(describe block "M2B repair: identity-based brand cannot be forged
+(independent-review finding)") reproduce: the spread forgery exactly as the
+reviewer ran it, the same forgery via `Object.assign`, a JSON round-trip
+clone of a real branded route (refused even though the underlying route is
+still available — proves identity, not shape, is what's checked), a
+genuinely branded route whose availability is flipped to disabled after
+minting (proves the re-check in `runRoutedAttempt`), and the unmodified
+happy path.
+
+**Updated acceptance results:**
+- `npx tsc --noEmit` — clean, no errors.
+- `npx vitest run src/__tests__/cost-router-error-policy.test.ts src/__tests__/cost-router-classify.test.ts src/__tests__/cost-router-state.test.ts` — **59 passed, 0 failed** (the prior 54 did not regress; 5 new tests added).
+- `git status --short` — only `src/atlas/cost-router-classify.ts` and
+  `src/__tests__/cost-router-error-policy.test.ts` changed by this repair;
+  the same pre-existing dirty entries listed above remain untouched.
+- Repair commit (code + tests): `f706390`.
