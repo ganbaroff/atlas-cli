@@ -14,6 +14,9 @@
  * call. It still never calls a model or provider.
  */
 
+import { createHmac, randomUUID } from 'node:crypto';
+import { join } from 'node:path';
+
 import {
   acquirePremiumOwner,
   recordClearanceException,
@@ -26,6 +29,8 @@ import {
   type RetentionTerm,
   type T3Trigger,
 } from './cost-router-state.js';
+import { createNonceLedger, type NonceLedger } from './queue-auth.js';
+import { resolveStateDir } from './state-root.js';
 
 export type RouteTier = 'T0' | 'T1' | 'T2' | 'T3';
 
@@ -67,7 +72,11 @@ export type RouteRefusalReason =
   | 'route_disabled'
   /** M2B: a value claiming to be an `AvailableRoute` never actually passed
    *  through `resolveRoute`'s availability check (brand missing/forged). */
-  | 'availability_not_checked';
+  | 'availability_not_checked'
+  /** M2C repair: `runRoutedAttempt`'s injectable-table entry point was called
+   *  outside a Vitest runtime — the only legitimate caller is this module's
+   *  own test suite. Production code must use `runTrustedRoutedAttempt`. */
+  | 'test_only_entry_point';
 
 export class RouteRefusalError extends Error {
   constructor(
@@ -406,7 +415,19 @@ export function isWeakerClass(candidate: ProviderClass, required: ProviderClass)
   return clearanceRank(candidate) > clearanceRank(required);
 }
 
-export type ClearanceRefusalReason = 'destination_class_unknown' | 'destination_class_too_weak';
+export type ClearanceRefusalReason =
+  | 'destination_class_unknown'
+  | 'destination_class_too_weak'
+  /** M2C repair: exception carried no sig/ts/nonce. */
+  | 'exception_unsigned'
+  /** M2C repair: signature did not match the canonical fields. */
+  | 'exception_signature_mismatch'
+  /** M2C repair: signature is older than the accepted window. */
+  | 'exception_signature_expired'
+  /** M2C repair: this exception's nonce was already spent. */
+  | 'exception_signature_replayed'
+  /** M2C repair: no operator key configured — fail closed, never permit. */
+  | 'exception_signing_key_not_configured';
 
 export class ClearanceRefusalError extends Error {
   constructor(
@@ -431,6 +452,120 @@ export interface ClearanceException {
   readonly reason: string;
   readonly approvedBy: string;
   readonly permittedClass: ProviderClass;
+  /**
+   * M2C repair: HMAC-SHA256 signature over this exception's own canonical
+   * fields (see `signClearanceException`), verified with the operator-held
+   * key before the exception is trusted. Absent `sig`/`ts`/`nonce` means
+   * unsigned — refused, never treated as a real operator grant.
+   */
+  readonly sig?: string;
+  readonly ts?: string;
+  readonly nonce?: string;
+}
+
+/**
+ * M2C repair: signed operator clearance exceptions.
+ *
+ * `ClearanceException` used to be plain data — any caller could write
+ * `approvedBy: 'the-calling-code-itself'` and nothing distinguished a real
+ * operator grant from one the code wrote for itself. This reuses the exact
+ * mechanism `queue-auth.ts` already proved for work-order authenticity:
+ * HMAC-SHA256 over a canonical JSON payload, keyed by an env var read by
+ * NAME only (`ATLAS_CLEARANCE_SIGNING_KEY` — value is operator-set, never a
+ * literal in code/tests/logs/reports), plus `queue-auth`'s own
+ * `createNonceLedger` so a signed exception cannot be replayed. Same scheme,
+ * not a second one.
+ */
+const CLEARANCE_SIGNING_KEY_ENV = 'ATLAS_CLEARANCE_SIGNING_KEY';
+const CLEARANCE_SIGNATURE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+/** Reads the operator-held clearance-signing key from the environment by name only. */
+export function getClearanceSigningKey(): string | undefined {
+  return process.env[CLEARANCE_SIGNING_KEY_ENV] || undefined;
+}
+
+function canonicalizeClearanceException(
+  reason: string,
+  approvedBy: string,
+  permittedClass: ProviderClass,
+  ts: string,
+  nonce: string,
+): string {
+  return JSON.stringify({
+    reason,
+    approvedBy,
+    permittedClass: {
+      identityBearing: permittedClass.identityBearing,
+      retentionTerm: permittedClass.retentionTerm,
+      canActBeyondBrief: permittedClass.canActBeyondBrief,
+    },
+    ts,
+    nonce,
+  });
+}
+
+function computeClearanceHmac(
+  reason: string,
+  approvedBy: string,
+  permittedClass: ProviderClass,
+  ts: string,
+  nonce: string,
+  key: string,
+): string {
+  return createHmac('sha256', key)
+    .update(canonicalizeClearanceException(reason, approvedBy, permittedClass, ts, nonce))
+    .digest('hex');
+}
+
+/** Signs a clearance exception with the operator-held key. The signer must already hold the key — this does not grant one. */
+export function signClearanceException(
+  fields: { reason: string; approvedBy: string; permittedClass: ProviderClass },
+  key: string,
+): ClearanceException {
+  const ts = new Date().toISOString();
+  const nonce = randomUUID();
+  const sig = computeClearanceHmac(
+    fields.reason,
+    fields.approvedBy,
+    fields.permittedClass,
+    ts,
+    nonce,
+    key,
+  );
+  return { ...fields, sig, ts, nonce };
+}
+
+function verifyClearanceExceptionSignature(
+  exception: ClearanceException,
+  key: string | undefined,
+  ledger: NonceLedger,
+): { ok: true } | { ok: false; reason: ClearanceRefusalReason } {
+  if (!key) {
+    // Fail closed: verification unavailable must never mean "permitted".
+    return { ok: false, reason: 'exception_signing_key_not_configured' };
+  }
+  if (!exception.sig || !exception.ts || !exception.nonce) {
+    return { ok: false, reason: 'exception_unsigned' };
+  }
+  const expected = computeClearanceHmac(
+    exception.reason,
+    exception.approvedBy,
+    exception.permittedClass,
+    exception.ts,
+    exception.nonce,
+    key,
+  );
+  if (expected !== exception.sig) {
+    return { ok: false, reason: 'exception_signature_mismatch' };
+  }
+  const tsMs = Date.parse(exception.ts);
+  if (!Number.isFinite(tsMs) || Date.now() - tsMs > CLEARANCE_SIGNATURE_MAX_AGE_MS) {
+    return { ok: false, reason: 'exception_signature_expired' };
+  }
+  if (!ledger.recordIfFresh(exception.nonce)) {
+    return { ok: false, reason: 'exception_signature_replayed' };
+  }
+  return { ok: true };
 }
 
 /**
@@ -523,10 +658,14 @@ export interface RunRoutedAttemptParams {
   /**
    * M2C: table resolving providerId -> declared ProviderClass, consulted
    * only when `briefClearance` is set. Defaults to this module's own
-   * `DEFAULT_PROVIDER_CLASS_TABLE`. This parameter is the injectable-table
-   * hole an independent review flagged — it stays reachable here so tests
-   * can exercise the clearance gate against fixtures, but
-   * `runTrustedRoutedAttempt` has no such parameter at all.
+   * `DEFAULT_PROVIDER_CLASS_TABLE`. M2C repair: this parameter — and
+   * `availability` above — is the injectable-table hole an independent
+   * review found reachable by any outside importer of `runRoutedAttempt`.
+   * The fix is not a comment or a naming convention: `runRoutedAttempt`
+   * itself now refuses to run outside a Vitest runtime (see the guard at
+   * the top of its body), so this parameter is only ever live during the
+   * test suite. `runTrustedRoutedAttempt` has no such parameter at all and
+   * carries no such guard — it is the real production entry point.
    */
   providerClasses?: ProviderClassTable;
   /** M2C: explicit operator exception permitting a specific weaker class for this send. */
@@ -567,6 +706,21 @@ export interface RoutedAttemptResult {
 export async function runRoutedAttempt(
   params: RunRoutedAttemptParams,
 ): Promise<RoutedAttemptResult> {
+  // M2C repair: this is the injectable-table entry point an independent
+  // review found reachable by any outside importer (forge an availability
+  // table, enter a disabled route, no refusal). Production code has no
+  // legitimate reason to call this function — it must go through
+  // `runTrustedRoutedAttempt`. This is an enforced control, not a naming
+  // convention: outside a Vitest runtime, every call refuses before doing
+  // anything else, closing the back door the earlier review found.
+  if (process.env['VITEST'] !== 'true') {
+    throw new RouteRefusalError(
+      'test_only_entry_point',
+      params.route?.route,
+      'runRoutedAttempt is test-only (requires a Vitest runtime); production code must use runTrustedRoutedAttempt',
+    );
+  }
+
   assertRouteAvailabilityChecked(params.route);
   // Defence-in-depth #2: re-check live availability even for a genuinely
   // branded route, so a token minted before an availability change cannot
@@ -577,6 +731,35 @@ export async function runRoutedAttempt(
   const classOf = (provider: ProviderCandidate): ProviderClass | undefined =>
     providerClasses[provider.providerId];
 
+  // M2C repair: an operator exception is only ever trusted after it verifies
+  // — a real signature from the operator-held key over its own canonical
+  // fields, checked once per attempt (not per destination, so the same
+  // signed exception covering both the primary provider and one failover
+  // within a single attempt is not mistaken for a replay). Verification
+  // failure (including "no key configured") refuses before any provider
+  // call is made — never silently falls back to "no exception".
+  let verifiedClearanceException: ClearanceException | undefined;
+  if (params.briefClearance && params.clearanceException) {
+    const ledgerDir = join(
+      params.options?.rootDir ?? resolveStateDir('cost-router'),
+      'clearance-nonces',
+    );
+    const verification = verifyClearanceExceptionSignature(
+      params.clearanceException,
+      getClearanceSigningKey(),
+      createNonceLedger(ledgerDir),
+    );
+    if (!verification.ok) {
+      throw new ClearanceRefusalError(
+        verification.reason,
+        params.briefClearance,
+        undefined,
+        `clearance exception for task ${params.taskId} failed signature verification: ${verification.reason}`,
+      );
+    }
+    verifiedClearanceException = params.clearanceException;
+  }
+
   // M2C: refuses (throws) before any attempt is made against `provider` when
   // its declared class is weaker than the brief's cleared class. Records the
   // operator exception on the durable record the first time it is what
@@ -585,10 +768,10 @@ export async function runRoutedAttempt(
   const guardClearance = async (provider: ProviderCandidate): Promise<void> => {
     if (!params.briefClearance) return;
     const destinationClass = classOf(provider);
-    assertDestinationClearance(params.briefClearance, destinationClass, params.clearanceException);
+    assertDestinationClearance(params.briefClearance, destinationClass, verifiedClearanceException);
     if (
       !clearanceExceptionRecorded &&
-      params.clearanceException &&
+      verifiedClearanceException &&
       destinationClass &&
       isWeakerClass(destinationClass, params.briefClearance)
     ) {
@@ -596,7 +779,7 @@ export async function runRoutedAttempt(
       await recordClearanceException(
         params.goalId,
         params.taskId,
-        params.clearanceException,
+        verifiedClearanceException,
         params.now,
         params.options,
       );
@@ -704,9 +887,10 @@ export async function runRoutedAttempt(
  * forged `AvailableRoute` unreachable: the unsafe path (an injectable table)
  * simply does not exist on this call's type, rather than being a documented
  * rule callers are trusted to follow. `runRoutedAttempt` stays exported with
- * its injectable tables purely so the test suite can exercise both the
+ * its injectable tables so the test suite can exercise both the
  * availability gate and the clearance gate against fixtures without live
- * provider state.
+ * provider state — but that reachability is now enforced, not just named:
+ * see the Vitest-runtime guard at the top of `runRoutedAttempt`'s body.
  */
 export interface TrustedRoutedAttemptParams {
   route: AvailableRoute;

@@ -9,6 +9,7 @@ import {
   resolveRoute,
   runRoutedAttempt,
   runTrustedRoutedAttempt,
+  signClearanceException,
   type ClearanceException,
   type ProviderAttemptResult,
   type ProviderCandidate,
@@ -46,6 +47,7 @@ describe('atlas/cost-router-classify: M2C destination-bound clearance', () => {
 
   afterEach(() => {
     rmSync(sandboxDir, { recursive: true, force: true });
+    vi.unstubAllEnvs();
   });
 
   describe('isWeakerClass: agency dominates, all else equal', () => {
@@ -130,17 +132,21 @@ describe('atlas/cost-router-classify: M2C destination-bound clearance', () => {
   });
 
   describe('operator exception', () => {
-    it('lets a cross-class send proceed and records the exception plus permitted class on the durable record', async () => {
+    it('lets a cross-class send proceed and records the exception plus permitted class on the durable record, when correctly signed and a key is configured', async () => {
+      vi.stubEnv('ATLAS_CLEARANCE_SIGNING_KEY', 'test-fake-signing-key-not-real');
       const goalId = 'goal-clearance-exception';
       await createGoalRouterRecord(goalId, NOW, { rootDir });
       const route = resolveRoute({ taskId: 'task-exception-1', needsLocalWorker: true });
       const attempt = vi.fn().mockReturnValue({ ok: true });
 
-      const exception: ClearanceException = {
-        reason: 'CEO-approved one-off export for task-exception-1',
-        approvedBy: 'yusif',
-        permittedClass: IDENTITY_UNBOUNDED_AGENTIC,
-      };
+      const exception = signClearanceException(
+        {
+          reason: 'CEO-approved one-off export for task-exception-1',
+          approvedBy: 'yusif',
+          permittedClass: IDENTITY_UNBOUNDED_AGENTIC,
+        },
+        'test-fake-signing-key-not-real',
+      );
 
       const result = await runRoutedAttempt({
         route,
@@ -164,6 +170,168 @@ describe('atlas/cost-router-classify: M2C destination-bound clearance', () => {
         approvedBy: exception.approvedBy,
         permittedClass: IDENTITY_UNBOUNDED_AGENTIC,
       });
+    });
+  });
+
+  describe('M2C repair: a clearance exception is not self-grantable — it must verify', () => {
+    const baseFields = {
+      reason: 'attempted self-grant',
+      approvedBy: 'the-calling-code-itself',
+      permittedClass: IDENTITY_UNBOUNDED_AGENTIC,
+    };
+
+    it('refuses an unsigned exception, even with a key configured, with its own named reason', async () => {
+      vi.stubEnv('ATLAS_CLEARANCE_SIGNING_KEY', 'test-fake-signing-key-not-real');
+      const goalId = 'goal-clearance-unsigned';
+      await createGoalRouterRecord(goalId, NOW, { rootDir });
+      const route = resolveRoute({ taskId: 'task-unsigned-1', needsLocalWorker: true });
+      const attempt = vi.fn().mockReturnValue({ ok: true });
+      const unsigned: ClearanceException = { ...baseFields };
+
+      await expect(
+        runRoutedAttempt({
+          route,
+          goalId,
+          taskId: 'task-unsigned-1',
+          now: NOW,
+          currentProvider: { providerId: 'agentic-1', tier: 'cheap' },
+          attempt,
+          options: { rootDir },
+          briefClearance: KEYED_SERVICE,
+          providerClasses: { 'agentic-1': IDENTITY_UNBOUNDED_AGENTIC },
+          clearanceException: unsigned,
+        }),
+      ).rejects.toMatchObject({ reason: 'exception_unsigned' });
+      expect(attempt).not.toHaveBeenCalled();
+    });
+
+    it('refuses a mis-signed exception (tampered field) with its own named reason', async () => {
+      vi.stubEnv('ATLAS_CLEARANCE_SIGNING_KEY', 'test-fake-signing-key-not-real');
+      const goalId = 'goal-clearance-missigned';
+      await createGoalRouterRecord(goalId, NOW, { rootDir });
+      const route = resolveRoute({ taskId: 'task-missigned-1', needsLocalWorker: true });
+      const attempt = vi.fn().mockReturnValue({ ok: true });
+      const signed = signClearanceException(baseFields, 'test-fake-signing-key-not-real');
+      const tampered: ClearanceException = { ...signed, approvedBy: 'a-different-approver' };
+
+      await expect(
+        runRoutedAttempt({
+          route,
+          goalId,
+          taskId: 'task-missigned-1',
+          now: NOW,
+          currentProvider: { providerId: 'agentic-1', tier: 'cheap' },
+          attempt,
+          options: { rootDir },
+          briefClearance: KEYED_SERVICE,
+          providerClasses: { 'agentic-1': IDENTITY_UNBOUNDED_AGENTIC },
+          clearanceException: tampered,
+        }),
+      ).rejects.toMatchObject({ reason: 'exception_signature_mismatch' });
+      expect(attempt).not.toHaveBeenCalled();
+    });
+
+    it('refuses a replayed exception (same signature reused for a second send) with its own named reason', async () => {
+      vi.stubEnv('ATLAS_CLEARANCE_SIGNING_KEY', 'test-fake-signing-key-not-real');
+      const goalId = 'goal-clearance-replay';
+      await createGoalRouterRecord(goalId, NOW, { rootDir });
+      const attempt = vi.fn().mockReturnValue({ ok: true });
+      const signed = signClearanceException(baseFields, 'test-fake-signing-key-not-real');
+
+      const routeFirst = resolveRoute({ taskId: 'task-replay-1', needsLocalWorker: true });
+      const first = await runRoutedAttempt({
+        route: routeFirst,
+        goalId,
+        taskId: 'task-replay-1',
+        now: NOW,
+        currentProvider: { providerId: 'agentic-1', tier: 'cheap' },
+        attempt,
+        options: { rootDir },
+        briefClearance: KEYED_SERVICE,
+        providerClasses: { 'agentic-1': IDENTITY_UNBOUNDED_AGENTIC },
+        clearanceException: signed,
+      });
+      expect(first.status).toBe('succeeded');
+
+      const routeSecond = resolveRoute({ taskId: 'task-replay-2', needsLocalWorker: true });
+      await expect(
+        runRoutedAttempt({
+          route: routeSecond,
+          goalId,
+          taskId: 'task-replay-2',
+          now: NOW,
+          currentProvider: { providerId: 'agentic-1', tier: 'cheap' },
+          attempt,
+          options: { rootDir },
+          briefClearance: KEYED_SERVICE,
+          providerClasses: { 'agentic-1': IDENTITY_UNBOUNDED_AGENTIC },
+          clearanceException: signed,
+        }),
+      ).rejects.toMatchObject({ reason: 'exception_signature_replayed' });
+      expect(attempt).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses a cross-class send when no signing key is configured — fails closed, never permits', async () => {
+      const goalId = 'goal-clearance-nokey';
+      await createGoalRouterRecord(goalId, NOW, { rootDir });
+      const route = resolveRoute({ taskId: 'task-nokey-1', needsLocalWorker: true });
+      const attempt = vi.fn().mockReturnValue({ ok: true });
+      const unverifiable: ClearanceException = {
+        ...baseFields,
+        sig: 'deadbeef',
+        ts: NOW,
+        nonce: 'nonce-nokey-1',
+      };
+
+      await expect(
+        runRoutedAttempt({
+          route,
+          goalId,
+          taskId: 'task-nokey-1',
+          now: NOW,
+          currentProvider: { providerId: 'agentic-1', tier: 'cheap' },
+          attempt,
+          options: { rootDir },
+          briefClearance: KEYED_SERVICE,
+          providerClasses: { 'agentic-1': IDENTITY_UNBOUNDED_AGENTIC },
+          clearanceException: unverifiable,
+        }),
+      ).rejects.toMatchObject({ reason: 'exception_signing_key_not_configured' });
+      expect(attempt).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('M2C repair: the injectable-table entry point is test-only, enforced not conventional', () => {
+    it('refuses the forged-availability attack that previously entered disabled route T1, when the entry point is called outside a Vitest runtime', async () => {
+      const goalId = 'goal-testonly-seam';
+      await createGoalRouterRecord(goalId, NOW, { rootDir });
+      const forgedAvailability = { T0: true, T1: true, T2: true, T3: true };
+      const route = resolveRoute({ taskId: 'task-testonly-seam-1', needsWebResearch: true }, forgedAvailability);
+      const attempt = vi.fn().mockReturnValue({ ok: true });
+
+      const priorVitestFlag = process.env['VITEST'];
+      delete process.env['VITEST'];
+      try {
+        await expect(
+          runRoutedAttempt({
+            route,
+            goalId,
+            taskId: 'task-testonly-seam-1',
+            now: NOW,
+            currentProvider: { providerId: 'sneaky-1', tier: 'free' },
+            attempt,
+            options: { rootDir },
+            availability: forgedAvailability,
+          }),
+        ).rejects.toMatchObject({ reason: 'test_only_entry_point' });
+      } finally {
+        if (priorVitestFlag === undefined) {
+          delete process.env['VITEST'];
+        } else {
+          process.env['VITEST'] = priorVitestFlag;
+        }
+      }
+      expect(attempt).not.toHaveBeenCalled();
     });
   });
 
