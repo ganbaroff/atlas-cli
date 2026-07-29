@@ -1,6 +1,6 @@
 # ATLAS — MASTER PLAN (the one plan of record)
 
-> **Status:** active · refreshed 2026-07-30 by Codex SOL · current milestone M1.
+> **Status:** active · refreshed 2026-07-30 by Codex SOL · current milestone M2.
 > **Authority:** this is the one PLAN of record. Architecture stays
 > `docs/architecture/ATLAS-ARCHITECTURE.md`; current status stays in
 > `ATLAS-STATE-NOW.md`; decisions stay in `docs/adr/`; evidence journal stays
@@ -21,16 +21,15 @@
 one Telegram poller, one local PC/browser executor, cost-aware research, and
 product systems as adapters rather than competing brains.
 
-**Current point:** M1 Durable Foundation, package M1D. M1A contract, M1B
-resolver repair, and M1C durable goal state are complete on local unpushed
-branches. Physical consolidation is NO-GO. Live provider traffic has not
-started.
+**Current point:** M2 Safe Runtime and Router, package M2A. M1A–M1D are
+complete on a local unpushed implementation branch. Physical consolidation is
+NO-GO. Live provider traffic has not started.
 
 ```mermaid
 flowchart LR
     M0["M0 Freeze and preserve<br/>DONE"]
-    M1["M1 Durable foundation<br/>NOW"]
-    M2["M2 Safe runtime and router<br/>NEXT"]
+    M1["M1 Durable foundation<br/>DONE"]
+    M2["M2 Safe runtime and router<br/>NOW"]
     M3["M3 Shadow consolidation<br/>NO MOVE"]
     G{"Yusif cutover gate"}
     M4["M4 One Atlas cutover"]
@@ -47,8 +46,8 @@ flowchart LR
 | Milestone | Status | Scope | Done-bar |
 |---|---|---|---|
 | M0 Freeze and preserve | **DONE** | runner recovery, legacy bundle/ZIP/patch, dirty worktree ref | recoverable checkpoints exist; no source destroyed |
-| M1 Durable foundation | **NOW** | repair state root; durable Cost Router record; objective routes; provider-bound privacy | restart/cold-read tests pass; written spec approved |
-| M2 Safe runtime and router | **NEXT** | pure router, error buckets, goal ceilings, premium lease, runner wrapper/liveness | fake-provider suite passes; no live traffic or silent fallback |
+| M1 Durable foundation | **DONE LOCAL** | repaired state root; durable Cost Router record; restart/exact-once resume proof | 58/58 focused tests; typecheck; child-process restart |
+| M2 Safe runtime and router | **NOW** | pure router, error buckets, provider-bound privacy, runner wrapper/liveness | fake-provider suite passes; no live traffic or silent fallback |
 | M3 Shadow consolidation | **BLOCKED BY M1–M2** | copy/replay, outcome diff, legacy extraction, rollback rehearsal | parity and rollback receipts; no physical move |
 | M4 One Atlas cutover | **CEO GATE** | detach nested worktrees, select canon, update path bindings, one authority | clean restart, rollback, Telegram/runner authority proof |
 | M5 Live research broker | **OFF** | Perplexity quick research; Gemini/ChatGPT deep research | public synthetic tests; no secrets/files; no paid API |
@@ -64,8 +63,22 @@ flowchart LR
 3. **M1C — DONE — durable router state.** Commit `35e2f52` stores goal
    ceilings, premium owner, escalation/retry ledgers, and async handles under
    accepted `ATLAS_STATE_ROOT`; 50/50 focused tests and typecheck pass.
-4. **M1D — NOW — restart proof.** Restart mid-goal; reject duplicate premium
-   owner; resume scheduled handle once; expire locally without provider call.
+4. **M1D — DONE — restart proof.** Commit `304bbf9` proves a real child-process
+   restart, rejects duplicate premium ownership, claims a scheduled resume
+   once, and expires unknown/late handles locally with zero provider calls.
+
+### M2 work packages
+
+1. **M2A — NOW — objective routing.** Pure model-free route predicates,
+   immutable objective T3 triggers, and deterministic repeated-input results.
+2. **M2B — error and availability policy.** Denial/transport/unknown buckets,
+   one cheap failover, named unavailable blocker, and no premium or
+   local-memory substitute.
+3. **M2C — destination-bound privacy.** Separate checker scans exact outbound
+   bytes plus provider identity/retention/navigation profile before every send
+   and failover.
+4. **M2D — fake-provider integration.** Exercise ceilings, receipts, refusal,
+   and privacy re-check end-to-end without live traffic.
 
 ### Current CEO control
 

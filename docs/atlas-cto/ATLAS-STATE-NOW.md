@@ -5,9 +5,10 @@ Updated: 2026-07-30 Baku
 ## One sentence
 
 ATLAS is preserved and recoverable, but physical consolidation and live
-multi-provider research remain **NO-GO**. Current work is the durable
-foundation: state root plus Cost Router controls. No live provider traffic,
-push, merge, move, deployment, or scheduler cutover is active.
+multi-provider research remain **NO-GO**. Durable foundation M1 is verified
+locally; current work is M2 safe router logic with fake providers only. No
+live provider traffic, push, merge, move, deployment, or scheduler cutover is
+active.
 
 ## CEO dashboard
 
@@ -17,7 +18,7 @@ push, merge, move, deployment, or scheduler cutover is active.
 | Legacy Atlas preservation | **DONE** | bundle, ZIP, patch, manifest, dirty worktree ref | no deletion |
 | State root resolver | **REPAIR VERIFIED** | accepted branch history through `f017add`; 22/22 tests, typecheck, direct CWD probe | preserve before call-site migration |
 | Cost Router design | **ACCEPTED** | two Opus reviews closed; roadmap and ceilings approved | implement package-by-package |
-| Cost Router implementation | **M1C VERIFIED LOCAL** | `35e2f52`; 50/50 focused tests, typecheck, atomic lock/replace | M1D restart/resume proof |
+| Cost Router implementation | **M1 VERIFIED LOCAL** | `304bbf9`; 58/58 focused tests, real child restart, exact-once resume claim | M2A objective classifier |
 | Physical consolidation | **NO-GO** | nested worktrees, unique legacy state, runtime bindings remain | shadow rehearsal plus CEO cutover gate |
 | Subscription research | **OFF** | Perplexity interactive access only; no durable adapter proof | public synthetic live gate |
 | Research swarm | **OFF** | `RESEARCH_ONLY_LIMITED` | two-provider `READY_FOR_RESEARCH` gate |
@@ -25,15 +26,16 @@ push, merge, move, deployment, or scheduler cutover is active.
 
 ## Exact current point
 
-We are at **Milestone M1 — Durable Foundation**. M1A written contract, M1B
-resolver repair, and M1C durable goal state are complete on local unpushed
-branches. Active package: M1D.
+We are at **Milestone M2 — Safe Runtime and Router**. M1A contract, M1B
+resolver repair, M1C durable goal state, and M1D restart/resume proof are
+complete on local unpushed branches. Active package: M2A.
 
-1. restart in a fresh process and prove premium owner, escalation, retry, and
-   goal ceilings survive;
-2. claim each scheduled async resume once and expire unknown/late handles
-   locally without a provider call;
-3. keep all live provider traffic disabled.
+1. implement objective model-free route predicates and require a recorded T3
+   trigger;
+2. implement fail-closed error buckets, unavailable-route refusal, and no
+   premium/local-memory fallback;
+3. implement exact-bytes, destination-bound privacy checking;
+4. test through fake providers only and keep all live traffic disabled.
 
 ## External review closure
 
@@ -61,8 +63,9 @@ Codex disposition:
    correction, CWD-invariance proof.
 3. **Done:** durable goal records, exclusive premium owner, goal/retry/slice
    ceilings, and async handles.
-4. **Now:** restart and exact-once scheduled-resume proof; no provider call.
-5. **Then:** objective classifier, error table, and provider-bound privacy
+4. **Done:** fresh-process restart, duplicate-owner rejection, exact-once
+   scheduled-resume claim, local expiry/unknown handling.
+5. **Now:** objective classifier, error table, and provider-bound privacy
    checker with fake providers only.
 6. **Then:** shadow migration, copy/replay/outcome diff; no physical move.
 7. **CEO cutover gate:** only after rollback proof.
