@@ -180,25 +180,37 @@ export function checkRouteAvailability(
 }
 
 /**
- * M2B structural fix. The M2A independent review flagged that nothing
+ * M2B structural fix, v2. The M2A independent review flagged that nothing
  * stopped a caller from taking a bare `classifyRoute()` result and acting on
- * it directly, skipping `checkRouteAvailability`. `AvailableRoute` closes
- * that gap structurally rather than by convention: it is `RouteMatch`
- * branded with a symbol that is never exported from this module, so no
- * code outside this file can construct one. The only function that can
- * produce a real `AvailableRoute` is `resolveRoute`, because only it holds
- * the symbol. A caller that tries to skip the availability check by
- * forging the shape (`... as unknown as AvailableRoute`) still satisfies
- * the compiler, but the forged object carries no such symbol key at
- * runtime, so any consumer that calls `assertRouteAvailabilityChecked`
- * (every consumer in this module does) throws `availability_not_checked`.
+ * it directly, skipping `checkRouteAvailability`. The first fix branded the
+ * result with an own enumerable symbol property (`{ ...match, [SYM]: true }`
+ * under `Object.freeze`). An independent reviewer then broke that: own
+ * enumerable symbol properties survive object spread and `Object.assign`
+ * (`Object.freeze` only stops mutation of the frozen object itself, not
+ * copying its properties onto a fresh one), so a caller could mint one real
+ * `AvailableRoute` for an available route (e.g. T0) and spread it over a
+ * disabled route's `RouteMatch` to forge a passing brand with zero
+ * availability check on the disabled route.
+ *
+ * The replacement is identity-based, not property-based: `RESOLVED_ROUTES`
+ * is a module-private `WeakSet` populated only inside `resolveRoute`, and
+ * `assertRouteAvailabilityChecked` checks *object-reference* membership in
+ * that set. Spreading or `Object.assign`-ing a real `AvailableRoute`
+ * produces a brand-new object, which was never added to the set, so it is
+ * rejected. A structural clone (`JSON.parse(JSON.stringify(...))`) is a new
+ * object too, for the same reason. `AvailableRoute` keeps a type-only
+ * phantom brand (a `declare const unique symbol` that has no runtime value)
+ * purely so the compiler still flags an accidental bare `RouteMatch` being
+ * passed where an `AvailableRoute` is required — constructing one still
+ * requires an `as unknown as AvailableRoute` cast, but that cast alone no
+ * longer produces an object this module will accept as checked.
  */
-const ROUTE_AVAILABILITY_CHECKED: unique symbol = Symbol(
-  'atlas.cost-router.route-availability-checked',
-);
+const RESOLVED_ROUTES = new WeakSet<object>();
+
+declare const ROUTE_AVAILABILITY_CHECKED_BRAND: unique symbol;
 
 export type AvailableRoute = RouteMatch & {
-  readonly [ROUTE_AVAILABILITY_CHECKED]: true;
+  readonly [ROUTE_AVAILABILITY_CHECKED_BRAND]: true;
 };
 
 /**
@@ -212,24 +224,24 @@ export function resolveRoute(
 ): AvailableRoute {
   const match = classifyRoute(task);
   checkRouteAvailability(match.route, availability);
-  return Object.freeze({
-    ...match,
-    [ROUTE_AVAILABILITY_CHECKED]: true,
-  }) as AvailableRoute;
+  const resolved = Object.freeze({ ...match }) as unknown as AvailableRoute;
+  RESOLVED_ROUTES.add(resolved);
+  return resolved;
 }
 
 /**
  * Runtime companion to the type-level brand above. Every function in this
  * module that spends a provider attempt against a route must call this
  * first. Throws `RouteRefusalError('availability_not_checked')` for any
- * value that did not genuinely come from `resolveRoute` — including a
- * type-cast forgery, since the brand symbol cannot be reproduced outside
- * this file.
+ * value whose object identity was not genuinely added to `RESOLVED_ROUTES`
+ * by `resolveRoute` — including a type-cast forgery, a spread/`Object.assign`
+ * copy of a real one, or a structural clone, since none of those share
+ * object identity with the one `resolveRoute` returned.
  */
 function assertRouteAvailabilityChecked(
   route: AvailableRoute,
 ): asserts route is AvailableRoute {
-  if (!route || route[ROUTE_AVAILABILITY_CHECKED] !== true) {
+  if (!route || typeof route !== 'object' || !RESOLVED_ROUTES.has(route)) {
     throw new RouteRefusalError(
       'availability_not_checked',
       (route as RouteMatch | undefined)?.route,
@@ -372,6 +384,15 @@ export interface RunRoutedAttemptParams {
   /** Injected provider call. Never invoked by this module for real I/O. */
   attempt: (provider: ProviderCandidate) => ProviderAttemptResult;
   options?: GoalRouterStateOptions;
+  /**
+   * M2B defence-in-depth #2: re-checked against this table before the first
+   * provider call, even for a genuinely branded `route`. A carried
+   * `AvailableRoute` token alone is not trusted forever — availability can
+   * change between `resolveRoute` and this call, so this call re-validates
+   * live rather than replaying a stale grant. Defaults to the same table
+   * `resolveRoute` defaults to.
+   */
+  availability?: RouteAvailability;
 }
 
 export interface RoutedAttemptResult {
@@ -403,6 +424,10 @@ export async function runRoutedAttempt(
   params: RunRoutedAttemptParams,
 ): Promise<RoutedAttemptResult> {
   assertRouteAvailabilityChecked(params.route);
+  // Defence-in-depth #2: re-check live availability even for a genuinely
+  // branded route, so a token minted before an availability change cannot
+  // be replayed to spend a provider call after the route was disabled.
+  checkRouteAvailability(params.route.route, params.availability ?? DEFAULT_ROUTE_AVAILABILITY);
 
   const callsByProvider: Record<string, number> = {};
   const call = (provider: ProviderCandidate): ProviderAttemptResult => {

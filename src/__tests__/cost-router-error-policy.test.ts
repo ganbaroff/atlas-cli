@@ -5,9 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   classifyFailure,
+  DEFAULT_ROUTE_AVAILABILITY,
   type AvailableRoute,
   type ProviderAttemptResult,
   type ProviderCandidate,
+  type RouteAvailability,
   resolveRoute,
   runRoutedAttempt,
   selectFailoverProvider,
@@ -187,6 +189,140 @@ describe('atlas/cost-router-classify: M2B error buckets and availability enforce
       ).rejects.toMatchObject({ reason: 'availability_not_checked' });
 
       expect(attempt).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('M2B repair: identity-based brand cannot be forged (independent-review finding)', () => {
+    it('refuses a disabled-route (T1) match forged by spreading a real branded T0 route over it', async () => {
+      const goalId = 'goal-forge-spread';
+      await createGoalRouterRecord(goalId, NOW, { rootDir });
+      // Mint one genuine AvailableRoute against an available route (T0).
+      const realAvailable = resolveRoute({ taskId: 'task-real-t0', deterministicTool: 'echo' });
+      expect(realAvailable.route).toBe('T0');
+
+      // Reviewer's exact attack: spread the real branded object as the
+      // base (carrying whatever the module attaches), then override the
+      // route/predicate fields to claim T1 — disabled by default. Under
+      // the old symbol-property brand this produced a passing forgery.
+      const forged = {
+        ...realAvailable,
+        route: 'T1',
+        predicate: 't1-sanitized-web-research-only',
+      } as unknown as AvailableRoute;
+      expect(forged.route).toBe('T1');
+
+      const attempt = vi.fn();
+      await expect(
+        runRoutedAttempt({
+          route: forged,
+          goalId,
+          taskId: 'task-forge-spread-1',
+          now: NOW,
+          currentProvider: { providerId: 'p1', tier: 'free' },
+          attempt,
+          options: { rootDir },
+        }),
+      ).rejects.toMatchObject({ reason: 'availability_not_checked' });
+
+      expect(attempt).not.toHaveBeenCalled();
+    });
+
+    it('refuses the same forgery built with Object.assign instead of spread', async () => {
+      const goalId = 'goal-forge-assign';
+      await createGoalRouterRecord(goalId, NOW, { rootDir });
+      const realAvailable = resolveRoute({ taskId: 'task-real-t0-b', deterministicTool: 'echo' });
+
+      const forged = Object.assign({}, realAvailable, {
+        route: 'T1',
+        predicate: 't1-sanitized-web-research-only',
+      }) as unknown as AvailableRoute;
+      expect(forged.route).toBe('T1');
+
+      const attempt = vi.fn();
+      await expect(
+        runRoutedAttempt({
+          route: forged,
+          goalId,
+          taskId: 'task-forge-assign-1',
+          now: NOW,
+          currentProvider: { providerId: 'p1', tier: 'free' },
+          attempt,
+          options: { rootDir },
+        }),
+      ).rejects.toMatchObject({ reason: 'availability_not_checked' });
+
+      expect(attempt).not.toHaveBeenCalled();
+    });
+
+    it('refuses a structural clone (JSON round-trip) of a real branded route, even for a still-available route', async () => {
+      const goalId = 'goal-clone';
+      await createGoalRouterRecord(goalId, NOW, { rootDir });
+      const real = resolveRoute({ taskId: 'task-clone-1', deterministicTool: 'echo' });
+      const cloned = JSON.parse(JSON.stringify(real)) as AvailableRoute;
+      expect(cloned.route).toBe('T0');
+
+      const attempt = vi.fn();
+      await expect(
+        runRoutedAttempt({
+          route: cloned,
+          goalId,
+          taskId: 'task-clone-1',
+          now: NOW,
+          currentProvider: { providerId: 'p1', tier: 'free' },
+          attempt,
+          options: { rootDir },
+        }),
+      ).rejects.toMatchObject({ reason: 'availability_not_checked' });
+
+      expect(attempt).not.toHaveBeenCalled();
+    });
+
+    it('refuses a genuinely branded route whose availability is flipped to disabled after minting (defence-in-depth #2)', async () => {
+      const goalId = 'goal-flip';
+      await createGoalRouterRecord(goalId, NOW, { rootDir });
+      const liveAvailability: RouteAvailability = { ...DEFAULT_ROUTE_AVAILABILITY };
+      const real = resolveRoute({ taskId: 'task-flip-1', needsLocalWorker: true }, liveAvailability);
+      expect(real.route).toBe('T2');
+
+      // Availability changes after the token was minted (e.g. a live gate
+      // trips between resolveRoute and the provider call).
+      const flipped: RouteAvailability = { ...liveAvailability, T2: false };
+
+      const attempt = vi.fn();
+      await expect(
+        runRoutedAttempt({
+          route: real,
+          goalId,
+          taskId: 'task-flip-1',
+          now: NOW,
+          currentProvider: { providerId: 'p1', tier: 'free' },
+          attempt,
+          options: { rootDir },
+          availability: flipped,
+        }),
+      ).rejects.toMatchObject({ reason: 'route_disabled' });
+
+      expect(attempt).not.toHaveBeenCalled();
+    });
+
+    it('still succeeds end to end for a genuinely branded, still-available route', async () => {
+      const goalId = 'goal-happy-repair';
+      await createGoalRouterRecord(goalId, NOW, { rootDir });
+      const route = resolveRoute({ taskId: 'task-happy-repair-1', deterministicTool: 'echo' });
+      const attempt = vi.fn().mockReturnValue({ ok: true });
+
+      const result = await runRoutedAttempt({
+        route,
+        goalId,
+        taskId: 'task-happy-repair-1',
+        now: NOW,
+        currentProvider: { providerId: 'p1', tier: 'free' },
+        attempt,
+        options: { rootDir },
+      });
+
+      expect(result.status).toBe('succeeded');
+      expect(attempt).toHaveBeenCalledTimes(1);
     });
   });
 });
