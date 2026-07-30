@@ -1,6 +1,7 @@
 # M3C Preserved-State Rehearsal Design
 
-Status: approved direction A by Yusif on 2026-07-30; written-spec review pending
+Status: direction A approved; Opus written-spec review closed with changes;
+implementation plan pending
 Milestone: M3 Shadow Consolidation
 Implementation authority: Codex SOL
 Irreversible authority: Yusif
@@ -51,6 +52,11 @@ model prompt, uploaded, or sent to Claude, Perplexity, Gemini, or ChatGPT.
 External review receives only this specification, code paths, hashes, counts,
 and command receipts.
 
+The preservation parent is inside the VOLAURA Git worktree but is currently
+untracked and not ignored. Preflight must prove the artifact is neither tracked
+nor staged before and after the drill. M3C does not add it, edit VOLAURA ignore
+rules, or claim Git is a privacy boundary.
+
 ## Fixed paths for the first live rehearsal
 
 All directory inputs are explicit absolute paths. `artifactName` is a strict
@@ -86,6 +92,29 @@ but is never treated as a passed gate.
 
 ## Components and ownership
 
+### 0. M3B prerequisite hardening
+
+Before M3C code uses M3B, narrow the existing M3B proof surface:
+
+- `runShadowRehearsal()` accepts only `workDirectory` and an optional bounded
+  child timeout;
+- it generates its shadow name internally;
+- it derives one fixed receipt path under its exact work directory, refuses an
+  existing receipt, and writes through a flushed temporary file plus atomic
+  rename;
+- fixed production copy and cold-replay wrappers expose no writer or child
+  script parameter;
+- injectable writer/script controls move to
+  `shadow-rehearsal-test-seam.ts`; only tests may import its override installer;
+- a source-scanning boundary test allowlists `shadow-rehearsal.ts` as the sole
+  production importer and only for the default dependency getter, matching the
+  established Cost Router seam boundary pattern.
+
+The fixed non-injectable copy wrapper remains a production export because M3C
+preservation reuses it. Ordinary ESM export does not let a caller replace the
+orchestrator's lexical binding; the boundary test instead prevents future
+production code from importing the actual override installer.
+
 ### 1. Preservation component
 
 Create `src/atlas/preserved-state-rehearsal.ts` with a public function shaped
@@ -120,6 +149,9 @@ rehearsePreservedExecGraph(options: {
   childTimeoutMs?: number;
 }): PreservedStateRehearsalReceipt
 ```
+
+`childTimeoutMs` defaults to 15,000 and must be a safe integer from 1 through
+30,000. Invalid values fail before any filesystem mutation.
 
 This function loads and strictly validates the manifest, proves the preserved
 files still match it, then calls `runShadowRehearsal()` with the preserved
@@ -192,19 +224,22 @@ never change after `S2`; it proves exactly which stable state was captured.
 5. Run `runShadowRehearsal()` against the preserved directory with only
    `workDirectory` and optional timeout. The M3B module owns durable copy,
    fixed child identity, strict parity, real rollback, and bound receipt.
-6. Reinspect the preserved directory and require it still matches the manifest.
-7. Build the prospective M3C receipt from the validated manifest, manifest
+6. Read and strictly validate the fixed M3B receipt written inside the work
+   directory; require it to equal the returned receipt and bind the exact
+   source, generated shadow path, hashes, counts, parity, and rollback result.
+7. Reinspect the preserved directory and require it still matches the manifest.
+8. Build the prospective M3C receipt from the validated manifest, manifest
    SHA-256, exact generated work path, M3B receipt, and final preserved-state
    inspection. Caller-supplied receipt data is forbidden.
-8. Remove only the exact work directory created by this invocation and verify
+9. Remove only the exact work directory created by this invocation and verify
    it is absent.
-9. Only after that observation, write the success receipt via a flushed
+10. Only after that observation, write the success receipt via a flushed
    `.m3c-receipt-<uuid>` temporary sibling and atomic rename. Refuse overwrite
    and remove only that exact temporary file on failure.
-10. Invoke `verifyPreservedStateRehearsal()` so the just-written receipt,
+11. Invoke `verifyPreservedStateRehearsal()` so the just-written receipt,
     manifest, preserved bytes, absent shadow, and absent work directory are all
     re-read from disk instead of trusted from in-memory objects.
-11. Return only the independently verified M3C receipt.
+12. Return only the independently verified M3C receipt.
 
 This order is structural: cleanup failure makes the receipt-writing branch
 unreachable. No receipt may claim an absent work directory before absence was
@@ -264,6 +299,9 @@ Fail closed with stable named codes. At minimum:
   success receipt;
 - `receipt_exists` — success receipt already exists;
 - `rehearsal_failed` — wrapped named M3B failure without a success receipt;
+- `timeout_invalid` — child timeout is non-integer, below 1, or above 30,000;
+- `cleanup_unsafe` — target is a link/reparse point or its real path escapes
+  the intended real parent;
 - `cleanup_failed` — exact staging/work cleanup could not be observed.
 
 Preservation-phase failure removes only the exact staging directory created by
@@ -273,12 +311,18 @@ remove its exact work directory. If absence is observed, it reports the
 underlying named blocker. If cleanup cannot be observed, it reports
 `cleanup_failed` and still writes no receipt.
 
-Before any recursive cleanup, code verifies the resolved target is a direct
-child of the intended parent and has the generated `.m3c-staging-` or
-`.m3c-work-` prefix. No glob, environment expansion, repository root, home
-directory, or unresolved variable may be a cleanup target. Receipt-write
-failure may remove only its exact generated `.m3c-receipt-` temporary file,
-which must be a direct child of the artifact.
+Before any recursive cleanup, code requires a normal directory rather than a
+symlink/junction/reparse point, resolves both parent and target through
+`realpathSync.native`, and proves the real target is a direct child of the real
+parent in addition to the lexical direct-child and generated
+`.m3c-staging-`/`.m3c-work-` prefix checks. No glob, environment expansion,
+repository root, home directory, or unresolved variable may be a cleanup
+target. Receipt-write failure may remove only its exact generated
+`.m3c-receipt-` temporary file, which must be a direct child of the artifact.
+
+These checks protect against accidental or pre-existing link traversal. A
+hostile same-user process swapping a checked path between validation and
+removal remains outside the stated trust boundary.
 
 ## Durability boundary
 
@@ -289,6 +333,11 @@ independent verifier rereads final bytes instead of trusting objects retained
 in memory. M3C does not claim proof against whole-volume loss, hardware
 write-cache failure, or a power cut during directory-metadata update; those
 require a separate reboot or storage-fault drill.
+
+The OneDrive source has weaker latency and synchronisation characteristics than
+the preservation parent. M3C claims no source durability: OneDrive activity
+that changes observable bytes during `S0`/`S1`/`S2` fails closed as
+`source_mutated`; only the accepted outside-OneDrive artifact is retained.
 
 ## Trust boundary
 
@@ -336,11 +385,22 @@ Required RED-to-GREEN cases:
 17. receipt-write failure leaves neither a final receipt nor a receipt-temp
     residue and never deletes any other artifact file;
 18. network is disabled in the integration test and no network call occurs.
+19. cold replay nonzero/empty/unparseable/timeout failure yields no M3C success
+    receipt;
+20. failed or unverified rollback yields no M3C success receipt;
+21. preserved ledger or snapshot mutation during rehearsal yields
+    `preserved_state_tampered` and no receipt;
+22. a lexically valid `.m3c-work-*` junction resolving outside the real parent
+    is refused before recursive removal;
+23. the seam boundary rejects any production import of the override installer,
+    while M3C may import only fixed non-injectable wrappers;
+24. cast-supplied receipt destination or shadow name is ignored, the generated
+    paths are used, and invalid/oversized child timeouts fail before mutation.
 
-Failure-path injection uses hoisted test-module mocks around imported filesystem
-and M3A/M3B primitives. No fault dependency is added to any public production
-API. A production-shape test rejects extra proof inputs and exercises the
-unmocked path end to end.
+Failure-path injection uses the mechanically bounded test seam plus hoisted
+filesystem mocks where needed for removal failure. No fault dependency is added
+to any public production API. A production-shape test rejects extra proof
+inputs and exercises the unmocked path end to end.
 
 The existing M3A/M3B/state-root/exec-graph/cost-router regression matrix must
 remain green. `npx tsc --noEmit` and diff checks must exit 0.
@@ -358,6 +418,8 @@ Preflight is read-only:
   a blocker and do not stop it automatically;
 - inspect current source and compare hashes/counts with the recorded baseline;
 - confirm final artifact path does not exist.
+- prove the VOLAURA repository does not track or stage the preservation
+  artifact before the drill.
 
 Acceptance evidence:
 
@@ -372,6 +434,7 @@ Acceptance evidence:
 - preserved bytes unchanged after rehearsal;
 - success receipt validates against manifest and preserved files;
 - source hashes and Git status unchanged from preflight;
+- VOLAURA still does not track or stage the preserved artifact;
 - no resolver, process, scheduler, network, untrack, move, push, or deployment
   action occurred.
 
@@ -395,9 +458,12 @@ later authorizes archive or deletion. M3C itself never deletes it.
 
 ## External review contract
 
-Opus/Fable reviews this document read-only. Maximum 10 direct `Read`/`Search`
-calls. No Agent, Bash, Edit, Write, polling, local command claims, or completion
-authority. Stop immediately on the first seat/policy/capability block.
+Initial review completed on 2026-07-30 by local `claude-opus-5`: two direct
+read/search calls, no worker, shell, edit, polling, or completion claim. Codex
+locally disposed the findings. The same limits apply to the later diff review:
+maximum 10 direct `Read`/`Search` calls, no Agent, Bash, Edit, Write, polling,
+local command claims, or completion authority. Stop immediately on the first
+seat/policy/capability block.
 
 Review only these risks: proof authority, caller-controlled seams, path and
 recursive-cleanup safety, TOCTOU window, manifest/receipt binding, receipt
