@@ -19,7 +19,7 @@ push, merge, deployment, scheduler cutover, or live-state activation is active.
 | State root resolver | **REPAIR VERIFIED** | accepted branch history through `f017add`; 22/22 tests, typecheck, direct CWD probe | preserve before call-site migration |
 | Cost Router design | **ACCEPTED** | two Opus reviews closed; roadmap and ceilings approved | implement package-by-package |
 | Cost Router implementation | **M2 VERIFIED LOCAL** | `23e8574`; 97/97 focused tests, typecheck, runtime refusal-receipt enforcement | keep live providers off |
-| Fable session router | **REPAIRED GLOBAL** | stale `/model` and thread-context regressions fixed; 32/32 hook tests | use Opus for contaminated threads |
+| Fable session router | **REPAIRED / LIVE RECEIPT PENDING** | hook registered; stale `/model` and thread-context regressions fixed; 32/32 tests | verify on next natural clean Fable prompt; contaminated threads stay Opus |
 | Shadow consolidation | **M3A REPAIRED / M3B NOW** | `0dfb15d` + `28c8f79`; 10/10 focused and 104/104 regression tests | isolated synthetic copy/replay |
 | Physical consolidation | **NO-GO** | nested worktrees, unique legacy state, runtime bindings remain | completed shadow rehearsal plus CEO cutover gate |
 | Subscription research | **OFF** | Perplexity interactive access only; no durable adapter proof | public synthetic live gate |
@@ -85,14 +85,15 @@ M3A local closure:
   and 10 tasks. Ledger and snapshot SHA-256 match the preserved baseline.
 - **Still open:** full state-machine sequence legality and all-store migration
   remain later integrity/M3 packages. No copy or activation occurred.
-- **ACCEPT AND REPAIR:** later Fable review found that an empty ledger plus an
-  empty snapshot could pass strict inspection. Commit `28c8f79` adds observed
-  RED→GREEN coverage and rejects zero-event ledgers with `ledger_empty`.
+- **ACCEPT AND REPAIR:** later Fable-started, Opus-fallback review found that an
+  empty ledger plus an empty snapshot could pass strict inspection. Commit
+  `28c8f79` adds observed RED→GREEN coverage and rejects zero-event ledgers
+  with `ledger_empty`.
 - Final repair evidence: 10/10 focused tests, 104/104 shadow/exec-graph/state-
   root tests, clean typecheck and diff check. Current 96-event source still
   inspects with preserved ledger and snapshot SHA-256.
 
-Fable routing closure:
+Fable/Opus routing closure:
 
 - Provider safeguard banner means broad classifier fallback, not that Fable or
   ATLAS is dangerous.
@@ -102,6 +103,8 @@ Fable routing closure:
   thread on Opus, and labels its token-efficient protocol delivery as
   `compiled-safe-summary`. Raw protocol body is not injected because its own
   sensitive-adjacent vocabulary can trigger the classifier.
+- Code and registration are verified locally; the first post-change live
+  Claude prompt receipt remains pending and is not claimed as complete.
 
 ## Next execution order
 
