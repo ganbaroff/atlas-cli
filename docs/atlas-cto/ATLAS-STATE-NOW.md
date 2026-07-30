@@ -20,7 +20,7 @@ push, merge, deployment, scheduler cutover, or live-state activation is active.
 | Cost Router design | **ACCEPTED** | two Opus reviews closed; roadmap and ceilings approved | implement package-by-package |
 | Cost Router implementation | **M2 VERIFIED LOCAL** | `23e8574`; 97/97 focused tests, typecheck, runtime refusal-receipt enforcement | keep live providers off |
 | Fable session router | **REPAIRED / LIVE RECEIPT PENDING** | hook registered; stale `/model` and thread-context regressions fixed; 32/32 tests | verify on next natural clean Fable prompt; contaminated threads stay Opus |
-| Shadow consolidation | **M3C TASK 4/6 DONE** | preserved-copy rehearsal and verifier `40c7631`; 80/80 tests, typecheck | Task 5: bounded explicit-path CLI |
+| Shadow consolidation | **M3C TASK 5/6 DONE** | bounded explicit-path CLI `0dd6d11`; 48/48 tests, typecheck, network denied | Task 6: full gate, one review, preflight |
 | Physical consolidation | **NO-GO** | nested worktrees, unique legacy state, runtime bindings remain | completed shadow rehearsal plus CEO cutover gate |
 | Subscription research | **OFF** | Perplexity interactive access only; no durable adapter proof | public synthetic live gate |
 | Research swarm | **OFF** | `RESEARCH_ONLY_LIMITED` | two-provider `READY_FOR_RESEARCH` gate |
@@ -30,11 +30,11 @@ push, merge, deployment, scheduler cutover, or live-state activation is active.
 
 We are at **Milestone M3 — Shadow Consolidation**. M1 durable foundation, M2
 safe router, M3A strict comparison, and M3B synthetic rehearsal are complete
-on the local `codex/atlas-cost-router-design` branch. Active package: M3C Task 5;
-Tasks 1-4 now include strict atomic preservation plus copy-only rehearsal and
-independent verification.
+on the local `codex/atlas-cost-router-design` branch. Active package: M3C Task 6;
+Tasks 1-5 now include strict atomic preservation, copy-only rehearsal,
+independent verification, and bounded explicit-path CLI wiring.
 
-`M1 ✓  →  M2 ✓  →  M3A ✓  →  M3B ✓  →  M3C 4/6  →  CEO CUTOVER GATE`
+`M1 ✓  →  M2 ✓  →  M3A ✓  →  M3B ✓  →  M3C 5/6  →  CEO CUTOVER GATE`
 
 1. **Done:** define a strict explicit-path shadow manifest and semantic
    comparator; reject empty authoritative input;
@@ -47,7 +47,9 @@ independent verification.
 4. **Done:** Tasks 1-4 bounded M3B seams and proof paths, proved one strict
    flushed S0/S1/S2/P0 preservation artifact, rehearsed only the generated copy,
    removed work before receipt, and verified the bound artifact independently.
-   **Now:** Task 5 adds only the explicit-path `run`/`verify` CLI.
+   **Done:** Task 5 adds only the explicit-path `run`/`verify` CLI, sanitized
+   JSON summaries, and network-denied child-process proof. **Now:** Task 6 runs
+   full local gates and one bounded diff review before real-copy preflight.
    No live resolver switch, untracking, move, or cutover.
 
 ## External review closure
@@ -161,8 +163,9 @@ Fable/Opus routing closure:
 7. **Done:** isolated synthetic copy/replay, durable pre-rename flush, fixed
    proof dependencies, strict parity, executed rollback, bound proof, and
    post-rollback receipt. No live-root activation.
-8. **In progress:** Task 4/6 is committed at `40c7631`; execute Task 5 bounded
-   CLI wiring. Still no real state copy, resolver switch, untracking, or move.
+8. **In progress:** Task 5/6 is committed at `0dd6d11`; execute Task 6 local
+   gates, one bounded review, and read-only preflight. Still no real state copy,
+   resolver switch, untracking, or move.
 9. **CEO cutover gate:** only after preserved-copy proof and remaining state
    integrity/effect-durability gates.
 10. **Live research broker:** one provider at a time, public synthetic prompts.

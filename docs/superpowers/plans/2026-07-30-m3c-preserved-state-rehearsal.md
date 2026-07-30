@@ -720,7 +720,7 @@ This is the only bounded mechanical lane eligible for LUNA/Sonnet: one scope,
 20 minutes, no grandchildren, stop on first policy/capability block. Codex
 reviews the diff and reruns every command.
 
-- [ ] **Step 1: Write RED CLI tests**
+- [x] **Step 1: Write RED CLI tests**
 
 Spawn with `process.execPath` plus the repository tsx CLI. Assert missing args
 exit nonzero with `path_invalid` and create no directory. Run against temporary
@@ -777,7 +777,7 @@ dns.resolve = deny;
 syncBuiltinESMExports();
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```powershell
 npx vitest run src/__tests__/preserved-state-cli.test.ts
@@ -785,7 +785,7 @@ npx vitest run src/__tests__/preserved-state-cli.test.ts
 
 Expected: script missing.
 
-- [ ] **Step 3: Implement explicit parsing and sanitized output**
+- [x] **Step 3: Implement explicit parsing and sanitized output**
 
 Use `parseArgs({ strict: true, allowPositionals: true })`. Refuse unknown mode,
 missing values, or non-absolute directory arguments before calling any M3C
@@ -803,13 +803,13 @@ process.exitCode = 1;
 Never serialize raw manifest, nested M3B receipt, ledger rows, snapshot objects,
 environment, or stack trace.
 
-- [ ] **Step 4: Add package alias**
+- [x] **Step 4: Add package alias**
 
 ```json
 "atlas:m3c-rehearse": "tsx scripts/rehearse-preserved-exec-graph.mts"
 ```
 
-- [ ] **Step 5: Run Task 5 GREEN**
+- [x] **Step 5: Run Task 5 GREEN**
 
 ```powershell
 npx vitest run src/__tests__/preserved-state-cli.test.ts src/__tests__/preserved-state-preservation.test.ts src/__tests__/preserved-state-rehearsal.test.ts
@@ -817,12 +817,18 @@ npx tsc --noEmit
 git diff --check
 ```
 
-- [ ] **Step 6: Codex reviews and commits Task 5**
+- [x] **Step 6: Codex reviews and commits Task 5**
 
 ```powershell
 git add -- scripts/rehearse-preserved-exec-graph.mts src/__tests__/preserved-state-cli.test.ts src/__tests__/fixtures/forbid-network.mjs package.json
 git commit -m "feat(shadow): Add preserved-state drill CLI"
 ```
+
+Completed in `0dd6d11`. LUNA first captured 6/6 RED because the script was
+absent. LUNA and Codex independently reproduced 3/3 files and 48/48 GREEN tests,
+clean typecheck, and diff-check. Codex also proved the direct refusal path emits
+one sanitized JSON object. Use `npm run --silent` for machine-readable package-
+alias output because plain `npm run` adds its own banner.
 
 ---
 
@@ -884,7 +890,7 @@ stop the runner or change scheduler state.
 Generate one strict UTC artifact name, then run:
 
 ```powershell
-npm run atlas:m3c-rehearse -- run --source 'C:\Users\user\OneDrive\Documents\GitHub\ANUS\state\exec-graph' --preservation-parent 'C:\Projects\VOLAURA\memory\atlas\preservation' --artifact-name '<preflighted strict artifact name>'
+npm run --silent atlas:m3c-rehearse -- run --source 'C:\Users\user\OneDrive\Documents\GitHub\ANUS\state\exec-graph' --preservation-parent 'C:\Projects\VOLAURA\memory\atlas\preservation' --artifact-name '<preflighted strict artifact name>'
 ```
 
 Expected: exit 0 and sanitized accepted summary. Do not rerun on the same or a
@@ -893,7 +899,7 @@ new artifact after any policy/invariant failure; inspect the named blocker.
 - [ ] **Step 5: Verify in a fresh process and recheck source/Git state**
 
 ```powershell
-npm run atlas:m3c-rehearse -- verify --artifact '<exact artifact path from Step 4>'
+npm run --silent atlas:m3c-rehearse -- verify --artifact '<exact artifact path from Step 4>'
 git status --short
 git -C C:\Projects\VOLAURA ls-files --error-unmatch 'memory/atlas/preservation/<exact artifact name>/**'
 git -C C:\Projects\VOLAURA diff --cached --name-only -- 'memory/atlas/preservation/<exact artifact name>/**'
