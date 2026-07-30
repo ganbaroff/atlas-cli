@@ -25,7 +25,9 @@ import {
   resolveStateDir,
   STATE_ROOT_ACTIVATION_FILE,
   STATE_STORES,
+  type StateStore,
 } from '../atlas/state-root.js';
+import { EXTERNAL_STATE_WRITERS } from '../atlas/state-writer-inventory.js';
 import {
   dispatchOperatorTask,
   operatorRunsDir,
@@ -54,7 +56,7 @@ import { defaultRunnerDeps } from '../atlas/atlas-runner.js';
 import * as opsboard from '../opsboard/goal-request-port.js';
 import { readAlertState, resetAlertState } from '../atlas/autonomy-loop.js';
 import { resolveAuditPath, logToneShift } from '../atlas/emotional-safety.js';
-import { decideNotify } from '../atlas/repo-watch.js';
+import { decideNotify, signature } from '../atlas/repo-watch.js';
 import { auditLogPath, auditFsOp } from '../tools/fs-guard.js';
 
 const MANAGED_ENV_KEYS = [
@@ -1289,6 +1291,84 @@ describe('M3D-A2 CWD and checkout invariance proof', () => {
     };
   }
 
+  /**
+   * Exact label set collectResolvedPaths() must return — transcribed directly
+   * from its return object above, in the same order. A dropped or renamed
+   * entry fails the exact-equality check below instead of silently shrinking
+   * the map (eae53a7 review finding 1: a `for...of Object.entries(...)` loop
+   * plus `toEqual` between two calls of the same function never pins the key
+   * set, so it passes vacuously if entries go missing).
+   */
+  const EXPECTED_RESOLVED_PATH_LABELS = [
+    'execGraph',
+    'evidence',
+    'goalBudgets',
+    'swarmRuns',
+    'intakeDrafts',
+    'controlOperatorState',
+    'dispatcherOperatorState',
+    'operatorRuns',
+    'taskResults',
+    'learningState',
+    'learningExchange',
+    'projectionLock',
+    'spendReceipts',
+    'instanceLease',
+    'providerHealth',
+    'breadcrumbs',
+    'notifyQueueFile',
+    'queueAuth',
+    'opsboardExchange',
+    'emotionAudit',
+    'shellAudit',
+    'costRouter',
+  ] as const;
+
+  /**
+   * Registry tiling (finding 3): every key of STATE_STORES must be accounted
+   * for by exactly one coverage kind — resolver (a label in
+   * collectResolvedPaths() targets that store), behavioral (a positive
+   * probe elsewhere in this describe block exercises the store's real
+   * read/write path even though no exported resolver exists), or external
+   * (EXTERNAL_STATE_WRITERS names a non-TypeScript writer for it). This is
+   * asserted structurally below so a future STATE_STORES addition fails
+   * this test until it is explicitly classified.
+   */
+  const RESOLVER_COVERED_STORES: readonly StateStore[] = [
+    'exec-graph',
+    'evidence',
+    'goal-budgets',
+    'swarm-runs',
+    'operator-state',
+    'operator-runs',
+    'intake-drafts',
+    'task-results',
+    'learning',
+    'spend-receipts',
+    'instance-lease',
+    'provider-health',
+    'breadcrumbs',
+    'notify-queue',
+    'queue-auth',
+    'opsboard-exchange',
+    'emotion-audit',
+    'shell-audit',
+    'cost-router',
+  ];
+  // Behavioral probes: alert-state is proven by resetAlertState() +
+  // existsSync(...) below and in slice 10; repo-watch is proven by the
+  // seeded-read probe test further down in this describe block.
+  const BEHAVIORAL_COVERED_STORES: readonly StateStore[] = ['alert-state', 'repo-watch'];
+  // External writers (outside production TypeScript) — pulled directly from
+  // EXTERNAL_STATE_WRITERS so this list is structural, not a re-typed guess
+  // (eae53a7 review finding 3: pause-control/runner-log were never named).
+  const EXTERNAL_COVERED_STORES = Object.keys(EXTERNAL_STATE_WRITERS) as StateStore[];
+  const ACCOUNTED_STORES = [
+    ...RESOLVER_COVERED_STORES,
+    ...BEHAVIORAL_COVERED_STORES,
+    ...EXTERNAL_COVERED_STORES,
+  ];
+
   /** Recursive relative-path -> {size, mtimeMs} snapshot; tolerates a missing dir. */
   function snapshotTree(dirRoot: string): Record<string, { size: number; mtimeMs: number }> {
     const out: Record<string, { size: number; mtimeMs: number }> = {};
@@ -1348,8 +1428,56 @@ describe('M3D-A2 CWD and checkout invariance proof', () => {
 
     expect(fromAltCwd).toEqual(fromRepoRoot);
 
+    // Finding 1: pin the exact key set (not just its values) so a silently
+    // dropped resolver entry fails here instead of passing vacuously.
+    expect(Object.keys(fromRepoRoot).sort()).toEqual(
+      [...EXPECTED_RESOLVED_PATH_LABELS].sort(),
+    );
+
+    // Finding 3: tile the full store registry — every STATE_STORES key must
+    // be accounted for by exactly one of resolver/behavioral/external
+    // coverage, with no duplicates and nothing left out.
+    expect(new Set(ACCOUNTED_STORES).size).toBe(ACCOUNTED_STORES.length);
+    expect(ACCOUNTED_STORES.slice().sort()).toEqual(
+      Object.keys(STATE_STORES).sort(),
+    );
+
     resetAlertState();
     expect(existsSync(resolve(root, 'alert-state', 'alert-state.json'))).toBe(true);
+  });
+
+  it('repo-watch reads its state file from the activated root, not a coincidental empty default', () => {
+    // Finding 2: the prior comment in the "leaves zero bytes..." test cited
+    // slice 10's "routes the alert/audit/watch stores..." test as proof of
+    // repo-watch's positive routing, but that test only covers emotion-audit,
+    // shell-audit, and alert-state — repo-watch was asserted nowhere. Since
+    // repo-watch's writeState()/readState() pair is module-private, we can't
+    // call a resolver directly; instead we seed the on-disk store file that
+    // only exists under the activated root and prove decideNotify() actually
+    // read it. A wrong read (missing/other file) falls back to
+    // { sig: '', lastNotifyMs: 0 }; because our fixture's signature would then
+    // differ from that default AND the seeded interval has already elapsed
+    // (lastNotifyMs: 0, nowMs far in the future), decideNotify would take the
+    // "changed and interval elapsed" branch and return notify:true — flipping
+    // both assertions below. Seeding lastNotifyMs at 0 with a large nowMs
+    // keeps "no change since last notify" the ONLY path to notify:false, so
+    // the rate-limit branch can't mask a wrong read.
+    activateRoot();
+    const statuses = [
+      { root: 'probe', name: 'probe', ok: true, branch: 'main', dirty: 0, ahead: 0, lastCommit: 'abc' },
+    ];
+    const sig = signature(statuses);
+    mkdirSync(resolve(root, 'repo-watch'), { recursive: true });
+    writeFileSync(
+      resolve(root, 'repo-watch', 'repo-watch.json'),
+      JSON.stringify({ sig, lastNotifyMs: 0 }),
+      'utf8',
+    );
+
+    const d = decideNotify(statuses, 60, 6_000_000);
+
+    expect(d.notify).toBe(false);
+    expect(d.reason).toMatch(/no change/);
   });
 
   it('leaves zero bytes in the checkout when writers run from inside it', async () => {
@@ -1371,9 +1499,11 @@ describe('M3D-A2 CWD and checkout invariance proof', () => {
     resolveEvidenceDir();
     opsboard.resolveExchangeDir();
     // repo-watch's only writer (writeState) is module-private and unexported;
-    // its resolver-level routing under the activated root is already proven
-    // by slice 10's "routes the alert/audit/watch stores..." test. decideNotify
-    // itself only reads state here.
+    // this call is read-only zero-footprint coverage. The positive proof that
+    // its READ path resolves under the activated root — not the slice-10
+    // alert/audit/watch test, which never asserted this — lives in the
+    // seeded-read probe test above ('repo-watch reads its state file from the
+    // activated root...').
     decideNotify([], 1, 1000);
 
     const stateAfter = snapshotTree(resolve(REPO_ROOT, 'state'));
