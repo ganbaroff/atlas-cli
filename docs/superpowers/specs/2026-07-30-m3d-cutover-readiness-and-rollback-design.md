@@ -77,10 +77,10 @@ shell execution, or self-certification.
 ## M3D-A — state-root activation
 
 The `state-root.ts` registry now covers 23 stores. Cost Router uses the direct
-resolver; A2 slices 1-8 route exec-graph, evidence, goal budgets, swarm runs,
-intake drafts, operator state/runs, task results, learning state, and the global
+resolver; A2 slices 1-9 route exec-graph, evidence, goal budgets, swarm runs,
+intake drafts, operator state/runs, task results, learning state, the global
 spend receipt writer, instance lease, provider health, breadcrumbs, queue-auth,
-and notify-queue through a compatibility bridge.
+notify-queue, and opsboard-exchange through a compatibility bridge.
 Explicit test/legacy roots remain valid before activation but cannot bypass a
 required activated root. File-level operator overrides must be strict
 junction-aware children of `operator-runs`, and registered default store
@@ -92,9 +92,11 @@ learning mutation. The global spend writer preserves legacy env/home placement
 before activation, then fails closed on state-root denials before counter/file
 mutation while ordinary telemetry failures remain non-blocking. Queue file
 stores derive fixed activated leaves and reject both live and dangling leaf
-symlinks before I/O. Remaining classified families are split across alert-state,
-emotion-audit, repo-watch, shell-audit, opsboard-exchange, pause-control, and
-runner-log.
+symlinks before I/O. OPSBOARD's goal-request port now validates the
+correlation id before resolving its exchange directories, so a rejected
+request creates no exchange-tree residue. Remaining classified families are
+split across alert-state, emotion-audit, repo-watch, shell-audit,
+pause-control, and runner-log.
 
 Before migration, classify every filesystem writer into exactly one category:
 

@@ -149,6 +149,21 @@ rereview returned `ACCEPT`. Exact-tip evidence: 11 files, 249/249 tests, clean
 typecheck and commit diff-check; Cost Router's explicit nonce ledger remained
 caller-owned and unchanged.
 
+A2 slice-9 checkpoint `c0d7f57`: the OPSBOARD file exchange store now uses the
+migration bridge. This slice was left uncommitted and RED when the previous
+seat's usage quota ran out mid-TDD; its in-flight falsifier exposed that
+`processGoalRequest` called `resolveExchangeDir` before validating the
+correlation id, so a rejected traversal-shaped id still created the exchange
+tree as a side effect. Validation is now hoisted into
+`assertValidCorrelationId`, called first in `processGoalRequest` and reused by
+`resolveReceiptPaths`, so a rejected request leaves zero filesystem residue and
+never reaches the runner. The preserved in-flight patch is
+`C:\Projects\VOLAURA\memory\atlas\preservation\atlas-m3d-slice9-inflight-2026-07-31.patch`,
+verified by `git apply --check --reverse`. Evidence: focused 3 files/57/57
+tests; wider affected matrix 10 files/226/226 tests; clean typecheck; 0 staged
+secret-scan hits. Independent review was not obtained (previous reviewer lane
+closed, quota exhausted) and is recorded as `UNVERIFIED`.
+
 ---
 
 ### Task 2: Centralize exec-graph mutation transaction

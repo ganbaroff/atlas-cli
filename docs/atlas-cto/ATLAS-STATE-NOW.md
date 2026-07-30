@@ -8,7 +8,7 @@ ATLAS is preserved and recoverable, but physical consolidation and live
 multi-provider research remain **NO-GO**. Durable foundation M1 and fake-only
 Cost Router M2 and M3C retained-copy rehearsal are verified locally. M3D
 rollback/cutover design and TDD plan are written. M3D-A1 inventory/activation
-contract and M3D-A2 slices 1-8 are done; remaining call-site families are next.
+contract and M3D-A2 slices 1-9 are done; remaining call-site families are next.
 Physical movement remains separately gated. No live provider traffic, push,
 merge, deployment, scheduler cutover, or live-state activation is active.
 
@@ -22,7 +22,7 @@ merge, deployment, scheduler cutover, or live-state activation is active.
 | Cost Router design | **ACCEPTED** | two Opus reviews closed; roadmap and ceilings approved | implement package-by-package |
 | Cost Router implementation | **M2 VERIFIED LOCAL** | `23e8574`; 97/97 focused tests, typecheck, runtime refusal-receipt enforcement | keep live providers off |
 | Fable session router | **REPAIRED / LIVE RECEIPT PENDING** | hook registered; stale `/model` and thread-context regressions fixed; 32/32 tests | verify on next natural clean Fable prompt; contaminated threads stay Opus |
-| Shadow consolidation | **M3C VERIFIED / M3D-A2 SLICES 1-8 DONE** | root activation `97a300e`; first `ca324fe`; swarm `0c9723d`; operator `2cbc85f`; task-results `4dca9fe`; learning `94e7426`; spend `af3f48a`; home dirs `c3923c9`; queues `746ccf7` | remaining A2 families; no cutover |
+| Shadow consolidation | **M3C VERIFIED / M3D-A2 SLICES 1-9 DONE** | root activation `97a300e`; first `ca324fe`; swarm `0c9723d`; operator `2cbc85f`; task-results `4dca9fe`; learning `94e7426`; spend `af3f48a`; home dirs `c3923c9`; queues `746ccf7`; opsboard `c0d7f57` | remaining A2 families; no cutover |
 | Physical consolidation | **NO-GO** | nested worktrees, unique legacy state, runtime bindings remain | completed shadow rehearsal plus CEO cutover gate |
 | Subscription research | **OFF** | Perplexity interactive access only; no durable adapter proof | public synthetic live gate |
 | Research swarm | **OFF** | `RESEARCH_ONLY_LIMITED` | two-provider `READY_FOR_RESEARCH` gate |
@@ -35,11 +35,11 @@ safe router, M3A strict comparison, M3B synthetic rehearsal, and M3C real
 retained-copy rehearsal are complete on local branch
 `codex/atlas-cost-router-design`. M3D design and implementation plan are now
 written. M3D-A1 classified state inventory and fail-closed activation contract
-are complete. M3D-A2 slices 1-8 route exec-graph, evidence, goal budgets, swarm
-runs, intake drafts, operator state/runs, task results, learning state, and the
+are complete. M3D-A2 slices 1-9 route exec-graph, evidence, goal budgets, swarm
+runs, intake drafts, operator state/runs, task results, learning state, the
 global spend receipt writer, instance lease, provider health, breadcrumbs,
-queue-auth nonce ledger, and notification queue only after required
-manifest-bound activation.
+queue-auth nonce ledger, notification queue, and the OPSBOARD file exchange
+store only after required manifest-bound activation.
 Active package: remaining M3D-A2
 state-root call-site families; no physical cutover is authorized.
 

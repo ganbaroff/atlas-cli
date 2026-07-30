@@ -23,7 +23,7 @@ product systems as adapters rather than competing brains.
 
 **Current point:** M3 Shadow Consolidation, package M3C **VERIFIED** and M3D
 rollback/cutover packet **WRITTEN**; M3D-A1 inventory/activation contract and
-M3D-A2 state-family slices 1-8 are done; remaining call-site families are next.
+M3D-A2 state-family slices 1-9 are done; remaining call-site families are next.
 M1, fake-only M2, strict M3A,
 synthetic M3B, and one real retained-copy rehearsal are complete on a local
 branch. Physical consolidation is NO-GO. Live provider traffic has not started.
@@ -167,6 +167,24 @@ flowchart LR
    existing and dangling leaf-symlink escapes; both were reproduced RED and
    closed by exact-leaf canonical containment before I/O. Repeat review
    returned `ACCEPT`; exact-tip 249/249 affected tests and typecheck pass.
+   Slice 9 is complete at `c0d7f57`: the OPSBOARD file exchange store routes
+   through the migration bridge. This slice was left uncommitted and RED when
+   the previous seat's usage quota ran out mid-TDD; the in-flight falsifier it
+   had added exposed that `processGoalRequest` called `resolveExchangeDir`
+   (which creates `requests/`, `receipts/`, `processed/`) before validating the
+   correlation id, so a traversal-shaped id brought the exchange tree into
+   existence as a side effect of being rejected. Validation is now hoisted into
+   `assertValidCorrelationId`, called first in `processGoalRequest` and reused
+   by `resolveReceiptPaths`; a rejected request now leaves zero filesystem
+   residue and never reaches the runner. The uncommitted in-flight state was
+   preserved before any change as
+   `C:\Projects\VOLAURA\memory\atlas\preservation\atlas-m3d-slice9-inflight-2026-07-31.patch`,
+   verified by `git apply --check --reverse`. Focused evidence: 3 files, 57/57
+   tests; wider affected matrix 10 files, 226/226 tests; `npx tsc --noEmit`
+   clean; staged secret-scan 0 hits. Independent review was not obtained — the
+   previous reviewer lane was already closed and its quota is exhausted; this
+   is recorded honestly as `UNVERIFIED`, with closure resting on local
+   RED→GREEN plus command evidence.
    Remaining families plus expected-role/source-receipt
    provenance are still open. Physical
    cutover remains a separate Yusif gate after M3D-A through M3D-D.
