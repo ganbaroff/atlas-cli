@@ -39,6 +39,7 @@
     "build": "tsup src/cli.ts src/learning-api.ts --format esm --dts --clean && node scripts/copy-manifests.mjs",
     "start": "node dist/cli.js",
     "start:learning-api": "node dist/learning-api.js",
+    "atlas:m3c-rehearse": "tsx scripts/rehearse-preserved-exec-graph.mts",
     "test": "vitest",
     "typecheck": "tsc --noEmit"
   },
