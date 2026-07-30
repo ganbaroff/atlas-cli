@@ -21,9 +21,10 @@
 one Telegram poller, one local PC/browser executor, cost-aware research, and
 product systems as adapters rather than competing brains.
 
-**Current point:** M3 Shadow Consolidation, package M3C implementation plan.
-M1, fake-only M2, strict M3A, and synthetic M3B are complete on a local branch.
-Physical consolidation is NO-GO. Live provider traffic has not started.
+**Current point:** M3 Shadow Consolidation, package M3C fixture-first
+implementation. M1, fake-only M2, strict M3A, and synthetic M3B are complete on
+a local branch. Physical consolidation is NO-GO. Live provider traffic has not
+started.
 
 ```mermaid
 flowchart LR
@@ -93,12 +94,14 @@ flowchart LR
    proof dependencies, prove event/goal/task/hash parity, then execute and
    verify rollback before receipt. Writer `462176c`; proof repair `44c84de`;
    durability/seam repair `c528ef0`; 216/216 regression tests.
-3. **M3C — NOW — preserved-state rehearsal implementation plan.** Direction A
+3. **M3C — NOW — preserved-state rehearsal implementation.** Direction A
    is approved: retain one outside-repository snapshot, rehearse only against
    that copy, and bind cleanup plus rollback evidence before receipt. Bounded
    Opus design review is locally closed. Written design:
    `docs/superpowers/specs/2026-07-30-m3c-preserved-state-rehearsal-design.md`.
-   Implementation waits only for its detailed plan.
+   Detailed TDD plan:
+   `docs/superpowers/plans/2026-07-30-m3c-preserved-state-rehearsal.md`.
+   First slice mechanically bounds M3B test seams; no real copy occurs yet.
 4. **M3D — rollback and cutover packet.** Prove the old root remains readable,
    record exact rollback commands and hashes, then present the physical
    cutover as a separate Yusif gate.
