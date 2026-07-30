@@ -69,11 +69,12 @@ recovery gates before any Atlas repository move or live binding change.
       temporary roots in tests before activation. (complete as of slice 10;
       pause-control and runner-log are external writers handled at cutover)
 - [x] Prove CWD/code-root invariance and no writes to checkout paths. (eae53a7 + 586393c)
-- [ ] Before any live activation, bind the manifest to an externally expected
+- [x] Before any live activation, bind the manifest to an externally expected
       node role and verify allowlisted source-receipt artifacts/hashes; fields
-      asserted by the manifest itself are not provenance proof.
-- [ ] Run focused tests, broader affected tests, `npx tsc --noEmit`, and
-      `git diff --check`.
+      asserted by the manifest itself are not provenance proof. (504ea45)
+- [x] Run focused tests, broader affected tests, `npx tsc --noEmit`, and
+      `git diff --check`. (full suite 1344/0, tsc + diff-check clean;
+      independently re-run)
 
 Done bar: all production writers classified; all authoritative/selected
 operational paths resolve under one explicit root; activation fails closed.
@@ -211,6 +212,36 @@ NEW OPEN residual risk (pre-existing design, not a regression):
 verifies the claimed external writer (e.g. `scripts/start-runner.cmd`)
 actually writes the store; a plausible-but-false reclassification would
 pass both structural tests. Candidate falsifier for a future slice.
+
+A3 provenance checkpoint `504ea45`: required activation now binds to an
+externally expected identity instead of trusting the manifest's own
+self-assertions. Four things are enforced inside `assertStateRootActivated()`
+— (1) the environment variable `ATLAS_NODE_ROLE` must be set and must match
+the manifest's declared role (`node_role_unbound` when unset,
+`node_role_mismatch` when it disagrees); (2) every manifest source receipt is
+verified against the real artifact bytes at
+`<root>/activation-receipts/<kind>` via sha256, not merely against the
+manifest's own claimed hash (`source_receipt_mismatch`/
+`source_receipt_missing`); (3) a per-role required-kinds allowlist is
+enforced, with `m3c-preserved-state-rehearsal` required for both roles; (4)
+traversal-shaped receipt kinds are rejected at schema level before any
+lookup. TDD discipline held: 6 falsifiers were observed RED before the
+implementation went GREEN, and all dummy activation hashes in test fixtures
+were replaced with real computed sha256 values, so the 58-test migration
+harness now activates against a real artifact and a real hash. An
+independent verifier returned CONFIRMED: the enforcement trace shows all
+four checks live inside `assertStateRootActivated()`, and all four resolver
+paths (`resolveStateDir`, `resolveMigratingStateDir`,
+`resolveMigratingStateFile`, `constrainMigratingStatePath`) provably funnel
+through it under required activation, with no caching and the environment
+re-read on every call. The independently re-run full suite passed 1344/0
+with 2 pre-existing skips, `tsc --noEmit` was clean, and `git diff --check`
+was clean. One informational, non-blocking note: receipt-artifact symlinks
+are followed rather than `lstat`-guarded; this is reasoned non-exploitable
+because the manifest hash must still match the real target bytes, and
+planting a symlink already requires write access equal to editing the
+manifest itself — an optional defense-in-depth parity item for a future
+slice.
 
 ---
 

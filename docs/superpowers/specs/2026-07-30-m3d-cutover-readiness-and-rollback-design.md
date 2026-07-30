@@ -104,7 +104,9 @@ time rather than import time. This leaves only the external writers
 pause-control and runner-log classified for cutover, not call-site
 migration. CWD/checkout invariance is now proven by tests `eae53a7`/
 `586393c` (registry-tiled coverage, checkout write-isolation, seeded
-repo-watch read probe).
+repo-watch read probe). Activation provenance is now enforced in code at
+`504ea45` (external `ATLAS_NODE_ROLE` binding plus receipt-byte
+verification with a per-role allowlist).
 
 Before migration, classify every filesystem writer into exactly one category:
 

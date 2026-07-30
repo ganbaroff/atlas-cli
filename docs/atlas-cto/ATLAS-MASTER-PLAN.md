@@ -36,6 +36,11 @@ coverage, checkout write-isolation, seeded repo-watch read probe). Next
 gate: manifest node-role binding and source-receipt verification before any
 live activation (CEO-gated), plus the two external-writer stores at
 cutover.
+The A3 provenance gate is now done at `504ea45` (external `ATLAS_NODE_ROLE`
+binding plus receipt-byte verification, independently verified CONFIRMED),
+which closes every pre-activation checkbox in the M3D readiness plan. Next
+is rehearsal against a preserved copy of real state, then activation under
+the CEO's conditional permission of 2026-07-31.
 
 ```mermaid
 flowchart LR

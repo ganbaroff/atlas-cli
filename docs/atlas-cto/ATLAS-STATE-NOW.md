@@ -47,10 +47,14 @@ only the external writers pause-control and runner-log remain, handled at
 activation/cutover, not by call-site migration.
 Active package: the CWD/code-root invariance proof is done at `eae53a7`+
 `586393c` (registry-tiled coverage, checkout write-isolation, seeded
-repo-watch read probe; adversarially reviewed and repaired). Next: manifest
-node-role binding and source-receipt verification before any live
-activation, plus the two external-writer stores at cutover; no physical
-cutover is authorized.
+repo-watch read probe; adversarially reviewed and repaired). M3D-A3
+manifest node-role binding and source-receipt verification is done at
+`504ea45` (independently verified CONFIRMED, full suite 1344/0). Next:
+rehearsal of activation against a preserved copy of real state (M3C
+machinery), then CEO-approved LOCAL activation — CEO gave permission
+2026-07-31 conditional on that rehearsal returning green; physical cutover
+of live state remains NO-GO until then, plus the two external-writer
+stores at cutover.
 
 `M1 ✓  →  M2 ✓  →  M3A ✓  →  M3B ✓  →  M3C ✓  →  M3D PACKET ✓  →  A1 ✓  →  A2…D  →  CEO CUTOVER GATE`
 
@@ -234,11 +238,16 @@ Fable/Opus routing closure:
     alert/audit/watch/shell slice `5fd6b29`. The CWD/code-root invariance
     proof is done at `eae53a7` (adversarially REFUTED on three findings) and
     repaired/closed at `586393c` (registry-tiled coverage, checkout
-    write-isolation, seeded repo-watch read probe). **Next:**
-    the manifest node-role binding and source-receipt verification gate
-    before any live activation, plus the two external-writer stores
-    (pause-control, runner-log) at cutover, then M3D-B mutation integrity,
-    M3D-C effect durability, and M3D-D full-root recovery.
+    write-isolation, seeded repo-watch read probe). M3D-A3 manifest
+    node-role binding and source-receipt verification is done at `504ea45`
+    (independently verified CONFIRMED; full suite 1344/0). **Next:**
+    rehearsal of activation against a preserved copy of real state (M3C
+    machinery), then CEO-approved LOCAL activation — CEO gave permission
+    2026-07-31 conditional on that rehearsal returning green; physical
+    cutover of live state stays NO-GO until then, plus the two
+    external-writer stores (pause-control, runner-log) at cutover, then
+    M3D-B mutation integrity, M3D-C effect durability, and M3D-D full-root
+    recovery.
 11. **Live research broker:** one provider at a time, public synthetic prompts.
 12. **Research swarm:** only after `READY_FOR_RESEARCH`.
 
