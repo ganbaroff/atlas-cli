@@ -29,12 +29,24 @@ import {
   type ExecGraphInspection,
   type ShadowStateComparison,
 } from './shadow-state.js';
+import {
+  resolveShadowRehearsalDependencies,
+  type ShadowRehearsalDependencies,
+} from './shadow-rehearsal-test-seam.js';
 
 const moduleDirectory = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(moduleDirectory, '..', '..');
 const defaultChildScriptPath = resolve(moduleDirectory, 'shadow-rehearsal-child.ts');
 const tsxCliPath = resolve(repoRoot, 'node_modules', 'tsx', 'dist', 'cli.mjs');
 const defaultChildTimeoutMs = 15_000;
+
+function currentDependencies(): ShadowRehearsalDependencies {
+  return resolveShadowRehearsalDependencies({
+    fileWriter: defaultFileWriter,
+    childScriptPath: defaultChildScriptPath,
+    executeRollback,
+  });
+}
 
 export type ShadowRehearsalErrorCode =
   | 'copy_failed'
@@ -115,8 +127,6 @@ function isRecognizedRollbackToken(candidate: unknown): candidate is RollbackVer
 
 // --- Atomic copy ------------------------------------------------------------
 
-export type FileWriter = (destinationPath: string, contents: Buffer) => void;
-
 function defaultFileWriter(destinationPath: string, contents: Buffer): void {
   writeFileSync(destinationPath, contents, { flush: true });
 }
@@ -131,7 +141,6 @@ export function copyExecGraphDirectoryAtomic(
   sourceDirectory: string,
   destinationParentDirectory: string,
   destinationName: string,
-  fileWriter: FileWriter = defaultFileWriter,
 ): string {
   const resolvedSource = resolve(sourceDirectory);
   const resolvedParent = resolve(destinationParentDirectory);
@@ -147,6 +156,7 @@ export function copyExecGraphDirectoryAtomic(
 
   const ledgerRaw = readSourceFile(join(resolvedSource, 'ledger.jsonl'));
   const snapshotRaw = readSourceFile(join(resolvedSource, 'graph.json'));
+  const fileWriter = currentDependencies().fileWriter;
 
   try {
     mkdirSync(stagingDestination, { recursive: false });
@@ -196,21 +206,13 @@ function readSourceFile(path: string): Buffer {
 
 export interface ColdReplayOptions {
   readonly timeoutMs?: number;
-  /**
-   * Fault-injection seam for tests only: overrides the script the child
-   * process runs. Defaults to the real cold-replay entry point, which
-   * imports `inspectExecGraphDirectory` from this package and prints its
-   * result as JSON. The child is always a genuinely fresh `node` process
-   * regardless of which script it runs.
-   */
-  readonly childScriptPath?: string;
 }
 
 export function coldReplayExecGraphDirectory(
   shadowRoot: string,
   options: ColdReplayOptions = {},
 ): ChildReplayResult {
-  const scriptPath = options.childScriptPath ?? defaultChildScriptPath;
+  const scriptPath = currentDependencies().childScriptPath;
   const timeoutMs = options.timeoutMs ?? defaultChildTimeoutMs;
 
   const result = spawnSync(process.execPath, [tsxCliPath, scriptPath, shadowRoot], {
@@ -474,7 +476,7 @@ export function runShadowRehearsal(
 
     const parity = assertStrictParity(resolvedSource, shadowRoot, childReplay);
 
-    executeRollback(shadowRoot);
+    currentDependencies().executeRollback(shadowRoot);
     const token = verifyRollback(shadowRoot, sourceAfterCopy, childReplay, parity);
 
     return writeRehearsalReceipt(token, options.receiptPath);

@@ -9,11 +9,12 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ledgerEventSchema, type LedgerEvent } from '../exec-graph/contracts.js';
 import { foldEvents } from '../exec-graph/ledger.js';
 import { inspectExecGraphDirectory } from '../atlas/shadow-state.js';
+import { withShadowRehearsalTestOverrides } from '../atlas/shadow-rehearsal-test-seam.js';
 import {
   assertStrictParity,
   copyExecGraphDirectoryAtomic,
@@ -153,6 +154,28 @@ describe('atlas/shadow-rehearsal', () => {
 
   // --- atomic copy ------------------------------------------------------------
 
+  it('ignores a cast writer on the fixed production copy wrapper', () => {
+    const source = writeValidGraphFixture('cast-writer-source');
+    const workDir = mkdtempSync(join(tmpdir(), 'atlas-shadow-cast-writer-'));
+    const forged = vi.fn(() => {
+      throw new Error('forged writer ran');
+    });
+
+    try {
+      expect(() =>
+        (copyExecGraphDirectoryAtomic as unknown as (...args: unknown[]) => string)(
+          source,
+          workDir,
+          'shadow',
+          forged,
+        ),
+      ).not.toThrow();
+      expect(forged).not.toHaveBeenCalled();
+    } finally {
+      rmSync(workDir, { recursive: true, force: true });
+    }
+  });
+
   it('leaves no partial destination when the copy is interrupted mid-way', () => {
     const source = writeValidGraphFixture('source');
     const workDir = mkdtempSync(join(tmpdir(), 'atlas-shadow-work-'));
@@ -164,9 +187,11 @@ describe('atlas/shadow-rehearsal', () => {
         writeFileSync(destinationPath, contents);
       };
 
-      expect(() =>
-        copyExecGraphDirectoryAtomic(source, workDir, 'shadow', faultyWriter),
-      ).toThrow(expect.objectContaining({ code: 'copy_interrupted' }));
+      withShadowRehearsalTestOverrides({ fileWriter: faultyWriter }, () => {
+        expect(() => copyExecGraphDirectoryAtomic(source, workDir, 'shadow')).toThrow(
+          expect.objectContaining({ code: 'copy_interrupted' }),
+        );
+      });
 
       expect(existsSync(join(workDir, 'shadow'))).toBe(false);
       const leftovers = readdirSync(workDir).filter((entry) => entry.startsWith('.staging-'));
@@ -310,9 +335,29 @@ describe('atlas/shadow-rehearsal', () => {
         ].join('\n'),
       );
 
-      expect(() =>
-        coldReplayExecGraphDirectory(shadow, { childScriptPath: faultScript }),
-      ).toThrow(expect.objectContaining({ code: 'replay_nonzero_exit' }));
+      withShadowRehearsalTestOverrides({ childScriptPath: faultScript }, () => {
+        expect(() => coldReplayExecGraphDirectory(shadow)).toThrow(
+          expect.objectContaining({ code: 'replay_nonzero_exit' }),
+        );
+      });
+    },
+    CHILD_TEST_TIMEOUT,
+  );
+
+  it(
+    'ignores a cast child script on the fixed cold-replay wrapper',
+    () => {
+      const validShadow = writeValidGraphFixture('cast-child-shadow');
+      const faultScript = writeFaultScript('cast-child.ts', 'process.exit(47);\n');
+
+      const result = (
+        coldReplayExecGraphDirectory as unknown as (
+          root: string,
+          options: Record<string, unknown>,
+        ) => ChildReplayResult
+      )(validShadow, { childScriptPath: faultScript });
+
+      expect(result.eventCount).toBe(2);
     },
     CHILD_TEST_TIMEOUT,
   );
@@ -323,9 +368,11 @@ describe('atlas/shadow-rehearsal', () => {
       const shadow = writeValidGraphFixture('shadow');
       const faultScript = writeFaultScript('empty-output.ts', 'process.exit(0);\n');
 
-      expect(() =>
-        coldReplayExecGraphDirectory(shadow, { childScriptPath: faultScript }),
-      ).toThrow(expect.objectContaining({ code: 'replay_empty_output' }));
+      withShadowRehearsalTestOverrides({ childScriptPath: faultScript }, () => {
+        expect(() => coldReplayExecGraphDirectory(shadow)).toThrow(
+          expect.objectContaining({ code: 'replay_empty_output' }),
+        );
+      });
     },
     CHILD_TEST_TIMEOUT,
   );
@@ -339,9 +386,11 @@ describe('atlas/shadow-rehearsal', () => {
         "process.stdout.write('not-json-at-all');\n",
       );
 
-      expect(() =>
-        coldReplayExecGraphDirectory(shadow, { childScriptPath: faultScript }),
-      ).toThrow(expect.objectContaining({ code: 'replay_unparseable_output' }));
+      withShadowRehearsalTestOverrides({ childScriptPath: faultScript }, () => {
+        expect(() => coldReplayExecGraphDirectory(shadow)).toThrow(
+          expect.objectContaining({ code: 'replay_unparseable_output' }),
+        );
+      });
     },
     CHILD_TEST_TIMEOUT,
   );
