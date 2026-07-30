@@ -20,7 +20,7 @@ push, merge, deployment, scheduler cutover, or live-state activation is active.
 | Cost Router design | **ACCEPTED** | two Opus reviews closed; roadmap and ceilings approved | implement package-by-package |
 | Cost Router implementation | **M2 VERIFIED LOCAL** | `23e8574`; 97/97 focused tests, typecheck, runtime refusal-receipt enforcement | keep live providers off |
 | Fable session router | **REPAIRED / LIVE RECEIPT PENDING** | hook registered; stale `/model` and thread-context regressions fixed; 32/32 tests | verify on next natural clean Fable prompt; contaminated threads stay Opus |
-| Shadow consolidation | **M3A REPAIRED / M3B NOW** | `0dfb15d` + `28c8f79`; 10/10 focused and 104/104 regression tests | isolated synthetic copy/replay |
+| Shadow consolidation | **M3B VERIFIED / M3C NEXT** | `462176c` + repair `44c84de`; 213/213 regression tests, typecheck | separately preserved-state copy rehearsal |
 | Physical consolidation | **NO-GO** | nested worktrees, unique legacy state, runtime bindings remain | completed shadow rehearsal plus CEO cutover gate |
 | Subscription research | **OFF** | Perplexity interactive access only; no durable adapter proof | public synthetic live gate |
 | Research swarm | **OFF** | `RESEARCH_ONLY_LIMITED` | two-provider `READY_FOR_RESEARCH` gate |
@@ -28,16 +28,21 @@ push, merge, deployment, scheduler cutover, or live-state activation is active.
 
 ## Exact current point
 
-We are at **Milestone M3 — Shadow Consolidation**. M1 durable foundation and
-M2 safe router are complete on the local
-`codex/atlas-cost-router-design` branch. Active package: M3B.
+We are at **Milestone M3 — Shadow Consolidation**. M1 durable foundation, M2
+safe router, M3A strict comparison, and M3B synthetic rehearsal are complete
+on the local `codex/atlas-cost-router-design` branch. Active package: M3C.
+
+`M1 ✓  →  M2 ✓  →  M3A ✓  →  M3B ✓  →  M3C NEXT  →  CEO CUTOVER GATE`
 
 1. **Done:** define a strict explicit-path shadow manifest and semantic
    comparator; reject empty authoritative input;
-2. **Now:** prove copy/replay/outcome parity in temporary fixtures;
-3. execute rollback, verify it, then emit its receipt without switching any
-   live resolver;
-4. only then rehearse against a separately preserved copy of current state.
+2. **Done:** prove atomic copy, cold replay, strict parity, executed rollback,
+   and post-rollback receipt in synthetic temporary fixtures;
+3. **Done:** close receipt-forgery bypass by keeping rollback/receipt
+   primitives private and binding proof to exact source, replay, parity, and
+   removed shadow root;
+4. **Now:** rehearse against a separately preserved copy of current state.
+   No live resolver switch, untracking, move, or cutover.
 
 ## External review closure
 
@@ -93,6 +98,29 @@ M3A local closure:
   root tests, clean typecheck and diff check. Current 96-event source still
   inspects with preserved ledger and snapshot SHA-256.
 
+M3B local closure:
+
+- Source and seat: Fable local integrator routed the rollback-sensitive prompt
+  to `claude-opus-5`; one bounded Sonnet executor
+  (`toolu_01C3KjGJm1rigsokV4hD1kNs`) wrote commit `462176c` using exactly
+  25/25 tool calls. Its report was treated as external input, not closure.
+- **ACCEPT:** atomic synthetic copy, fresh-process cold replay, strict reuse of
+  the M3A comparator, fail-closed child outcomes, real rollback, and receipt
+  only after observed removal. No live state or resolver was touched.
+- **ACCEPT blocker / MODIFY repair:** Opus correctly found that exported
+  rollback-token minting and receipt writing permitted a receipt without the
+  full rehearsal. Its proposed path-only comparison was insufficient because
+  a never-created absent path and caller-supplied payload could still bypass
+  the sequence.
+- Commit `44c84de` keeps delete/mint/write primitives private and binds the
+  private token to the exact source inspection, child replay, accepted parity,
+  and removed shadow root. Public-API regression was observed RED then GREEN.
+- Independent command evidence at exact code tip: 11/11 files and 213/213
+  tests passed; `npx tsc --noEmit` and diff checks exited 0.
+- **Still open:** `replay_spawn_failed` lacks a deterministic test; real-state
+  rehearsal, activation, untracking, and physical consolidation remain later
+  gates.
+
 Fable/Opus routing closure:
 
 - Provider safeguard banner means broad classifier fallback, not that Fable or
@@ -119,11 +147,14 @@ Fable/Opus routing closure:
    fake-provider integration, refusal receipts, and runtime receipt invariant.
 6. **Done:** strict read-only exec-graph inspection and pair comparison,
    including fail-closed rejection of empty authoritative input.
-7. **Now:** isolated synthetic copy/replay and rollback receipt; no physical
-   move or live-root activation. Receipt follows executed rollback only.
-8. **CEO cutover gate:** only after rollback proof.
-9. **Live research broker:** one provider at a time, public synthetic prompts.
-10. **Research swarm:** only after `READY_FOR_RESEARCH`.
+7. **Done:** isolated synthetic copy/replay, strict parity, executed rollback,
+   bound proof, and post-rollback receipt. No live-root activation.
+8. **Now:** repeat rehearsal against a separately preserved copy of current
+   state; still no resolver switch, untracking, or move.
+9. **CEO cutover gate:** only after preserved-copy proof and remaining state
+   integrity/effect-durability gates.
+10. **Live research broker:** one provider at a time, public synthetic prompts.
+11. **Research swarm:** only after `READY_FOR_RESEARCH`.
 
 ## CEO decisions
 
