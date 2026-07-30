@@ -9,6 +9,7 @@ import {
 import { join } from 'node:path';
 import { parseTypedClaim, type TypedClaim } from './claim.js';
 import { assertWritable } from '../atlas/readonly-guard.js';
+import { resolveMigratingStateDir } from '../atlas/state-root.js';
 
 export interface EvidenceLedgerEntry {
   prevHash: string | null;
@@ -34,11 +35,10 @@ export function hashPayload(payload: unknown): string {
 }
 
 export function resolveEvidenceDir(): string {
-  if (process.env.ATLAS_EVIDENCE_DIR) {
-    mkdirSync(process.env.ATLAS_EVIDENCE_DIR, { recursive: true });
-    return process.env.ATLAS_EVIDENCE_DIR;
-  }
-  const dir = join(process.cwd(), 'state', 'evidence');
+  const dir = resolveMigratingStateDir(
+    'evidence',
+    () => join(process.cwd(), 'state', 'evidence'),
+  );
   mkdirSync(dir, { recursive: true });
   return dir;
 }

@@ -6,19 +6,21 @@
  * today because the checkout acts as runtime home, but a repository move can
  * make state vanish from the new checkout or split across two checkouts.
  *
- * This module adds ONE checkout-independent resolver. It intentionally does
- * NOT migrate any call site yet — existing resolvers keep their own
- * cwd/module-walk fallback untouched, so behavior is unchanged and nothing
- * can regress. Migration is a later wave; this wave only makes the target
- * resolution available and gives the store inventory a home in code.
+ * This module adds ONE checkout-independent resolver plus a migration bridge.
+ * A migrating call site keeps its exact legacy default until an operator
+ * enables required activation. ATLAS_STATE_ROOT may be staged independently
+ * without rerouting another store. That prevents code rollout from becoming a
+ * hidden live-state cutover.
  *
- * Precedence for any given store:
+ * Shared-resolver precedence for any given store:
  *   1. That store's legacy per-store env var (e.g. ATLAS_EXEC_GRAPH_DIR), if
  *      set and non-empty. Backward compatibility always wins — an operator
  *      who already pinned a store's location must never be silently moved.
  *   2. `<ATLAS_STATE_ROOT>/<store>`.
- * There is no third fallback and no cwd branch: the root itself defaults to
- * `~/.atlas/state`, which is checkout-independent by construction.
+ * `resolveStateDir()` has no third fallback and no cwd branch: the root itself
+ * defaults to `~/.atlas/state`, which is checkout-independent by construction.
+ * `resolveMigratingStateDir()` adds only a pre-activation legacy-default
+ * branch; that branch becomes unreachable once required activation is on.
  *
  * ACTIVATION: pre-cutover callers keep the backward-compatible default above.
  * Once `ATLAS_STATE_ROOT_REQUIRED=1|true`, the root must be explicit, a strict
@@ -56,21 +58,25 @@ export class StateRootActivationError extends Error {
   }
 }
 
-function readAbsoluteOverride(envName: string): string | undefined {
-  const value = process.env[envName]?.trim();
-  if (!value) return undefined;
-
-  const root = parse(value).root;
+function normalizeStableAbsolute(value: string, label: string): string {
+  const candidate = value.trim();
+  const root = parse(candidate).root;
   const windowsRootIsStable =
     process.platform !== 'win32' ||
     /^[A-Za-z]:[\\/]$/.test(root) ||
     root.startsWith('\\\\');
 
-  if (!isAbsolute(value) || !windowsRootIsStable) {
-    throw new StateRootConfigurationError(envName);
+  if (!candidate || !isAbsolute(candidate) || !windowsRootIsStable) {
+    throw new StateRootConfigurationError(label);
   }
 
-  return normalize(value);
+  return normalize(candidate);
+}
+
+function readAbsoluteOverride(envName: string): string | undefined {
+  const value = process.env[envName]?.trim();
+  if (!value) return undefined;
+  return normalizeStableAbsolute(value, envName);
 }
 
 /**
@@ -246,8 +252,15 @@ export function assertStateRootActivated(
  * directory — callers that need it to exist create it themselves.
  */
 export function resolveStateDir(store: StateStore, legacyEnv?: string): string {
+  const required = stateRootRequired();
+  const envName = legacyEnv ?? STATE_STORES[store];
+  if (!required && envName) {
+    const legacy = readAbsoluteOverride(envName);
+    if (legacy) return legacy;
+  }
+
   const root = resolveStateRoot();
-  const activation = stateRootRequired() ? assertStateRootActivated(root) : undefined;
+  const activation = required ? assertStateRootActivated(root) : undefined;
   if (activation && !activation.stores.includes(store)) {
     throw new StateRootActivationError(
       'store_not_activated',
@@ -255,7 +268,6 @@ export function resolveStateDir(store: StateStore, legacyEnv?: string): string {
     );
   }
 
-  const envName = legacyEnv ?? STATE_STORES[store];
   if (envName) {
     const legacy = readAbsoluteOverride(envName);
     if (legacy) {
@@ -282,4 +294,31 @@ export function resolveStateDir(store: StateStore, legacyEnv?: string): string {
     }
   }
   return join(root, store);
+}
+
+/**
+ * Bridge one legacy call site without moving its live default during code
+ * rollout. Before required activation, retain the legacy env/default. A
+ * staged ATLAS_STATE_ROOT alone is deliberately ignored. Once required
+ * activation is enabled, use the shared resolver and its manifest/containment
+ * checks.
+ */
+export function resolveMigratingStateDir(
+  store: StateStore,
+  legacyDefault: () => string,
+  legacyEnv?: string,
+): string {
+  const required = stateRootRequired();
+  if (required) return resolveStateDir(store, legacyEnv);
+
+  const envName = legacyEnv ?? STATE_STORES[store];
+  if (envName) {
+    const legacy = readAbsoluteOverride(envName);
+    if (legacy) return legacy;
+  }
+
+  return normalizeStableAbsolute(
+    legacyDefault(),
+    `legacy default for ${store}`,
+  );
 }

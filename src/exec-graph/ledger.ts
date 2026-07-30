@@ -48,6 +48,7 @@ import {
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
+import { resolveMigratingStateDir } from '../atlas/state-root.js';
 import {
   type Goal,
   type Task,
@@ -72,18 +73,16 @@ function isSafeKey(key: string): boolean {
 /**
  * Resolve state/exec-graph/. Candidates in order:
  *   1. ATLAS_EXEC_GRAPH_DIR (explicit override — tests point this at a temp dir)
- *   2. <cwd>/state/exec-graph, IF <cwd> looks like the repo root (has package.json)
- *   3. walk up from this module's dir looking for package.json, then <that dir>/state/exec-graph
- *   4. last resort: <cwd>/state/exec-graph anyway
+ *   2. <ATLAS_STATE_ROOT>/exec-graph once shared-root routing is explicit
+ *   3. <cwd>/state/exec-graph, IF <cwd> looks like the repo root (has package.json)
+ *   4. walk up from this module's dir looking for package.json, then <that dir>/state/exec-graph
+ *   5. last resort: <cwd>/state/exec-graph anyway
  * The target directory itself need not exist yet (first run creates it) —
  * unlike policy.ts's resolvePolicyPath(), which looks for an existing file,
  * this looks for the repo-root LANDMARK (package.json) so it works before
  * state/exec-graph/ has ever been created.
  */
-export function resolveExecGraphDir(): string {
-  const override = process.env.ATLAS_EXEC_GRAPH_DIR;
-  if (override && override.trim()) return resolve(override.trim());
-
+function resolveLegacyExecGraphDir(): string {
   const cwdCandidate = resolve(process.cwd(), 'state', 'exec-graph');
   if (existsSync(resolve(process.cwd(), 'package.json'))) return cwdCandidate;
 
@@ -97,6 +96,10 @@ export function resolveExecGraphDir(): string {
     dir = parent;
   }
   return cwdCandidate;
+}
+
+export function resolveExecGraphDir(): string {
+  return resolveMigratingStateDir('exec-graph', resolveLegacyExecGraphDir);
 }
 
 export function ledgerPath(): string {

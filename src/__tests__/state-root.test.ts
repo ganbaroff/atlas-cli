@@ -1,10 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 
 import {
   assertStateRootActivated,
+  resolveMigratingStateDir,
   resolveStateRoot,
   resolveStateDir,
   STATE_ROOT_ACTIVATION_FILE,
@@ -226,6 +227,12 @@ describe('atlas/state-root', () => {
       expect(resolveStateDir('exec-graph')).toBe(resolve(ABSOLUTE_LEGACY_ROOT));
     });
 
+    it('a valid legacy override wins over a malformed staged root before activation', () => {
+      process.env.ATLAS_STATE_ROOT = 'relative-staged-root';
+      process.env.ATLAS_EXEC_GRAPH_DIR = ABSOLUTE_LEGACY_ROOT;
+      expect(resolveStateDir('exec-graph')).toBe(resolve(ABSOLUTE_LEGACY_ROOT));
+    });
+
     it('the legacy per-store env var wins even when ATLAS_STATE_ROOT is unset', () => {
       process.env.ATLAS_EVIDENCE_DIR = ABSOLUTE_LEGACY_ROOT;
       expect(resolveStateDir('evidence')).toBe(resolve(ABSOLUTE_LEGACY_ROOT));
@@ -268,6 +275,58 @@ describe('atlas/state-root', () => {
       process.chdir(homedir());
       const after = resolveStateDir('operator-runs');
       expect(after).toBe(before);
+    });
+  });
+
+  describe('resolveMigratingStateDir()', () => {
+    it('preserves the exact legacy default before an explicit root is configured', () => {
+      const legacyDefault = join(tmpdir(), 'atlas-legacy-default', 'exec-graph');
+      const fallback = vi.fn(() => legacyDefault);
+
+      expect(resolveMigratingStateDir('exec-graph', fallback)).toBe(
+        resolve(legacyDefault),
+      );
+      expect(fallback).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not switch to a staged explicit root before required activation', () => {
+      process.env.ATLAS_STATE_ROOT = ABSOLUTE_STATE_ROOT;
+      const legacyDefault = join(tmpdir(), 'atlas-staged-root-legacy-default');
+      const fallback = vi.fn(() => legacyDefault);
+
+      expect(resolveMigratingStateDir('exec-graph', fallback)).toBe(
+        resolve(legacyDefault),
+      );
+      expect(fallback).toHaveBeenCalledTimes(1);
+    });
+
+    it('preserves a legacy per-store override before root activation', () => {
+      process.env.ATLAS_STATE_ROOT = 'relative-staged-root';
+      process.env.ATLAS_EVIDENCE_DIR = ABSOLUTE_LEGACY_ROOT;
+      const fallback = vi.fn(() => join(tmpdir(), 'must-not-run'));
+
+      expect(resolveMigratingStateDir('evidence', fallback)).toBe(
+        resolve(ABSOLUTE_LEGACY_ROOT),
+      );
+      expect(fallback).not.toHaveBeenCalled();
+    });
+
+    it('rejects a relative legacy default instead of making it cwd-dependent', () => {
+      expect(() =>
+        resolveMigratingStateDir('goal-budgets', () => 'state/goal-budgets'),
+      ).toThrow('legacy default for goal-budgets must be a stable absolute path');
+    });
+
+    it('uses the activated root only after the complete manifest is present', () => {
+      process.env.ATLAS_STATE_ROOT = activationRoot;
+      process.env.ATLAS_STATE_ROOT_REQUIRED = 'true';
+      writeActivationManifest();
+      const fallback = vi.fn(() => join(tmpdir(), 'must-not-run'));
+
+      expect(resolveMigratingStateDir('goal-budgets', fallback)).toBe(
+        join(activationRoot, 'goal-budgets'),
+      );
+      expect(fallback).not.toHaveBeenCalled();
     });
   });
 

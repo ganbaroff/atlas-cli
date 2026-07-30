@@ -10,15 +10,19 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { GoalBudget, GoalRunnerConfig } from './types.js';
+import { resolveMigratingStateDir } from '../atlas/state-root.js';
 
-function budgetDir(): string {
-  const dir = process.env.ATLAS_GOAL_BUDGET_DIR ?? resolve('state/goal-budgets');
+export function resolveGoalBudgetDir(): string {
+  const dir = resolveMigratingStateDir(
+    'goal-budgets',
+    () => resolve('state/goal-budgets'),
+  );
   mkdirSync(dir, { recursive: true });
   return dir;
 }
 
 function budgetPath(goalId: string): string {
-  return join(budgetDir(), `${goalId}.json`);
+  return join(resolveGoalBudgetDir(), `${goalId}.json`);
 }
 
 let tmpCounter = 0;
@@ -121,7 +125,7 @@ export function isProcessAlive(pid: number): boolean {
 }
 
 export function acquireLease(goalId: string): boolean {
-  const leasePath = join(budgetDir(), LEASE_FILE);
+  const leasePath = join(resolveGoalBudgetDir(), LEASE_FILE);
   if (existsSync(leasePath)) {
     try {
       const existing: GoalLease = JSON.parse(readFileSync(leasePath, 'utf8'));
@@ -136,7 +140,7 @@ export function acquireLease(goalId: string): boolean {
 }
 
 export function releaseLease(goalId: string): void {
-  const leasePath = join(budgetDir(), LEASE_FILE);
+  const leasePath = join(resolveGoalBudgetDir(), LEASE_FILE);
   if (!existsSync(leasePath)) return;
   try {
     const existing: GoalLease = JSON.parse(readFileSync(leasePath, 'utf8'));
