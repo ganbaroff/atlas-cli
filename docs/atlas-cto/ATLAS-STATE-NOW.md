@@ -22,7 +22,7 @@ cutover, or live-state activation is active.
 | Cost Router design | **ACCEPTED** | two Opus reviews closed; roadmap and ceilings approved | implement package-by-package |
 | Cost Router implementation | **M2 VERIFIED LOCAL** | `23e8574`; 97/97 focused tests, typecheck, runtime refusal-receipt enforcement | keep live providers off |
 | Fable session router | **REPAIRED / LIVE RECEIPT PENDING** | hook registered; stale `/model` and thread-context regressions fixed; 32/32 tests | verify on next natural clean Fable prompt; contaminated threads stay Opus |
-| Shadow consolidation | **M3C VERIFIED / M3D-A1 DONE** | M3D packet `63e3b07`; root inventory/activation `97a300e`; 132/132 affected tests | M3D-A2 call-site migration; no cutover |
+| Shadow consolidation | **M3C VERIFIED / M3D-A2 SLICE 1 DONE** | root activation `97a300e`; first store family `ca324fe`; 146/146 affected tests | remaining A2 families; no cutover |
 | Physical consolidation | **NO-GO** | nested worktrees, unique legacy state, runtime bindings remain | completed shadow rehearsal plus CEO cutover gate |
 | Subscription research | **OFF** | Perplexity interactive access only; no durable adapter proof | public synthetic live gate |
 | Research swarm | **OFF** | `RESEARCH_ONLY_LIMITED` | two-provider `READY_FOR_RESEARCH` gate |
@@ -35,8 +35,9 @@ safe router, M3A strict comparison, M3B synthetic rehearsal, and M3C real
 retained-copy rehearsal are complete on local branch
 `codex/atlas-cost-router-design`. M3D design and implementation plan are now
 written. M3D-A1 classified state inventory and fail-closed activation contract
-are complete. Active package: M3D-A2 state-root call-site migration; no physical
-cutover is authorized.
+are complete. M3D-A2 slice 1 routes exec-graph, evidence, and goal budgets only
+after required manifest-bound activation. Active package: remaining M3D-A2
+state-root call-site families; no physical cutover is authorized.
 
 `M1 ✓  →  M2 ✓  →  M3A ✓  →  M3B ✓  →  M3C ✓  →  M3D PACKET ✓  →  A1 ✓  →  A2…D  →  CEO CUTOVER GATE`
 
@@ -57,9 +58,11 @@ cutover is authorized.
    verified one exact current-state copy without switching any live authority.
    **Done:** write M3D rollback/cutover packet from local code and physical-path
    evidence. **Done:** M3D-A1 classifies 44 writer files/23 root stores and
-   makes activation fail closed, including junction escape. **Now:** migrate
-   call sites in bounded store families. No live resolver switch, untracking,
-   move, or cutover.
+   makes activation fail closed, including junction escape. **Done:** M3D-A2
+   slice 1 migrates exec-graph, evidence, and goal budgets without allowing a
+   staged root to become hidden activation. **Now:** migrate remaining store
+   families and close expected-role/source-receipt provenance before any live
+   activation. No live resolver switch, untracking, move, or cutover.
 
 ## External review closure
 
@@ -197,9 +200,10 @@ Fable/Opus routing closure:
    current-state copy, fresh-process verification, and no-cutover proof.
 9. **Done:** M3D rollback/cutover packet, current physical inventory, NO-GO
    gates, rollback order, and implementation plan.
-10. **In progress:** M3D-A1 classification/activation is done at `97a300e`.
-    **Next:** M3D-A2 bounded call-site migration, then M3D-B mutation integrity,
-    M3D-C effect durability, and M3D-D full-root recovery.
+10. **In progress:** M3D-A1 is done at `97a300e`; M3D-A2 slice 1 is done at
+    `ca324fe`. **Next:** remaining bounded call-site families and activation
+    provenance, then M3D-B mutation integrity, M3D-C effect durability, and
+    M3D-D full-root recovery.
 11. **Live research broker:** one provider at a time, public synthetic prompts.
 12. **Research swarm:** only after `READY_FOR_RESEARCH`.
 

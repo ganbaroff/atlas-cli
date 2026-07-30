@@ -38,9 +38,15 @@ recovery gates before any Atlas repository move or live binding change.
       without an explicit stable root.
 - [x] Add complete classified registry and activation-manifest validation.
 - [x] Refuse classified legacy overrides that escape an activated root.
+- [x] Migrate slice 1 (`exec-graph`, `evidence`, `goal-budgets`) through a
+      compatibility bridge that ignores a merely staged `ATLAS_STATE_ROOT` and
+      switches only after required activation plus a valid manifest.
 - [ ] Migrate call sites in small store-family slices; keep explicit temporary
       roots in tests.
 - [ ] Prove CWD/code-root invariance and no writes to checkout paths.
+- [ ] Before any live activation, bind the manifest to an externally expected
+      node role and verify allowlisted source-receipt artifacts/hashes; fields
+      asserted by the manifest itself are not provenance proof.
 - [ ] Run focused tests, broader affected tests, `npx tsc --noEmit`, and
       `git diff --check`.
 
@@ -52,6 +58,15 @@ root-managed stores are classified, activation requires an explicit root plus
 strict complete manifest, and lexical/junction escapes fail closed. Evidence:
 8 affected files, 132/132 tests, clean typecheck and diff-check. Call-site
 migration and live activation remain open.
+
+A2 slice-1 checkpoint `ca324fe`: three authoritative stores now use the
+migration bridge. Independent LUNA review reproduced two hidden-cutover risks:
+a staged global root could have rerouted new stores without a manifest, and a
+malformed staged root could defeat a valid legacy override. Both were observed
+RED then repaired. Evidence: 9 affected files, 146/146 tests, exact-tip 43/43,
+clean typecheck and diff-check. The same review correctly identified that
+manifest receipt provenance is still an assertion; that remains an explicit
+pre-live M3D-A gate, not permission to activate now.
 
 ---
 

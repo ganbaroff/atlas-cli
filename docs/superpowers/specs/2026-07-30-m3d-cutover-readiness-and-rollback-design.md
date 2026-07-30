@@ -76,12 +76,13 @@ shell execution, or self-certification.
 
 ## M3D-A — state-root activation
 
-The current `state-root.ts` registry is explicitly incomplete and only Cost
-Router uses it. Verified checkout-bound writers still include exec-graph,
-evidence, goal budgets, swarm runs, intake drafts, operator state/runs, learning
-state, and the legacy hardcoded task-results path. Home-directory writers also
-remain split across lease, queue-auth nonce ledger, provider health, spend,
-notifications, pause/control, breadcrumbs, and alert state.
+The `state-root.ts` registry now covers 23 stores. Cost Router uses the direct
+resolver; A2 slice 1 routes exec-graph, evidence, and goal budgets through a
+compatibility bridge. Remaining checkout-bound writers include swarm runs,
+intake drafts, operator state/runs, learning state, and the legacy hardcoded
+task-results path. Home-directory writers also remain split across lease,
+queue-auth nonce ledger, provider health, spend, notifications, pause/control,
+breadcrumbs, and alert state.
 
 Before migration, classify every filesystem writer into exactly one category:
 
@@ -97,11 +98,18 @@ Before migration, classify every filesystem writer into exactly one category:
 Activation contract:
 
 - production entry points require a stable absolute `ATLAS_STATE_ROOT`;
+- `ATLAS_STATE_ROOT` alone is staging, not activation: migrating call sites
+  retain their exact legacy env/default until `ATLAS_STATE_ROOT_REQUIRED` is
+  enabled;
 - an activation manifest under that root binds schema version, node role,
   classified store list, source receipt hashes, and activation time;
+- before live activation, expected node role comes from outside the manifest
+  and every allowlisted source-receipt hash is verified against its artifact;
+  self-asserted manifest fields are not proof;
 - after activation, missing root, missing/invalid manifest, a classified store
   outside the root, or a legacy override escaping the root is a named refusal;
-- test fixtures may pass explicit temporary roots; no test writes the live root;
+- test fixtures use explicit temporary legacy overrides or manifest-bound
+  temporary roots; no test writes the live root;
 - no call site derives classified state from CWD, module location, the code
   checkout, or an implicit home fallback after activation.
 
@@ -111,7 +119,9 @@ Acceptance:
   modules;
 - changing CWD and code-root location does not change any classified path;
 - production activation with an omitted root refuses before mutation;
+- a staged root without required activation reroutes zero migrating stores;
 - a legacy override outside the activated root refuses;
+- wrong node role or an unverifiable source receipt refuses before mutation;
 - both local and Railway target manifests can be validated without reading
   secret values.
 
