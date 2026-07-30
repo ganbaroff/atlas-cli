@@ -255,6 +255,106 @@ export type PremiumOwner = z.infer<typeof premiumOwnerSchema>;
 export type AsyncResearchHandle = z.infer<typeof asyncResearchHandleSchema>;
 export type DurableGoalRouterRecord = z.infer<typeof durableGoalRouterRecordSchema>;
 
+/**
+ * M2D: single shared marker for "this field of the receipt is genuinely not
+ * applicable to this terminal outcome" — used instead of omitting the field,
+ * so every receipt always carries all nine required keys and a reader never
+ * has to guess whether an absent key means "not applicable" or "forgot to
+ * populate it".
+ */
+export const NOT_APPLICABLE = 'not-applicable' as const;
+export type NotApplicable = typeof NOT_APPLICABLE;
+export type MaybeNotApplicable<T> = T | NotApplicable;
+
+const notApplicableSchema = z.literal(NOT_APPLICABLE);
+const maybeNotApplicableStringSchema = z.union([z.string().min(1), notApplicableSchema]);
+
+/**
+ * M2D: the complete-receipt shape the approved Cost Router design requires
+ * on every terminal outcome (success, refusal, and failure alike) of a
+ * routed provider attempt. Owned here — the one durable-state module — for
+ * the same reason `T3_TRIGGERS`/`ProviderClass` are: `cost-router-classify.ts`
+ * imports and populates this shape, it does not redefine it.
+ *
+ * All nine fields are non-optional, so a caller building a `CostRouterReceipt`
+ * literal gets a TypeScript error for a field it forgot rather than a
+ * silently-absent key. A field that is genuinely not applicable to a given
+ * outcome (e.g. `sources` when the route never touched web research, or
+ * `provider` when zero provider calls were made) still carries the explicit
+ * `NOT_APPLICABLE` marker rather than being left out. `assertCostRouterReceipt`
+ * is the runtime half of that guarantee: it fails closed on an
+ * empty-but-required field (e.g. `provider: ''`) that would otherwise satisfy
+ * the type checker but carry no real information.
+ */
+export const costRouterReceiptSchema = z.object({
+  /** Provider id actually used for the terminal outcome, or NOT_APPLICABLE when zero provider calls were made. */
+  provider: maybeNotApplicableStringSchema,
+  /** Wall-clock milliseconds spent executing the routed attempt. Always applicable, including 0 for zero-call outcomes. */
+  elapsedMs: nonNegativeIntegerSchema,
+  /** Sources returned by a research-style provider, or NOT_APPLICABLE for routes/providers that never return sources. */
+  sources: z.union([z.array(z.string().min(1)), notApplicableSchema]),
+  /** Same-provider transport retries and non-premium provider failovers actually spent on this attempt. Always applicable. */
+  retries: z
+    .object({
+      transportRetries: boundedAttemptSchema,
+      providerFailovers: boundedAttemptSchema,
+    })
+    .strict(),
+  /** How the M2C clearance gate resolved for the destination actually used, or NOT_APPLICABLE when no destination was ever checked. */
+  privacyDecision: maybeNotApplicableStringSchema,
+  /** Declared cost tier of the destination actually used, or NOT_APPLICABLE when no destination was ever used. */
+  costClass: maybeNotApplicableStringSchema,
+  /** Deterministic-verifier outcome for this attempt, or NOT_APPLICABLE — M2D wires fake providers only, not the verifier stage. */
+  verifierStatus: maybeNotApplicableStringSchema,
+  /** Human-readable blocker naming why the outcome was not a clean success, or NOT_APPLICABLE on success. */
+  blocker: maybeNotApplicableStringSchema,
+  /** Exact next action for whoever reads this receipt. Always required — even a success has one (e.g. "deliver result to caller"). */
+  nextAction: z.string().min(1),
+}).strict();
+
+/**
+ * Declared explicitly (not `z.infer`) so `sources` can be `readonly string[]`
+ * — matching `ProviderAttemptResult['sources']` in `cost-router-classify.ts`
+ * — without an assignability mismatch against zod's mutable-array inference.
+ * `readonly` is compile-time only; `assertCostRouterReceipt` validates the
+ * same runtime values either way.
+ */
+export interface CostRouterReceipt {
+  readonly provider: MaybeNotApplicable<string>;
+  readonly elapsedMs: number;
+  readonly sources: MaybeNotApplicable<readonly string[]>;
+  readonly retries: {
+    readonly transportRetries: 0 | 1;
+    readonly providerFailovers: 0 | 1;
+  };
+  readonly privacyDecision: MaybeNotApplicable<string>;
+  readonly costClass: MaybeNotApplicable<string>;
+  readonly verifierStatus: MaybeNotApplicable<string>;
+  readonly blocker: MaybeNotApplicable<string>;
+  readonly nextAction: string;
+}
+
+/**
+ * Runtime half of the "fully populated" guarantee: throws
+ * `GoalRouterStateError('cost_router_receipt_invalid')` when any field is
+ * missing, wrongly typed, or an empty string masquerading as populated (e.g.
+ * `provider: ''`). The type-level guarantee (no field can be omitted from a
+ * `CostRouterReceipt` literal without a compiler error) and this assertion
+ * together are what "fully populated on every terminal outcome" means in
+ * practice — one static, one dynamic.
+ */
+export function assertCostRouterReceipt(receipt: CostRouterReceipt): void {
+  const parsed = costRouterReceiptSchema.safeParse(receipt);
+  if (!parsed.success) {
+    throw new GoalRouterStateError(
+      'cost_router_receipt_invalid',
+      `Cost Router receipt failed validation: ${parsed.error.issues
+        .map((issue) => `${issue.path.join('.')}: ${issue.message}`)
+        .join('; ')}`
+    );
+  }
+}
+
 export interface GoalRouterStateOptions {
   /** Absolute Cost Router store directory. Production defaults to resolveStateDir('cost-router'). */
   rootDir?: string;
@@ -293,7 +393,8 @@ export type GoalRouterStateErrorCode =
   | 'transport_retry_exhausted'
   | 'provider_failover_before_retry'
   | 'provider_failover_exhausted'
-  | 'clearance_exception_invalid';
+  | 'clearance_exception_invalid'
+  | 'cost_router_receipt_invalid';
 
 export class GoalRouterStateError extends Error {
   constructor(

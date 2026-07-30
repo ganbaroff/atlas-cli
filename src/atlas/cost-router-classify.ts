@@ -19,9 +19,12 @@ import { join } from 'node:path';
 
 import {
   acquirePremiumOwner,
+  assertCostRouterReceipt,
+  NOT_APPLICABLE,
   recordClearanceException,
   recordRetryEvent,
   T3_TRIGGERS,
+  type CostRouterReceipt,
   type DurableGoalRouterRecord,
   type GoalRouterStateOptions,
   type PremiumOwner,
@@ -620,7 +623,16 @@ export const DEFAULT_PROVIDER_CLASS_TABLE: ProviderClassTable = Object.freeze({
   }),
 });
 
-export type ProviderAttemptResult = { ok: true } | { ok: false; failure: FailureInput };
+/**
+ * M2D: `sources` is additive and optional so every pre-M2D caller
+ * constructing `{ ok: true }` keeps type-checking unchanged. Only a
+ * research-style fake provider (T1) populates it; `executeRoutedAttempt`
+ * carries it straight onto the receipt's `sources` field when present, and
+ * uses `NOT_APPLICABLE` when it is not.
+ */
+export type ProviderAttemptResult =
+  | { ok: true; sources?: readonly string[] }
+  | { ok: false; failure: FailureInput };
 
 /**
  * M2C repair, third refutation: not exported. The only caller that
@@ -683,6 +695,12 @@ export interface RoutedAttemptResult {
    * brief was composed. Present only when `briefClearance` was set.
    */
   finalProviderClass?: ProviderClass;
+  /**
+   * M2D: the complete, fully-populated receipt for this terminal outcome —
+   * see `CostRouterReceipt` in `cost-router-state.ts`. Always present,
+   * always passes `assertCostRouterReceipt` before this result is returned.
+   */
+  receipt: CostRouterReceipt;
 }
 
 /**
@@ -709,6 +727,11 @@ export interface RoutedAttemptResult {
 async function executeRoutedAttempt(
   params: RouteAttemptExecutionParams,
 ): Promise<RoutedAttemptResult> {
+  // M2D: measured across the whole attempt, including durable-state I/O —
+  // start before the availability re-check so a receipt built later (if
+  // any) reflects the true wall time of this call.
+  const startedAt = Date.now();
+
   assertRouteAvailabilityChecked(params.route);
   // Defence-in-depth #2: re-check live availability even for a genuinely
   // branded route, so a token minted before an availability change cannot
@@ -787,9 +810,72 @@ async function executeRoutedAttempt(
   ): RoutedAttemptResult =>
     params.briefClearance ? { ...result, finalProviderClass: classOf(provider) } : result;
 
+  // M2D: how the M2C clearance gate resolved for `provider`, the destination
+  // actually used for this terminal outcome. Only ever called after
+  // `guardClearance(provider)` has already returned without throwing, so
+  // "weaker but exception-covered" and "at or above the required class" are
+  // the only two live cases here — a genuine refusal never reaches a receipt.
+  const privacyDecisionFor = (provider: ProviderCandidate): string => {
+    if (!params.briefClearance) return NOT_APPLICABLE;
+    const destinationClass = classOf(provider);
+    if (
+      destinationClass &&
+      verifiedClearanceException &&
+      isWeakerClass(destinationClass, params.briefClearance)
+    ) {
+      return `exception_applied:${verifiedClearanceException.approvedBy}`;
+    }
+    return 'cleared';
+  };
+
+  // M2D: assembles and validates the complete nine-field receipt for one
+  // terminal outcome. `finalProvider` absent means zero provider calls were
+  // made (the async-expired short-circuit) — every provider-derived field
+  // then carries the explicit NOT_APPLICABLE marker instead of being guessed
+  // at or omitted.
+  const buildReceipt = (args: {
+    finalProvider?: ProviderCandidate;
+    transportRetries: 0 | 1;
+    providerFailovers: 0 | 1;
+    sources: CostRouterReceipt['sources'];
+    blocker: CostRouterReceipt['blocker'];
+    nextAction: string;
+  }): CostRouterReceipt => {
+    const receipt: CostRouterReceipt = {
+      provider: args.finalProvider ? args.finalProvider.providerId : NOT_APPLICABLE,
+      elapsedMs: Date.now() - startedAt,
+      sources: args.sources,
+      retries: {
+        transportRetries: args.transportRetries,
+        providerFailovers: args.providerFailovers,
+      },
+      privacyDecision: args.finalProvider ? privacyDecisionFor(args.finalProvider) : NOT_APPLICABLE,
+      costClass: args.finalProvider ? args.finalProvider.tier : NOT_APPLICABLE,
+      // M2D wires fake providers only; the deterministic-verifier stage is a
+      // separate module not yet integrated into this call.
+      verifierStatus: NOT_APPLICABLE,
+      blocker: args.blocker,
+      nextAction: args.nextAction,
+    };
+    assertCostRouterReceipt(receipt);
+    return receipt;
+  };
+
   if (params.isAsyncExpired) {
     const bucket = classifyFailure({ isAsyncExpired: true });
-    return { status: 'failed', bucket, providerCalls: 0, callsByProvider: {} };
+    return {
+      status: 'failed',
+      bucket,
+      providerCalls: 0,
+      callsByProvider: {},
+      receipt: buildReceipt({
+        transportRetries: 0,
+        providerFailovers: 0,
+        sources: NOT_APPLICABLE,
+        blocker: 'async research handle already expired',
+        nextAction: 'resubmit the async research job as a new handle',
+      }),
+    };
   }
 
   await guardClearance(params.currentProvider);
@@ -802,6 +888,14 @@ async function executeRoutedAttempt(
         providerCalls: totalCalls(),
         callsByProvider,
         finalProviderId: params.currentProvider.providerId,
+        receipt: buildReceipt({
+          finalProvider: params.currentProvider,
+          transportRetries: 0,
+          providerFailovers: 0,
+          sources: first.sources ?? NOT_APPLICABLE,
+          blocker: NOT_APPLICABLE,
+          nextAction: 'deliver result to caller',
+        }),
       },
       params.currentProvider,
     );
@@ -810,7 +904,23 @@ async function executeRoutedAttempt(
   const bucket = classifyFailure(first.failure);
   if (bucket !== 'transport') {
     await recordRetryEvent(params.goalId, params.taskId, 'denial', params.now, params.options);
-    return { status: 'failed', bucket, providerCalls: totalCalls(), callsByProvider };
+    return {
+      status: 'failed',
+      bucket,
+      providerCalls: totalCalls(),
+      callsByProvider,
+      receipt: buildReceipt({
+        finalProvider: params.currentProvider,
+        transportRetries: 0,
+        providerFailovers: 0,
+        sources: NOT_APPLICABLE,
+        blocker:
+          bucket === 'denial'
+            ? 'provider denial'
+            : 'unclassified failure treated as denial (fail-closed)',
+        nextAction: 'escalate for manual review; no automatic retry permitted for this bucket',
+      }),
+    };
   }
 
   await recordRetryEvent(
@@ -828,6 +938,14 @@ async function executeRoutedAttempt(
         providerCalls: totalCalls(),
         callsByProvider,
         finalProviderId: params.currentProvider.providerId,
+        receipt: buildReceipt({
+          finalProvider: params.currentProvider,
+          transportRetries: 1,
+          providerFailovers: 0,
+          sources: retry.sources ?? NOT_APPLICABLE,
+          blocker: NOT_APPLICABLE,
+          nextAction: 'deliver result to caller',
+        }),
       },
       params.currentProvider,
     );
@@ -835,7 +953,21 @@ async function executeRoutedAttempt(
 
   const candidate = selectFailoverProvider(params.failoverCandidates ?? []);
   if (!candidate) {
-    return { status: 'failed', bucket: 'transport', providerCalls: totalCalls(), callsByProvider };
+    return {
+      status: 'failed',
+      bucket: 'transport',
+      providerCalls: totalCalls(),
+      callsByProvider,
+      receipt: buildReceipt({
+        finalProvider: params.currentProvider,
+        transportRetries: 1,
+        providerFailovers: 0,
+        sources: NOT_APPLICABLE,
+        blocker:
+          'transport failure persisted after retry; no eligible non-premium failover candidate',
+        nextAction: 'escalate for manual review or provider-health remediation',
+      }),
+    };
   }
 
   // M2C: the failover path must apply the same clearance check — a cheaper
@@ -858,6 +990,18 @@ async function executeRoutedAttempt(
       providerCalls: totalCalls(),
       callsByProvider,
       finalProviderId: candidate.providerId,
+      receipt: buildReceipt({
+        finalProvider: candidate,
+        transportRetries: 1,
+        providerFailovers: 1,
+        sources: failover.ok ? failover.sources ?? NOT_APPLICABLE : NOT_APPLICABLE,
+        blocker: failover.ok
+          ? NOT_APPLICABLE
+          : 'transport failure persisted after retry and failover; failover exhausted',
+        nextAction: failover.ok
+          ? 'deliver result to caller'
+          : 'escalate for manual review; failover exhausted',
+      }),
     },
     candidate,
   );
