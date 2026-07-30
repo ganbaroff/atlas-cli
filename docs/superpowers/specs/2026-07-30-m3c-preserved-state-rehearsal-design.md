@@ -57,6 +57,13 @@ untracked and not ignored. Preflight must prove the artifact is neither tracked
 nor staged before and after the drill. M3C does not add it, edit VOLAURA ignore
 rules, or claim Git is a privacy boundary.
 
+The parent is not empty. Its immutable preflight baseline is five previously
+verified legacy-preservation files: the top-level M4 patch plus the legacy
+bundle, ZIP, tracked-data patch, and `MANIFEST.md`. Their exact SHA-256 values
+are recorded in `CURRENT-COMPACT.md`. Preflight must reproduce all five hashes
+and reject any unexpected parent entry, but their existing untracked status is
+not a blocker. Tracking/staging checks target the exact new M3C artifact path.
+
 ## Fixed paths for the first live rehearsal
 
 All directory inputs are explicit absolute paths. `artifactName` is a strict
@@ -425,6 +432,8 @@ Preflight is read-only:
 - confirm final artifact path does not exist.
 - prove the VOLAURA repository does not track or stage the preservation
   artifact before the drill.
+- prove the five-file legacy-preservation baseline is unchanged and no other
+  parent entry exists before the drill.
 
 Acceptance evidence:
 
@@ -440,6 +449,7 @@ Acceptance evidence:
 - success receipt validates against manifest and preserved files;
 - source hashes and Git status unchanged from preflight;
 - VOLAURA still does not track or stage the preserved artifact;
+- the five legacy-preservation files retain their preflight SHA-256 values;
 - no resolver, process, scheduler, network, untrack, move, push, or deployment
   action occurred.
 

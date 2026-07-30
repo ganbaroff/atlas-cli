@@ -848,7 +848,7 @@ alias output because plain `npm run` adds its own banner.
   `C:\Projects\VOLAURA\memory\atlas\preservation` and one evidence closure.
 - Does not authorize M3D/M4 cutover.
 
-- [ ] **Step 1: Run fresh local code gates**
+- [x] **Step 1: Run fresh local code gates**
 
 ```powershell
 npx vitest run src/__tests__/shadow-state.test.ts src/__tests__/shadow-rehearsal.test.ts src/__tests__/shadow-rehearsal-durability.test.ts src/__tests__/shadow-rehearsal-seam-boundary.test.ts src/__tests__/preserved-state-preservation.test.ts src/__tests__/preserved-state-rehearsal.test.ts src/__tests__/preserved-state-cleanup.test.ts src/__tests__/preserved-state-durability.test.ts src/__tests__/preserved-state-cli.test.ts src/__tests__/state-root.test.ts src/__tests__/cost-router-state.test.ts src/__tests__/cost-router-classify.test.ts src/__tests__/cost-router-error-policy.test.ts src/__tests__/cost-router-clearance.test.ts src/__tests__/cost-router-m2d-integration.test.ts src/__tests__/cost-router-seam-boundary.test.ts src/__tests__/exec-graph.test.ts
@@ -860,7 +860,7 @@ git status --short
 Expected: zero failures; typecheck/diff-check exit 0; only the five known
 unrelated dirty paths remain after task commits.
 
-- [ ] **Step 2: Run one bounded Opus/Fable diff review**
+- [x] **Step 2: Run one bounded Opus/Fable diff review**
 
 Give only the committed design path, Task 1–5 commit range, and changed file
 paths. Maximum 10 direct Read/Search calls; no Agent, Bash, edit, polling, or
@@ -869,21 +869,33 @@ completion claim. Codex verifies every material finding locally, records
 needed, and reruns Step 1. Never start a second review loop merely for
 reassurance.
 
+Completed at `5e8e122`: 17/17 files and 274/274 tests passed; typecheck and
+diff-check exited 0. One nonpersistent Claude Opus review used 8/10 Read/Grep
+calls, returned `APPROVE`, and its unread seam/network surfaces were closed by
+local source inspection plus the same green gate. No second review loop.
+
 - [ ] **Step 3: Read-only real-drill preflight**
 
 Verify exact branch/HEAD, five-path dirty allowlist, `AtlasRunner` state, source
-inspection hashes/counts, absent final artifact, and VOLAURA tracking state:
+inspection hashes/counts, absent final artifact, immutable five-file legacy
+preservation baseline, and candidate-specific VOLAURA tracking state:
 
 ```powershell
 Get-ScheduledTask -TaskName AtlasRunner | Select-Object TaskName,State
 git status --short
-git -C C:\Projects\VOLAURA ls-files 'memory/atlas/preservation/**'
-git -C C:\Projects\VOLAURA status --short -- 'memory/atlas/preservation'
+git -C C:\Projects\VOLAURA status --short --untracked-files=all -- 'memory/atlas/preservation'
+git -C C:\Projects\VOLAURA ls-files --error-unmatch 'memory/atlas/preservation/<candidate artifact name>/**'
+git -C C:\Projects\VOLAURA diff --cached --name-only -- 'memory/atlas/preservation/<candidate artifact name>/**'
 ```
 
-If runner state is `Running`, source inspection differs from the recorded
-baseline, or artifact/tracking preflight fails: stop with named blocker. Do not
-stop the runner or change scheduler state.
+The first VOLAURA status must contain exactly the five already preserved legacy
+files recorded in `CURRENT-COMPACT.md`; reproduce their recorded SHA-256 values.
+Those untracked files are baseline, not a blocker. The exact candidate
+`ls-files --error-unmatch` must exit nonzero, its cached diff must be empty, and
+its final path must be absent. If runner state is `Running`, source inspection
+or legacy hashes differ, an unexpected parent entry exists, or candidate-
+specific artifact/tracking preflight fails: stop with named blocker. Do not stop
+the runner or change scheduler state.
 
 - [ ] **Step 4: Run exactly one real retained-copy rehearsal**
 
@@ -909,8 +921,9 @@ git -C C:\Projects\VOLAURA status --short -- 'memory/atlas/preservation/<exact a
 Require matching manifest/source/preserved hashes and counts, absent shadow and
 work paths, valid receipt, and unchanged ANUS source hashes/status. The
 `ls-files --error-unmatch` command must exit nonzero, cached diff must be empty,
-and status must show only `??` for the exact artifact. Retain the artifact; do
-not delete or archive it.
+and candidate-specific status must show only `??` for the exact artifact. The
+five legacy files must retain their preflight hashes and no other parent entry
+may appear. Retain the artifact; do not delete or archive it.
 
 - [ ] **Step 6: Record evidence and commit roadmap closure**
 
