@@ -128,3 +128,94 @@ changed shape or meaning.
 
 These closures (fake-provider coverage, receipt shape, and the proofs above)
 are provisional pending independent audit.
+
+## Refutation and repair (2026-07-30, same day): refusals produced no receipt
+
+Independent review reproduced live that the "complete receipt on every
+terminal outcome" claim above was false for exactly the outcomes that most
+need one: **refusals**. `buildReceipt`/`assertCostRouterReceipt` sat inside
+`executeRoutedAttempt`, and every refusal threw *before* reaching it —
+`checkRouteAvailability`'s `route_disabled`, `assertRouteAvailabilityChecked`'s
+`availability_not_checked`, `assertDestinationClearance`'s
+`destination_class_unknown`/`destination_class_too_weak`, the clearance
+signature verification's five reasons
+(`exception_unsigned`/`exception_signature_mismatch`/
+`exception_signature_expired`/`exception_signature_replayed`/
+`exception_signing_key_not_configured`), and — thrown even earlier, from
+`resolveRoute`, before a route existed at all — `classifyRoute`'s
+`unclassifiable` and `t3_trigger_missing`. Live proof: every thrown error had
+`.receipt === undefined`. A second, independent gap: `sources` was typed
+`z.array(z.string().min(1))` with no floor on the array itself, so an empty
+array (`[]`) plausibly satisfied the schema despite the field's contract
+being "populated sources, or the explicit `NOT_APPLICABLE` marker — never an
+empty value with no marker."
+
+### What changed
+
+- `RouteRefusalError` and `ClearanceRefusalError` (`cost-router-classify.ts`)
+  each gained a mandatory constructor parameter, `receipt: CostRouterReceipt`
+  — not optional, so a call site that forgets to build one is a compile
+  error, not a runtime gap.
+- A new shared `buildRefusalReceipt()` helper builds that receipt through the
+  *same* `assertCostRouterReceipt()` the success path already used — no
+  second, laxer validator. Fields the caller does not pass (`provider`,
+  `sources`, `privacyDecision`, `costClass`) default to `NOT_APPLICABLE`;
+  `retries` is always `{ transportRetries: 0, providerFailovers: 0 }` (true
+  for every refusal — no attempt was ever made); `verifierStatus` is always
+  `NOT_APPLICABLE` (unchanged from the success path's own convention).
+  `elapsedMs` is a genuine `Date.now()` delta measured from function entry to
+  throw (near-zero for the pure checks, accurate for the ones nested inside
+  `executeRoutedAttempt`) — never a fabricated value, and the schema requires
+  a real non-negative number here rather than accepting a not-applicable
+  marker.
+- Every throw site in the module now builds and attaches a receipt this way:
+  `classifyRoute` (`unclassifiable`, `t3_trigger_missing`),
+  `checkRouteAvailability` (`route_disabled`),
+  `assertRouteAvailabilityChecked` (`availability_not_checked`),
+  `assertDestinationClearance` (`destination_class_unknown`,
+  `destination_class_too_weak`), the clearance-signature verification inside
+  `executeRoutedAttempt` (all five `exception_*` reasons), and
+  `acquireT3RouteOwner`'s own `unclassifiable` refusal when a resolved route
+  is not T3.
+- On every refusal receipt, `blocker` is `"<reason>: <human-readable
+  message>"` — the reason code itself is embedded in the blocker text, so a
+  reader (or a test) can confirm which refusal produced a given receipt
+  without inspecting the thrown error separately — and `nextAction` is a
+  concrete, refusal-specific next step (e.g. `t3_trigger_missing` →
+  "supply one of the mandatory T3 triggers on the task before retrying";
+  `exception_signing_key_not_configured` → "configure
+  ATLAS_CLEARANCE_SIGNING_KEY before permitting any cross-class clearance
+  exception"). Neither field is ever empty.
+- Tightening: `costRouterReceiptSchema.sources` is now
+  `z.union([z.array(z.string().min(1)).min(1), notApplicableSchema])` —
+  `.min(1)` on the array itself, not just its elements — so `sources: []`
+  now fails `assertCostRouterReceipt`; a route with no sources must carry
+  `NOT_APPLICABLE`.
+
+### Proof
+
+- `src/__tests__/cost-router-classify.test.ts`: new describe block asserts
+  `route_disabled`, `unclassifiable`, and `t3_trigger_missing` each throw an
+  error carrying a receipt that passes `assertCostRouterReceipt`, with
+  non-empty `blocker`/`nextAction` and `blocker` naming the reason; the two
+  pre-route reasons additionally assert `provider`/`sources` are
+  `NOT_APPLICABLE`.
+- `src/__tests__/cost-router-error-policy.test.ts`: new test on the existing
+  forged-route fixture asserts `availability_not_checked` carries the same.
+- `src/__tests__/cost-router-clearance.test.ts`: new describe block covers
+  `destination_class_too_weak`, `exception_unsigned`,
+  `exception_signature_mismatch`, `exception_signature_replayed`, and
+  `exception_signing_key_not_configured`, reusing the file's existing
+  operator-exception fixtures and trusted-table setup.
+- `src/__tests__/cost-router-state.test.ts`: new describe block asserts
+  `assertCostRouterReceipt` rejects `sources: []`, accepts
+  `NOT_APPLICABLE`, and accepts a genuinely populated array.
+- `npx tsc --noEmit` → `TypeScript: No errors found`.
+- `npx vitest run` over all six cost-router test files → **95 passed, 0
+  failed** (baseline 83 unchanged + 12 new: 3 in `cost-router-classify.test.ts`,
+  1 in `cost-router-error-policy.test.ts`, 5 in `cost-router-clearance.test.ts`,
+  3 in `cost-router-state.test.ts`). `cost-router-seam-boundary.test.ts`'s
+  import-boundary test still passes unchanged.
+- The doc's claim above ("produces a complete receipt on every terminal
+  outcome") was not reworded to fit the old behaviour — the code was fixed
+  to match it.
