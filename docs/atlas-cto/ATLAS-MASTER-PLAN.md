@@ -1,6 +1,6 @@
 # ATLAS — MASTER PLAN (the one plan of record)
 
-> **Status:** active · refreshed 2026-07-30 by Codex SOL · current milestone M2.
+> **Status:** active · refreshed 2026-07-30 by Codex SOL · current milestone M3.
 > **Authority:** this is the one PLAN of record. Architecture stays
 > `docs/architecture/ATLAS-ARCHITECTURE.md`; current status stays in
 > `ATLAS-STATE-NOW.md`; decisions stay in `docs/adr/`; evidence journal stays
@@ -21,16 +21,16 @@
 one Telegram poller, one local PC/browser executor, cost-aware research, and
 product systems as adapters rather than competing brains.
 
-**Current point:** M2 Safe Runtime and Router, package M2A. M1A–M1D are
-complete on a local unpushed implementation branch. Physical consolidation is
-NO-GO. Live provider traffic has not started.
+**Current point:** M3 Shadow Consolidation, package M3A. M1 and fake-only M2
+are complete on a local branch. Physical consolidation is NO-GO. Live provider
+traffic has not started.
 
 ```mermaid
 flowchart LR
     M0["M0 Freeze and preserve<br/>DONE"]
     M1["M1 Durable foundation<br/>DONE"]
-    M2["M2 Safe runtime and router<br/>NOW"]
-    M3["M3 Shadow consolidation<br/>NO MOVE"]
+    M2["M2 Safe runtime and router<br/>DONE LOCAL"]
+    M3["M3 Shadow consolidation<br/>NOW · NO MOVE"]
     G{"Yusif cutover gate"}
     M4["M4 One Atlas cutover"]
     M5["M5 Live research broker"]
@@ -47,8 +47,8 @@ flowchart LR
 |---|---|---|---|
 | M0 Freeze and preserve | **DONE** | runner recovery, legacy bundle/ZIP/patch, dirty worktree ref | recoverable checkpoints exist; no source destroyed |
 | M1 Durable foundation | **DONE LOCAL** | repaired state root; durable Cost Router record; restart/exact-once resume proof | 58/58 focused tests; typecheck; child-process restart |
-| M2 Safe runtime and router | **NOW** | pure router, error buckets, provider-bound privacy, runner wrapper/liveness | fake-provider suite passes; no live traffic or silent fallback |
-| M3 Shadow consolidation | **BLOCKED BY M1–M2** | copy/replay, outcome diff, legacy extraction, rollback rehearsal | parity and rollback receipts; no physical move |
+| M2 Safe runtime and router | **DONE LOCAL** | pure router, error buckets, provider-bound privacy, runner wrapper/liveness | 97/97 fake-only tests; typecheck; no live traffic or silent fallback |
+| M3 Shadow consolidation | **NOW** | copy/replay, outcome diff, legacy extraction, rollback rehearsal | parity and rollback receipts; no physical move |
 | M4 One Atlas cutover | **CEO GATE** | detach nested worktrees, select canon, update path bindings, one authority | clean restart, rollback, Telegram/runner authority proof |
 | M5 Live research broker | **OFF** | Perplexity quick research; Gemini/ChatGPT deep research | public synthetic tests; no secrets/files; no paid API |
 | M6 Research swarm | **OFF** | multi-provider research behind Cost Router | two source-bearing providers; `READY_FOR_RESEARCH` |
@@ -69,16 +69,31 @@ flowchart LR
 
 ### M2 work packages
 
-1. **M2A — NOW — objective routing.** Pure model-free route predicates,
+1. **M2A — DONE — objective routing.** Pure model-free route predicates,
    immutable objective T3 triggers, and deterministic repeated-input results.
-2. **M2B — error and availability policy.** Denial/transport/unknown buckets,
+2. **M2B — DONE — error and availability policy.** Denial/transport/unknown buckets,
    one cheap failover, named unavailable blocker, and no premium or
    local-memory substitute.
-3. **M2C — destination-bound privacy.** Separate checker scans exact outbound
+3. **M2C — DONE — destination-bound privacy.** Separate checker scans exact outbound
    bytes plus provider identity/retention/navigation profile before every send
    and failover.
-4. **M2D — fake-provider integration.** Exercise ceilings, receipts, refusal,
-   and privacy re-check end-to-end without live traffic.
+4. **M2D — DONE — fake-provider integration.** Exercise ceilings, receipts,
+   refusal, and privacy re-check end-to-end without live traffic. Closure:
+   `23e8574`, 97/97 focused tests, typecheck, runtime receipt enforcement.
+
+### M3 work packages
+
+1. **M3A — NOW — strict shadow contract.** Explicit source/target paths,
+   fail-closed ledger parsing, semantic snapshot comparison, content hashes,
+   and a machine-readable rollback receipt. Tests use temporary fixtures only.
+2. **M3B — synthetic copy/replay proof.** Copy a valid fixture into an isolated
+   shadow root, cold-replay it, prove event/goal/task/hash parity, and prove
+   source bytes remain unchanged.
+3. **M3C — preserved-state rehearsal.** Run the same tool against a separately
+   preserved copy of current state. Never point a live writer at the shadow.
+4. **M3D — rollback and cutover packet.** Prove the old root remains readable,
+   record exact rollback commands and hashes, then present the physical
+   cutover as a separate Yusif gate.
 
 ### Current CEO control
 

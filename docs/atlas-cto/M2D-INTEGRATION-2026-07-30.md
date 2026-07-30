@@ -219,3 +219,31 @@ empty value with no marker."
 - The doc's claim above ("produces a complete receipt on every terminal
   outcome") was not reworded to fit the old behaviour — the code was fixed
   to match it.
+
+## Codex SOL closure (2026-07-30)
+
+Source and seat: Fable local integrator on `claude-opus-5`, Sonnet code worker,
+and a separate Sonnet verifier. Their receipts were treated as untrusted review
+input and checked against the local branch.
+
+Disposition:
+
+- **ACCEPT:** Codex reproduced the claimed 95/95 six-file suite and clean
+  `npx tsc --noEmit`.
+- **ACCEPT:** the two proof slices not executed by the last Sonnet verifier
+  were run independently: 9 refusal-receipt tests and 3 `sources` marker tests.
+- **ACCEPT WITH REPAIR:** a JavaScript or cast caller could construct either
+  exported refusal error with `receipt === undefined`; TypeScript alone did not
+  enforce the runtime invariant.
+- Commit `23e8574` calls `assertCostRouterReceipt()` in both constructors and
+  adds one RED→GREEN regression per class.
+
+Final command evidence at `23e8574`:
+
+- six focused files: **97 passed, 0 failed**;
+- `npx tsc --noEmit`: exit 0;
+- `git diff --check`: clean;
+- no network/provider/browser call, push, merge, deployment, scheduler change,
+  state migration, or physical move.
+
+Final verdict: **ACCEPT M2D; M2 Safe Runtime and Router is complete locally.**
