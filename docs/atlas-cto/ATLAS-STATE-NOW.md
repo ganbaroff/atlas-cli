@@ -20,7 +20,7 @@ push, merge, deployment, scheduler cutover, or live-state activation is active.
 | Cost Router design | **ACCEPTED** | two Opus reviews closed; roadmap and ceilings approved | implement package-by-package |
 | Cost Router implementation | **M2 VERIFIED LOCAL** | `23e8574`; 97/97 focused tests, typecheck, runtime refusal-receipt enforcement | keep live providers off |
 | Fable session router | **REPAIRED / LIVE RECEIPT PENDING** | hook registered; stale `/model` and thread-context regressions fixed; 32/32 tests | verify on next natural clean Fable prompt; contaminated threads stay Opus |
-| Shadow consolidation | **M3B VERIFIED / M3C NEXT** | `462176c` + repairs `44c84de`, `c528ef0`; 216/216 regression tests, typecheck | separately preserved-state copy rehearsal |
+| Shadow consolidation | **M3B VERIFIED / M3C SPEC REVIEW** | `462176c` + repairs `44c84de`, `c528ef0`; 216/216 regression tests, typecheck; M3C direction A approved | adversarial review of written M3C design, then implementation plan |
 | Physical consolidation | **NO-GO** | nested worktrees, unique legacy state, runtime bindings remain | completed shadow rehearsal plus CEO cutover gate |
 | Subscription research | **OFF** | Perplexity interactive access only; no durable adapter proof | public synthetic live gate |
 | Research swarm | **OFF** | `RESEARCH_ONLY_LIMITED` | two-provider `READY_FOR_RESEARCH` gate |
@@ -30,9 +30,10 @@ push, merge, deployment, scheduler cutover, or live-state activation is active.
 
 We are at **Milestone M3 — Shadow Consolidation**. M1 durable foundation, M2
 safe router, M3A strict comparison, and M3B synthetic rehearsal are complete
-on the local `codex/atlas-cost-router-design` branch. Active package: M3C.
+on the local `codex/atlas-cost-router-design` branch. Active package: M3C
+written-spec review; implementation has not started.
 
-`M1 ✓  →  M2 ✓  →  M3A ✓  →  M3B ✓  →  M3C NEXT  →  CEO CUTOVER GATE`
+`M1 ✓  →  M2 ✓  →  M3A ✓  →  M3B ✓  →  M3C SPEC REVIEW  →  CEO CUTOVER GATE`
 
 1. **Done:** define a strict explicit-path shadow manifest and semantic
    comparator; reject empty authoritative input;
@@ -42,7 +43,8 @@ on the local `codex/atlas-cost-router-design` branch. Active package: M3C.
 3. **Done:** close receipt-forgery bypass by keeping rollback/receipt
    primitives private and binding proof to exact source, replay, parity, and
    removed shadow root;
-4. **Now:** rehearse against a separately preserved copy of current state.
+4. **Now:** review the written design for a retained outside-repository copy;
+   then write its implementation plan before touching M3C code.
    No live resolver switch, untracking, move, or cutover.
 
 ## External review closure
@@ -156,8 +158,9 @@ Fable/Opus routing closure:
 7. **Done:** isolated synthetic copy/replay, durable pre-rename flush, fixed
    proof dependencies, strict parity, executed rollback, bound proof, and
    post-rollback receipt. No live-root activation.
-8. **Now:** repeat rehearsal against a separately preserved copy of current
-   state; still no resolver switch, untracking, or move.
+8. **Now:** close adversarial review of the M3C preserved-copy design, then
+   write the implementation plan; still no resolver switch, untracking, or
+   move.
 9. **CEO cutover gate:** only after preserved-copy proof and remaining state
    integrity/effect-durability gates.
 10. **Live research broker:** one provider at a time, public synthetic prompts.
@@ -182,6 +185,8 @@ Needed later:
 - Forward plan: [`ATLAS-MASTER-PLAN.md`](ATLAS-MASTER-PLAN.md)
 - Cost Router contract:
   [`../superpowers/specs/2026-07-30-atlas-cost-router-design.md`](../superpowers/specs/2026-07-30-atlas-cost-router-design.md)
+- M3C preserved-state rehearsal design:
+  [`../superpowers/specs/2026-07-30-m3c-preserved-state-rehearsal-design.md`](../superpowers/specs/2026-07-30-m3c-preserved-state-rehearsal-design.md)
 - Resume truth:
   `C:\Projects\VOLAURA\memory\atlas\CURRENT-COMPACT.md`
 - Cross-instance journal:
