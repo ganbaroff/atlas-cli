@@ -19,7 +19,8 @@ push, merge, deployment, scheduler cutover, or live-state activation is active.
 | State root resolver | **REPAIR VERIFIED** | accepted branch history through `f017add`; 22/22 tests, typecheck, direct CWD probe | preserve before call-site migration |
 | Cost Router design | **ACCEPTED** | two Opus reviews closed; roadmap and ceilings approved | implement package-by-package |
 | Cost Router implementation | **M2 VERIFIED LOCAL** | `23e8574`; 97/97 focused tests, typecheck, runtime refusal-receipt enforcement | keep live providers off |
-| Shadow consolidation | **M3A DONE / M3B NOW** | `0dfb15d`; 9/9 tests; strict read-only inspection of 96-event source | isolated synthetic copy/replay |
+| Fable session router | **REPAIRED GLOBAL** | stale `/model` and thread-context regressions fixed; 32/32 hook tests | use Opus for contaminated threads |
+| Shadow consolidation | **M3A REPAIRED / M3B NOW** | `0dfb15d` + `28c8f79`; 10/10 focused and 104/104 regression tests | isolated synthetic copy/replay |
 | Physical consolidation | **NO-GO** | nested worktrees, unique legacy state, runtime bindings remain | completed shadow rehearsal plus CEO cutover gate |
 | Subscription research | **OFF** | Perplexity interactive access only; no durable adapter proof | public synthetic live gate |
 | Research swarm | **OFF** | `RESEARCH_ONLY_LIMITED` | two-provider `READY_FOR_RESEARCH` gate |
@@ -32,9 +33,10 @@ M2 safe router are complete on the local
 `codex/atlas-cost-router-design` branch. Active package: M3B.
 
 1. **Done:** define a strict explicit-path shadow manifest and semantic
-   comparator;
+   comparator; reject empty authoritative input;
 2. **Now:** prove copy/replay/outcome parity in temporary fixtures;
-3. emit a rollback receipt without switching any live resolver;
+3. execute rollback, verify it, then emit its receipt without switching any
+   live resolver;
 4. only then rehearse against a separately preserved copy of current state.
 
 ## External review closure
@@ -83,6 +85,23 @@ M3A local closure:
   and 10 tasks. Ledger and snapshot SHA-256 match the preserved baseline.
 - **Still open:** full state-machine sequence legality and all-store migration
   remain later integrity/M3 packages. No copy or activation occurred.
+- **ACCEPT AND REPAIR:** later Fable review found that an empty ledger plus an
+  empty snapshot could pass strict inspection. Commit `28c8f79` adds observed
+  RED→GREEN coverage and rejects zero-event ledgers with `ledger_empty`.
+- Final repair evidence: 10/10 focused tests, 104/104 shadow/exec-graph/state-
+  root tests, clean typecheck and diff check. Current 96-event source still
+  inspects with preserved ledger and snapshot SHA-256.
+
+Fable routing closure:
+
+- Provider safeguard banner means broad classifier fallback, not that Fable or
+  ATLAS is dangerous.
+- Claude JSONL proved the hook read stale Opus after a fresh
+  `/model claude-fable-5` command and forgot earlier fallback context.
+- Global hook now recognizes model commands, keeps a fallback-contaminated
+  thread on Opus, and labels its token-efficient protocol delivery as
+  `compiled-safe-summary`. Raw protocol body is not injected because its own
+  sensitive-adjacent vocabulary can trigger the classifier.
 
 ## Next execution order
 
@@ -95,9 +114,10 @@ M3A local closure:
    scheduled-resume claim, local expiry/unknown handling.
 5. **Done:** objective classifier, error table, provider-bound privacy checker,
    fake-provider integration, refusal receipts, and runtime receipt invariant.
-6. **Done:** strict read-only exec-graph inspection and pair comparison.
+6. **Done:** strict read-only exec-graph inspection and pair comparison,
+   including fail-closed rejection of empty authoritative input.
 7. **Now:** isolated synthetic copy/replay and rollback receipt; no physical
-   move or live-root activation.
+   move or live-root activation. Receipt follows executed rollback only.
 8. **CEO cutover gate:** only after rollback proof.
 9. **Live research broker:** one provider at a time, public synthetic prompts.
 10. **Research swarm:** only after `READY_FOR_RESEARCH`.
