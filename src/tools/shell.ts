@@ -3,9 +3,8 @@ import { z } from 'zod';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import { appendFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { isAutonomyShellAllowed } from '../atlas/policy.js';
+import { auditLogPath } from './fs-guard.js';
 
 const execAsync = promisify(exec);
 const TIMEOUT_MS = 30_000;
@@ -89,12 +88,10 @@ export function classifyShellForActor(
   return base;
 }
 
-const AUDIT_LOG = process.env.ATLAS_SHELL_AUDIT_LOG || join(tmpdir(), 'atlas-shell-audit.jsonl');
-
 /** Append-only audit trail with agent attribution. Best-effort: never throws into execution. */
 async function audit(entry: Record<string, unknown>): Promise<void> {
   try {
-    await appendFile(AUDIT_LOG, JSON.stringify({ ts: new Date().toISOString(), ...entry }) + '\n', 'utf8');
+    await appendFile(auditLogPath(), JSON.stringify({ ts: new Date().toISOString(), ...entry }) + '\n', 'utf8');
   } catch {
     /* logging must never break the tool */
   }

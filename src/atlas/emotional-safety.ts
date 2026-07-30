@@ -14,6 +14,7 @@ import { appendFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
+import { resolveMigratingStateFile } from './state-root.js';
 
 // ── Violation detectors ──────────────────────────────────────────────────────
 
@@ -147,26 +148,30 @@ export interface ToneShiftEntry {
 }
 
 /**
- * Resolve the emotion audit JSONL path.
- * Order: ATLAS_EMOTION_AUDIT_PATH env → <repo-root>/state/emotion-audit.jsonl
- * Same walk-up-to-package.json approach as exec-graph/ledger.ts.
+ * Resolve the emotion audit JSONL path, routed through the state-root
+ * migration bridge (legacy env/default placement preserved before
+ * activation; one fixed leaf under the registered directory after).
  */
 export function resolveAuditPath(): string {
-  const override = process.env['ATLAS_EMOTION_AUDIT_PATH'];
-  if (override && override.trim()) return resolve(override.trim());
-
-  // Walk up from this module looking for package.json (repo root landmark)
-  let dir = dirname(fileURLToPath(import.meta.url));
-  for (let i = 0; i < 6; i++) {
-    if (existsSync(resolve(dir, 'package.json'))) {
-      return resolve(dir, 'state', 'emotion-audit.jsonl');
-    }
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  // Fallback: cwd
-  return resolve(process.cwd(), 'state', 'emotion-audit.jsonl');
+  return resolveMigratingStateFile(
+    'emotion-audit',
+    'emotion-audit.jsonl',
+    () => {
+      // Walk up from this module looking for package.json (repo root landmark)
+      let dir = dirname(fileURLToPath(import.meta.url));
+      for (let i = 0; i < 6; i++) {
+        if (existsSync(resolve(dir, 'package.json'))) {
+          return resolve(dir, 'state', 'emotion-audit.jsonl');
+        }
+        const parent = dirname(dir);
+        if (parent === dir) break;
+        dir = parent;
+      }
+      // Fallback: cwd
+      return resolve(process.cwd(), 'state', 'emotion-audit.jsonl');
+    },
+    'ATLAS_EMOTION_AUDIT_PATH',
+  );
 }
 
 /**

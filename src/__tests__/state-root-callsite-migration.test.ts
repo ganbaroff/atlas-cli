@@ -46,6 +46,10 @@ import * as notifyQueue from '../atlas/notify-queue.js';
 import * as queueAuth from '../atlas/queue-auth.js';
 import { defaultRunnerDeps } from '../atlas/atlas-runner.js';
 import * as opsboard from '../opsboard/goal-request-port.js';
+import { readAlertState, resetAlertState } from '../atlas/autonomy-loop.js';
+import { resolveAuditPath, logToneShift } from '../atlas/emotional-safety.js';
+import { decideNotify } from '../atlas/repo-watch.js';
+import { auditLogPath, auditFsOp } from '../tools/fs-guard.js';
 
 const MANAGED_ENV_KEYS = [
   'ATLAS_STATE_ROOT',
@@ -62,6 +66,10 @@ const MANAGED_ENV_KEYS = [
   'ATLAS_NOTIFY_QUEUE_PATH',
   'ATLAS_STATE_DIR',
   'ATLAS_OPSBOARD_EXCHANGE_DIR',
+  'ATLAS_ALERT_STATE_FILE',
+  'ATLAS_EMOTION_AUDIT_PATH',
+  'ATLAS_REPO_WATCH_STATE',
+  'ATLAS_SHELL_AUDIT_LOG',
   'ATLAS_READONLY',
   'SUPABASE_URL',
   'SUPABASE_SERVICE_ROLE_KEY',
@@ -1016,5 +1024,159 @@ describe('M3D-A2 state-root call-site migration slices 1-9', () => {
     expect(resolveExecGraphDir()).toBe(resolve(root, 'exec-graph'));
     expect(resolveEvidenceDir()).toBe(resolve(root, 'evidence'));
     expect(budgets.resolveGoalBudgetDir()).toBe(resolve(root, 'goal-budgets'));
+  });
+});
+
+describe('M3D-A2 state-root call-site migration slice 10 — alert/audit/watch stores', () => {
+  let root: string;
+  let prior: Record<string, string | undefined>;
+  let priorCwd: string;
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'atlas-m3d-a2-slice10-root-'));
+    priorCwd = process.cwd();
+    prior = {};
+    for (const key of MANAGED_ENV_KEYS) {
+      prior[key] = process.env[key];
+      delete process.env[key];
+    }
+  });
+
+  afterEach(() => {
+    for (const key of MANAGED_ENV_KEYS) {
+      const value = prior[key];
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    process.chdir(priorCwd);
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  function activateSlice10Root(): void {
+    process.env.ATLAS_STATE_ROOT = root;
+    process.env.ATLAS_STATE_ROOT_REQUIRED = '1';
+    writeFileSync(
+      join(root, STATE_ROOT_ACTIVATION_FILE),
+      `${JSON.stringify({
+        schemaVersion: 1,
+        nodeRole: 'local',
+        activatedAt: '2026-07-31T00:00:00.000Z',
+        stores: Object.keys(STATE_STORES),
+        sourceReceipts: [{ kind: 'm3d-a2-slice10', sha256: 'b'.repeat(64) }],
+      })}\n`,
+      'utf8',
+    );
+  }
+
+  it('keeps the alert/audit/watch stores on legacy paths while root is only staged', () => {
+    process.env.ATLAS_STATE_ROOT = root;
+
+    const legacyAlertFile = resolve(root, 'legacy-alert-state.json');
+    writeFileSync(
+      legacyAlertFile,
+      JSON.stringify({ signals: { x: { state: 'FAILING' } } }),
+      'utf8',
+    );
+    process.env.ATLAS_ALERT_STATE_FILE = legacyAlertFile;
+    expect(readAlertState().signals.x.state).toBe('FAILING');
+
+    const legacyEmotionFile = resolve(root, 'legacy-emotion-audit.jsonl');
+    process.env.ATLAS_EMOTION_AUDIT_PATH = legacyEmotionFile;
+    expect(resolveAuditPath()).toBe(legacyEmotionFile);
+
+    const legacyRepoWatchFile = resolve(root, 'legacy-repo-watch.json');
+    const now = Date.now();
+    writeFileSync(
+      legacyRepoWatchFile,
+      JSON.stringify({ sig: 'm3d-a2-slice10-marker', lastNotifyMs: now }),
+      'utf8',
+    );
+    process.env.ATLAS_REPO_WATCH_STATE = legacyRepoWatchFile;
+    const decision = decideNotify([], 60, now);
+    expect(decision.notify).toBe(false);
+    expect(decision.reason).toMatch(/^rate-limited/);
+
+    const legacyShellAuditFile = resolve(root, 'legacy-shell-audit.jsonl');
+    process.env.ATLAS_SHELL_AUDIT_LOG = legacyShellAuditFile;
+    expect(auditLogPath()).toBe(legacyShellAuditFile);
+  });
+
+  it('routes the alert/audit/watch stores through their activated directories', () => {
+    activateSlice10Root();
+
+    expect(resolveAuditPath()).toBe(resolve(root, 'emotion-audit', 'emotion-audit.jsonl'));
+    expect(auditLogPath()).toBe(resolve(root, 'shell-audit', 'shell-audit.jsonl'));
+
+    resetAlertState();
+    expect(existsSync(resolve(root, 'alert-state', 'alert-state.json'))).toBe(true);
+  });
+
+  it('ignores escaped legacy overrides for all four stores after activation', () => {
+    activateSlice10Root();
+
+    const escapedAlert = resolve(tmpdir(), `${basename(root)}-escaped-alert-state.json`);
+    const escapedEmotion = resolve(tmpdir(), `${basename(root)}-escaped-emotion-audit.jsonl`);
+    const escapedRepoWatch = resolve(tmpdir(), `${basename(root)}-escaped-repo-watch.json`);
+    const escapedShellAudit = resolve(tmpdir(), `${basename(root)}-escaped-shell-audit.jsonl`);
+    process.env.ATLAS_ALERT_STATE_FILE = escapedAlert;
+    process.env.ATLAS_EMOTION_AUDIT_PATH = escapedEmotion;
+    process.env.ATLAS_REPO_WATCH_STATE = escapedRepoWatch;
+    process.env.ATLAS_SHELL_AUDIT_LOG = escapedShellAudit;
+
+    try {
+      expect(resolveAuditPath()).toBe(resolve(root, 'emotion-audit', 'emotion-audit.jsonl'));
+      expect(auditLogPath()).toBe(resolve(root, 'shell-audit', 'shell-audit.jsonl'));
+      resetAlertState();
+      expect(existsSync(resolve(root, 'alert-state', 'alert-state.json'))).toBe(true);
+      decideNotify([], 60, Date.now());
+
+      expect(existsSync(escapedAlert)).toBe(false);
+      expect(existsSync(escapedEmotion)).toBe(false);
+      expect(existsSync(escapedRepoWatch)).toBe(false);
+      expect(existsSync(escapedShellAudit)).toBe(false);
+    } finally {
+      rmSync(escapedAlert, { force: true });
+      rmSync(escapedEmotion, { force: true });
+      rmSync(escapedRepoWatch, { force: true });
+      rmSync(escapedShellAudit, { force: true });
+    }
+  });
+
+  it('does not fabricate empty state or write anywhere when activation is invalid', async () => {
+    process.env.ATLAS_STATE_ROOT = root;
+    process.env.ATLAS_STATE_ROOT_REQUIRED = '1';
+
+    expect(() => readAlertState()).toThrow(/activation_manifest_missing/);
+    expect(() => decideNotify([], 60, Date.now())).toThrow(/activation_manifest_missing/);
+    expect(existsSync(resolve(root, 'alert-state'))).toBe(false);
+    expect(existsSync(resolve(root, 'repo-watch'))).toBe(false);
+
+    expect(() => logToneShift({
+      state: 'drive',
+      directive: 'match_energy_execute_fast',
+      ts: '2026-07-31T00:00:00.000Z',
+    })).not.toThrow();
+    expect(existsSync(resolve(root, 'emotion-audit'))).toBe(false);
+
+    await expect(auditFsOp({ op: 'm3d-a2-slice10-invalid' })).resolves.toBeUndefined();
+    expect(existsSync(resolve(root, 'shell-audit'))).toBe(false);
+  });
+
+  it('refuses an alert-state leaf symlink after activation without following it', () => {
+    activateSlice10Root();
+    const outside = mkdtempSync(join(tmpdir(), 'atlas-m3d-a2-slice10-outside-'));
+    const outsideAlert = resolve(outside, 'outside-alert-state.json');
+    const outsideAlertContent = JSON.stringify({ signals: {} });
+    writeFileSync(outsideAlert, outsideAlertContent, 'utf8');
+    const alertStore = resolve(root, 'alert-state');
+    mkdirSync(alertStore, { recursive: true });
+    symlinkSync(outsideAlert, resolve(alertStore, 'alert-state.json'), 'file');
+
+    try {
+      expect(() => readAlertState()).toThrow(/store_outside_root/);
+      expect(readFileSync(outsideAlert, 'utf8')).toBe(outsideAlertContent);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
   });
 });

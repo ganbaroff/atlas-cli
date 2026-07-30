@@ -109,6 +109,11 @@ import { runHealthCheck, type HealthReport, type HealthCheck } from './health-ch
 import { notifyCeoResult, type NotifyKind, type NotifyResult } from './notify.js';
 import { isPaused } from './spend-policy.js';
 import { effectivelyPaused } from './control-plane.js';
+import {
+  resolveMigratingStateFile,
+  StateRootActivationError,
+  StateRootConfigurationError,
+} from './state-root.js';
 
 export interface TickSignals {
   repoDigest: string;
@@ -155,7 +160,12 @@ export interface SignalEvent {
 }
 
 function alertStateFilePath(): string {
-  return process.env.ATLAS_ALERT_STATE_FILE || join(homedir(), '.atlas', 'alert-state.json');
+  return resolveMigratingStateFile(
+    'alert-state',
+    'alert-state.json',
+    () => join(homedir(), '.atlas', 'alert-state.json'),
+    'ATLAS_ALERT_STATE_FILE',
+  );
 }
 
 /** Malformed or missing state reads as "everything UNKNOWN" — safe bootstrap, never throws. */
@@ -179,7 +189,13 @@ export function readAlertState(): AlertState {
       }
     }
     return { signals: out };
-  } catch {
+  } catch (error) {
+    if (
+      error instanceof StateRootActivationError ||
+      error instanceof StateRootConfigurationError
+    ) {
+      throw error;
+    }
     return { signals: {} };
   }
 }
@@ -189,6 +205,12 @@ function writeAlertState(s: AlertState): void {
     mkdirSync(dirname(alertStateFilePath()), { recursive: true });
     writeFileSync(alertStateFilePath(), JSON.stringify(s));
   } catch (e) {
+    if (
+      e instanceof StateRootActivationError ||
+      e instanceof StateRootConfigurationError
+    ) {
+      throw e;
+    }
     // Not best-effort-silent: a PERSISTENT write failure means the on-disk
     // baseline never advances, so every subsequent tick re-reads stale prior
     // state and can re-classify an unchanged, already-known failure as

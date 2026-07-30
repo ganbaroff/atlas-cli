@@ -14,6 +14,7 @@
 import { appendFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { resolveMigratingStateFile } from '../atlas/state-root.js';
 
 /**
  * Pure, testable classifier. True for paths that must never be read or
@@ -79,12 +80,19 @@ export function checkWorkspaceConfinement(targetPath: string): { allowed: boolea
 }
 
 /** Same file/shape as shell.ts's audit log by default, so fs + shell governance share one JSONL stream. */
-export const AUDIT_LOG_PATH = process.env.ATLAS_SHELL_AUDIT_LOG || join(tmpdir(), 'atlas-shell-audit.jsonl');
+export function auditLogPath(): string {
+  return resolveMigratingStateFile(
+    'shell-audit',
+    'shell-audit.jsonl',
+    () => join(tmpdir(), 'atlas-shell-audit.jsonl'),
+    'ATLAS_SHELL_AUDIT_LOG',
+  );
+}
 
 /** Append-only audit trail for filesystem tool operations. Best-effort: never throws into execution. */
 export async function auditFsOp(entry: Record<string, unknown>): Promise<void> {
   try {
-    await appendFile(AUDIT_LOG_PATH, JSON.stringify({ ts: new Date().toISOString(), ...entry }) + '\n', 'utf8');
+    await appendFile(auditLogPath(), JSON.stringify({ ts: new Date().toISOString(), ...entry }) + '\n', 'utf8');
   } catch {
     /* logging must never break the tool */
   }

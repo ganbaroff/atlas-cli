@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { isBlockedHost, surfTool } from '../tools/surf.js';
 import { isRiskyPattern, grepTool } from '../tools/grep.js';
-import { isSensitivePath, AUDIT_LOG_PATH } from '../tools/fs-guard.js';
+import { isSensitivePath, auditLogPath } from '../tools/fs-guard.js';
 import { writeFileTool } from '../tools/write-file.js';
 import { readFileTool } from '../tools/read-file.js';
 
@@ -157,7 +157,7 @@ describe('write-file / read-file governance', () => {
     expect(result.written).toBe(false);
     expect(result.error).toMatch(/REFUSED/i);
 
-    const entries = await readAuditEntries(AUDIT_LOG_PATH);
+    const entries = await readAuditEntries(auditLogPath());
     const mine = entries.filter((e) => e.path === ENV_PATH);
     expect(mine.length).toBeGreaterThan(0);
     expect(mine[mine.length - 1].decision).toBe('refused');
@@ -182,7 +182,7 @@ describe('write-file / read-file governance', () => {
     expect(result.content).toBe('');
     expect(result.error).toMatch(/REFUSED/i);
 
-    const entries = await readAuditEntries(AUDIT_LOG_PATH);
+    const entries = await readAuditEntries(auditLogPath());
     const mine = entries.filter((e) => e.path === SECRETS_PATH);
     expect(mine.length).toBeGreaterThan(0);
     expect(mine[mine.length - 1].decision).toBe('refused');

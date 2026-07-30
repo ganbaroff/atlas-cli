@@ -19,6 +19,11 @@ import { tmpdir } from 'node:os';
 import { join, basename } from 'node:path';
 import { notifyCeoResult } from './notify.js';
 import { repoWatchRoots, repoWatchIntervalMin } from './policy.js';
+import {
+  resolveMigratingStateFile,
+  StateRootActivationError,
+  StateRootConfigurationError,
+} from './state-root.js';
 
 export interface RepoStatus {
   root: string;
@@ -87,20 +92,37 @@ interface WatchState {
   lastNotifyMs: number;
 }
 function stateFile(): string {
-  return process.env.ATLAS_REPO_WATCH_STATE || join(tmpdir(), 'atlas-repo-watch.json');
+  return resolveMigratingStateFile(
+    'repo-watch',
+    'repo-watch.json',
+    () => join(tmpdir(), 'atlas-repo-watch.json'),
+    'ATLAS_REPO_WATCH_STATE',
+  );
 }
 function readState(): WatchState {
   try {
     const s = JSON.parse(readFileSync(stateFile(), 'utf8'));
     return { sig: String(s.sig ?? ''), lastNotifyMs: Number(s.lastNotifyMs ?? 0) };
-  } catch {
+  } catch (error) {
+    if (
+      error instanceof StateRootActivationError ||
+      error instanceof StateRootConfigurationError
+    ) {
+      throw error;
+    }
     return { sig: '', lastNotifyMs: 0 };
   }
 }
 function writeState(s: WatchState): void {
   try {
     writeFileSync(stateFile(), JSON.stringify(s));
-  } catch {
+  } catch (error) {
+    if (
+      error instanceof StateRootActivationError ||
+      error instanceof StateRootConfigurationError
+    ) {
+      throw error;
+    }
     /* best-effort */
   }
 }
