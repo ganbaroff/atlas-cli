@@ -8,7 +8,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ledgerEventSchema, type LedgerEvent } from '../exec-graph/contracts.js';
@@ -19,6 +19,7 @@ import {
   assertStrictParity,
   copyExecGraphDirectoryAtomic,
   coldReplayExecGraphDirectory,
+  rehearsalReceiptSchema,
   runShadowRehearsal,
   type ChildReplayResult,
 } from '../atlas/shadow-rehearsal.js';
@@ -109,19 +110,110 @@ describe('atlas/shadow-rehearsal', () => {
   // --- happy path -----------------------------------------------------------
 
   it(
+    'derives receipt and shadow paths instead of accepting cast destinations',
+    () => {
+      const source = writeValidGraphFixture('derived-path-source');
+      const workDir = mkdtempSync(join(tmpdir(), 'atlas-shadow-derived-path-'));
+      const forgedReceiptPath = join(sandboxDir, 'forged-receipt.json');
+
+      try {
+        const receipt = runShadowRehearsal(source, {
+          workDirectory: workDir,
+          receiptPath: forgedReceiptPath,
+          shadowRootName: 'forged-shadow',
+        } as unknown as Parameters<typeof runShadowRehearsal>[1]);
+        const expectedReceiptPath = join(
+          resolve(workDir),
+          'shadow-rehearsal-receipt.json',
+        );
+
+        expect(receipt).toHaveProperty('receiptPath', expectedReceiptPath);
+        expect(existsSync(expectedReceiptPath)).toBe(true);
+        expect(existsSync(forgedReceiptPath)).toBe(false);
+        expect(basename(receipt.shadowRoot)).not.toBe('forged-shadow');
+      } finally {
+        rmSync(workDir, { recursive: true, force: true });
+      }
+    },
+    CHILD_TEST_TIMEOUT,
+  );
+
+  it(
+    'refuses a second run before invoking the copy writer or replacing its receipt',
+    () => {
+      const source = writeValidGraphFixture('receipt-exists-source');
+      const workDir = mkdtempSync(join(tmpdir(), 'atlas-shadow-receipt-exists-'));
+      const receiptPath = join(workDir, 'shadow-rehearsal-receipt.json');
+      const writer = vi.fn((destinationPath: string, contents: Buffer) => {
+        writeFileSync(destinationPath, contents, { flush: true });
+      });
+
+      try {
+        runShadowRehearsal(source, { workDirectory: workDir });
+        const originalReceipt = readFileSync(receiptPath, 'utf8');
+
+        withShadowRehearsalTestOverrides({ fileWriter: writer }, () => {
+          expect(() => runShadowRehearsal(source, { workDirectory: workDir })).toThrow(
+            expect.objectContaining({ code: 'receipt_exists' }),
+          );
+        });
+        expect(writer).not.toHaveBeenCalled();
+        expect(readFileSync(receiptPath, 'utf8')).toBe(originalReceipt);
+      } finally {
+        rmSync(workDir, { recursive: true, force: true });
+      }
+    },
+    CHILD_TEST_TIMEOUT,
+  );
+
+  it.each([0, 30_001, 1.5, Number.NaN, Number.POSITIVE_INFINITY])(
+    'rejects invalid child timeout %s before filesystem mutation',
+    (childTimeoutMs) => {
+      const source = writeValidGraphFixture(`timeout-source-${String(childTimeoutMs)}`);
+      const workDir = mkdtempSync(join(tmpdir(), 'atlas-shadow-timeout-'));
+
+      try {
+        expect(() =>
+          runShadowRehearsal(source, { workDirectory: workDir, childTimeoutMs }),
+        ).toThrow(expect.objectContaining({ code: 'timeout_invalid' }));
+        expect(readdirSync(workDir)).toEqual([]);
+      } finally {
+        rmSync(workDir, { recursive: true, force: true });
+      }
+    },
+    CHILD_TEST_TIMEOUT,
+  );
+
+  it(
+    'exports a strict schema that rejects unknown fields on a valid receipt',
+    () => {
+      const source = writeValidGraphFixture('strict-receipt-source');
+      const workDir = mkdtempSync(join(tmpdir(), 'atlas-shadow-strict-receipt-'));
+
+      try {
+        const receipt = runShadowRehearsal(source, { workDirectory: workDir });
+
+        expect(rehearsalReceiptSchema.parse(receipt)).toEqual(receipt);
+        expect(() =>
+          rehearsalReceiptSchema.parse({ ...receipt, unexpected: true }),
+        ).toThrow();
+      } finally {
+        rmSync(workDir, { recursive: true, force: true });
+      }
+    },
+    CHILD_TEST_TIMEOUT,
+  );
+
+  it(
     'runs copy -> unchanged source -> cold replay -> parity -> rollback -> verified rollback -> receipt in order',
     () => {
       const source = writeValidGraphFixture('source');
       const sourceBefore = inspectExecGraphDirectory(source);
       const workDir = mkdtempSync(join(tmpdir(), 'atlas-shadow-work-'));
-      const receiptPath = join(sandboxDir, 'receipt.json');
+      const receiptPath = join(resolve(workDir), 'shadow-rehearsal-receipt.json');
 
       try {
-        const receipt = runShadowRehearsal(source, {
-          workDirectory: workDir,
-          shadowRootName: 'shadow',
-          receiptPath,
-        });
+        const receipt = runShadowRehearsal(source, { workDirectory: workDir });
 
         expect(receipt.parityAccepted).toBe(true);
         expect(receipt.rollbackVerified).toBe(true);
@@ -139,7 +231,7 @@ describe('atlas/shadow-rehearsal', () => {
         expect(sourceAfter.semanticSha256).toBe(sourceBefore.semanticSha256);
 
         // Rollback executed for real: shadow root gone.
-        expect(existsSync(join(workDir, 'shadow'))).toBe(false);
+        expect(existsSync(receipt.shadowRoot)).toBe(false);
 
         // Receipt actually written to disk, only after all of the above.
         expect(existsSync(receiptPath)).toBe(true);
@@ -295,10 +387,9 @@ describe('atlas/shadow-rehearsal', () => {
       expect(() =>
         runShadowRehearsal(join(sandboxDir, 'does-not-exist'), {
           workDirectory: workDir,
-          shadowRootName: 'shadow',
         }),
       ).toThrow(expect.objectContaining({ code: 'directory_missing' }));
-      expect(existsSync(join(workDir, 'shadow'))).toBe(false);
+      expect(readdirSync(workDir)).toEqual([]);
     } finally {
       rmSync(workDir, { recursive: true, force: true });
     }
@@ -311,10 +402,10 @@ describe('atlas/shadow-rehearsal', () => {
     writeFileSync(join(directory, 'graph.json'), '{"goals":[],"tasks":[]}\n', 'utf8');
     const workDir = mkdtempSync(join(tmpdir(), 'atlas-shadow-work-'));
     try {
-      expect(() =>
-        runShadowRehearsal(directory, { workDirectory: workDir, shadowRootName: 'shadow' }),
-      ).toThrow(expect.objectContaining({ code: 'ledger_empty' }));
-      expect(existsSync(join(workDir, 'shadow'))).toBe(false);
+      expect(() => runShadowRehearsal(directory, { workDirectory: workDir })).toThrow(
+        expect.objectContaining({ code: 'ledger_empty' }),
+      );
+      expect(readdirSync(workDir)).toEqual([]);
     } finally {
       rmSync(workDir, { recursive: true, force: true });
     }
@@ -404,11 +495,10 @@ describe('atlas/shadow-rehearsal', () => {
         expect(() =>
           runShadowRehearsal(source, {
             workDirectory: workDir,
-            shadowRootName: 'shadow',
             childTimeoutMs: 1,
           }),
         ).toThrow(expect.objectContaining({ code: 'replay_timeout' }));
-        expect(existsSync(join(workDir, 'shadow'))).toBe(false);
+        expect(readdirSync(workDir)).toEqual([]);
       } finally {
         rmSync(workDir, { recursive: true, force: true });
       }

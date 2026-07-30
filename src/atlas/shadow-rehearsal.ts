@@ -18,10 +18,18 @@
  */
 
 import { randomUUID } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { z } from 'zod';
 
 import {
   compareExecGraphDirectories,
@@ -38,7 +46,9 @@ const moduleDirectory = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(moduleDirectory, '..', '..');
 const defaultChildScriptPath = resolve(moduleDirectory, 'shadow-rehearsal-child.ts');
 const tsxCliPath = resolve(repoRoot, 'node_modules', 'tsx', 'dist', 'cli.mjs');
-const defaultChildTimeoutMs = 15_000;
+const DEFAULT_CHILD_TIMEOUT_MS = 15_000;
+const MAX_CHILD_TIMEOUT_MS = 30_000;
+const RECEIPT_BASENAME = 'shadow-rehearsal-receipt.json';
 
 function currentDependencies(): ShadowRehearsalDependencies {
   return resolveShadowRehearsalDependencies({
@@ -60,7 +70,11 @@ export type ShadowRehearsalErrorCode =
   | 'parity_mismatch'
   | 'rollback_not_executed'
   | 'rollback_verification_failed'
-  | 'rollback_token_invalid';
+  | 'rollback_token_invalid'
+  | 'timeout_invalid'
+  | 'receipt_exists'
+  | 'receipt_write_failed'
+  | 'receipt_invalid';
 
 export class ShadowRehearsalError extends Error {
   constructor(
@@ -82,18 +96,49 @@ export interface ChildReplayResult {
   readonly taskCount: number;
 }
 
-export interface RehearsalReceipt {
-  readonly sourceDirectory: string;
-  readonly shadowRoot: string;
-  readonly sourceLedgerSha256: string;
-  readonly sourceSnapshotSha256: string;
-  readonly sourceSemanticSha256: string;
-  readonly childReplayEventCount: number;
-  readonly childReplayGoalCount: number;
-  readonly childReplayTaskCount: number;
-  readonly parityAccepted: true;
-  readonly rollbackVerified: true;
-  readonly rehearsalCompletedAt: string;
+const sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
+
+export const rehearsalReceiptSchema = z
+  .object({
+    receiptPath: z.string().min(1),
+    sourceDirectory: z.string().min(1),
+    shadowRoot: z.string().min(1),
+    sourceLedgerSha256: sha256Schema,
+    sourceSnapshotSha256: sha256Schema,
+    sourceSemanticSha256: sha256Schema,
+    childReplayEventCount: z.number().int().nonnegative(),
+    childReplayGoalCount: z.number().int().nonnegative(),
+    childReplayTaskCount: z.number().int().nonnegative(),
+    parityAccepted: z.literal(true),
+    rollbackVerified: z.literal(true),
+    rehearsalCompletedAt: z.string().datetime(),
+  })
+  .strict();
+
+export type RehearsalReceipt = z.infer<typeof rehearsalReceiptSchema>;
+
+function requireChildTimeout(value: number | undefined): number {
+  const timeout = value ?? DEFAULT_CHILD_TIMEOUT_MS;
+  if (!Number.isSafeInteger(timeout) || timeout < 1 || timeout > MAX_CHILD_TIMEOUT_MS) {
+    throw new ShadowRehearsalError(
+      'timeout_invalid',
+      `child timeout must be a safe integer from 1 through ${MAX_CHILD_TIMEOUT_MS}ms`,
+    );
+  }
+  return timeout;
+}
+
+function receiptPathFor(workDirectory: string): string {
+  return join(resolve(workDirectory), RECEIPT_BASENAME);
+}
+
+function refuseExistingReceipt(receiptPath: string): void {
+  if (existsSync(receiptPath)) {
+    throw new ShadowRehearsalError(
+      'receipt_exists',
+      `refusing to overwrite an existing rehearsal receipt: ${receiptPath}`,
+    );
+  }
 }
 
 // --- Rollback token -------------------------------------------------------
@@ -213,7 +258,7 @@ export function coldReplayExecGraphDirectory(
   options: ColdReplayOptions = {},
 ): ChildReplayResult {
   const scriptPath = currentDependencies().childScriptPath;
-  const timeoutMs = options.timeoutMs ?? defaultChildTimeoutMs;
+  const timeoutMs = requireChildTimeout(options.timeoutMs);
 
   const result = spawnSync(process.execPath, [tsxCliPath, scriptPath, shadowRoot], {
     encoding: 'utf8',
@@ -387,7 +432,7 @@ function verifyRollback(
 
 function writeRehearsalReceipt(
   token: RollbackToken,
-  receiptPath?: string,
+  workDirectory: string,
 ): RehearsalReceipt {
   if (!isRecognizedRollbackToken(token)) {
     throw new ShadowRehearsalError(
@@ -402,7 +447,13 @@ function writeRehearsalReceipt(
     );
   }
 
-  const receipt: RehearsalReceipt = {
+  const receiptPath = receiptPathFor(workDirectory);
+  const temporaryPath = join(
+    resolve(workDirectory),
+    `.shadow-rehearsal-receipt-${randomUUID()}.tmp`,
+  );
+  const receipt = rehearsalReceiptSchema.parse({
+    receiptPath,
     sourceDirectory: token.source.directory,
     shadowRoot: token.shadowRoot,
     sourceLedgerSha256: token.source.ledgerSha256,
@@ -414,13 +465,46 @@ function writeRehearsalReceipt(
     parityAccepted: true,
     rollbackVerified: true,
     rehearsalCompletedAt: token.verifiedAt,
-  };
+  });
 
-  if (receiptPath) {
-    writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, 'utf8');
+  refuseExistingReceipt(receiptPath);
+  try {
+    writeFileSync(temporaryPath, `${JSON.stringify(receipt, null, 2)}\n`, {
+      encoding: 'utf8',
+      flush: true,
+    });
+    refuseExistingReceipt(receiptPath);
+    renameSync(temporaryPath, receiptPath);
+  } catch (error) {
+    try {
+      rmSync(temporaryPath, { force: true });
+    } catch {
+      // The exact generated temporary file is the only cleanup target here.
+    }
+    if (error instanceof ShadowRehearsalError) throw error;
+    throw new ShadowRehearsalError(
+      'receipt_write_failed',
+      `failed to persist rehearsal receipt: ${error instanceof Error ? error.message : String(error)}`,
+    );
   }
 
-  return receipt;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(receiptPath, 'utf8'));
+  } catch (error) {
+    throw new ShadowRehearsalError(
+      'receipt_invalid',
+      `persisted rehearsal receipt is unreadable JSON: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  const validated = rehearsalReceiptSchema.safeParse(parsed);
+  if (!validated.success || validated.data.receiptPath !== receiptPath) {
+    throw new ShadowRehearsalError(
+      'receipt_invalid',
+      `persisted rehearsal receipt failed strict validation: ${receiptPath}`,
+    );
+  }
+  return validated.data;
 }
 
 // --- Orchestrator -----------------------------------------------------------
@@ -428,9 +512,7 @@ function writeRehearsalReceipt(
 export interface ShadowRehearsalOptions {
   /** Parent directory the shadow root is assembled/staged/renamed into. Caller-owned. */
   readonly workDirectory: string;
-  readonly shadowRootName?: string;
   readonly childTimeoutMs?: number;
-  readonly receiptPath?: string;
 }
 
 /**
@@ -444,7 +526,11 @@ export function runShadowRehearsal(
   options: ShadowRehearsalOptions,
 ): RehearsalReceipt {
   const resolvedSource = resolve(sourceDirectory);
-  const shadowRootName = options.shadowRootName ?? `shadow-${randomUUID()}`;
+  const resolvedWorkDirectory = resolve(options.workDirectory);
+  const childTimeoutMs = requireChildTimeout(options.childTimeoutMs);
+  const receiptPath = receiptPathFor(resolvedWorkDirectory);
+  refuseExistingReceipt(receiptPath);
+  const shadowRootName = `shadow-${randomUUID()}`;
 
   // Fail-closed on missing/empty/invalid source using the existing M3A
   // error codes (directory_missing, ledger_empty, etc.) — bubbled, not
@@ -453,7 +539,7 @@ export function runShadowRehearsal(
 
   const shadowRoot = copyExecGraphDirectoryAtomic(
     resolvedSource,
-    options.workDirectory,
+    resolvedWorkDirectory,
     shadowRootName,
   );
 
@@ -471,7 +557,7 @@ export function runShadowRehearsal(
     }
 
     const childReplay = coldReplayExecGraphDirectory(shadowRoot, {
-      timeoutMs: options.childTimeoutMs,
+      timeoutMs: childTimeoutMs,
     });
 
     const parity = assertStrictParity(resolvedSource, shadowRoot, childReplay);
@@ -479,7 +565,7 @@ export function runShadowRehearsal(
     currentDependencies().executeRollback(shadowRoot);
     const token = verifyRollback(shadowRoot, sourceAfterCopy, childReplay, parity);
 
-    return writeRehearsalReceipt(token, options.receiptPath);
+    return writeRehearsalReceipt(token, resolvedWorkDirectory);
   } catch (error) {
     try {
       rmSync(shadowRoot, { recursive: true, force: true });
