@@ -30,6 +30,7 @@
  */
 
 import { homedir } from 'node:os';
+import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, normalize, parse, relative, resolve } from 'node:path';
 import { z } from 'zod';
@@ -46,7 +47,11 @@ export type StateRootActivationErrorCode =
   | 'activation_manifest_missing'
   | 'activation_manifest_invalid'
   | 'store_not_activated'
-  | 'store_outside_root';
+  | 'store_outside_root'
+  | 'node_role_unbound'
+  | 'node_role_mismatch'
+  | 'source_receipt_missing'
+  | 'source_receipt_mismatch';
 
 export class StateRootActivationError extends Error {
   constructor(
@@ -115,7 +120,10 @@ export type StateStore = keyof typeof STATE_STORES;
 export const STATE_ROOT_ACTIVATION_FILE = 'state-root-activation.json';
 
 const activationReceiptSchema = z.object({
-  kind: z.string().trim().min(1),
+  kind: z.string().trim().min(1).refine(
+    (value) => value !== '.' && value !== '..' && !/[\\/]/.test(value),
+    { message: 'receipt kind must be one safe path segment' },
+  ),
   sha256: z.string().regex(/^[a-f0-9]{64}$/i),
 }).strict();
 
@@ -133,6 +141,27 @@ export interface StateRootActivationManifest {
   activatedAt: string;
   stores: StateStore[];
   sourceReceipts: Array<{ kind: string; sha256: string }>;
+}
+
+/**
+ * Per-role allowlist of source-receipt kinds a live activation manifest must
+ * carry, verified against real artifact bytes below
+ * `<root>/activation-receipts/<kind>`. The manifest's own claim is never
+ * proof by itself — see assertStateRootActivated().
+ */
+const REQUIRED_RECEIPT_KINDS: Record<'local' | 'railway', readonly string[]> = {
+  local: ['m3c-preserved-state-rehearsal'],
+  railway: ['m3c-preserved-state-rehearsal'],
+};
+
+function readNodeRoleEnv(): 'local' | 'railway' | undefined {
+  const value = process.env.ATLAS_NODE_ROLE?.trim();
+  if (!value) return undefined;
+  if (value === 'local' || value === 'railway') return value;
+  throw new StateRootConfigurationError(
+    'ATLAS_NODE_ROLE',
+    'ATLAS_NODE_ROLE must be one of: local, railway',
+  );
 }
 
 function stateRootRequired(): boolean {
@@ -277,6 +306,54 @@ export function assertStateRootActivated(
       'store_not_activated',
       `activation manifest omits registered stores: ${missingStores.join(', ')}`,
     );
+  }
+
+  // The manifest's own nodeRole/sourceReceipts fields are self-asserted and
+  // are not provenance proof. Bind against an externally supplied node role
+  // and verify every claimed receipt against real artifact bytes before any
+  // store resolves.
+  const nodeRole = readNodeRoleEnv();
+  if (!nodeRole) {
+    throw new StateRootActivationError(
+      'node_role_unbound',
+      'ATLAS_NODE_ROLE must be set to local or railway before activation is trusted',
+    );
+  }
+  if (nodeRole !== parsed.data.nodeRole) {
+    throw new StateRootActivationError(
+      'node_role_mismatch',
+      `ATLAS_NODE_ROLE '${nodeRole}' does not match activation manifest nodeRole '${parsed.data.nodeRole}'`,
+    );
+  }
+
+  const requiredReceiptKinds = REQUIRED_RECEIPT_KINDS[parsed.data.nodeRole];
+  const presentReceiptKinds = new Set(parsed.data.sourceReceipts.map((receipt) => receipt.kind));
+  const missingRequiredKinds = requiredReceiptKinds.filter(
+    (kind) => !presentReceiptKinds.has(kind),
+  );
+  if (missingRequiredKinds.length > 0) {
+    throw new StateRootActivationError(
+      'source_receipt_missing',
+      `activation manifest omits required source receipt kind(s): ${missingRequiredKinds.join(', ')}`,
+    );
+  }
+
+  const receiptsDir = join(root, 'activation-receipts');
+  for (const receipt of parsed.data.sourceReceipts) {
+    const artifactPath = join(receiptsDir, receipt.kind);
+    if (!existsSync(artifactPath)) {
+      throw new StateRootActivationError(
+        'source_receipt_missing',
+        `source receipt artifact is missing for kind '${receipt.kind}': ${artifactPath}`,
+      );
+    }
+    const actualHash = createHash('sha256').update(readFileSync(artifactPath)).digest('hex');
+    if (actualHash.toLowerCase() !== receipt.sha256.toLowerCase()) {
+      throw new StateRootActivationError(
+        'source_receipt_mismatch',
+        `source receipt artifact hash mismatch for kind '${receipt.kind}': ${artifactPath}`,
+      );
+    }
   }
 
   return {

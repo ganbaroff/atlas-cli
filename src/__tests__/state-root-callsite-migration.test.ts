@@ -9,6 +9,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
+import { createHash } from 'node:crypto';
 import { homedir, tmpdir } from 'node:os';
 import { basename, dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -62,6 +63,7 @@ import { auditLogPath, auditFsOp } from '../tools/fs-guard.js';
 const MANAGED_ENV_KEYS = [
   'ATLAS_STATE_ROOT',
   'ATLAS_STATE_ROOT_REQUIRED',
+  'ATLAS_NODE_ROLE',
   'ATLAS_EXEC_GRAPH_DIR',
   'ATLAS_EVIDENCE_DIR',
   'ATLAS_GOAL_BUDGET_DIR',
@@ -112,6 +114,12 @@ describe('M3D-A2 state-root call-site migration slices 1-9', () => {
   function activateRoot(): void {
     process.env.ATLAS_STATE_ROOT = root;
     process.env.ATLAS_STATE_ROOT_REQUIRED = '1';
+    process.env.ATLAS_NODE_ROLE = 'local';
+    const receiptsDir = join(root, 'activation-receipts');
+    mkdirSync(receiptsDir, { recursive: true });
+    const receiptContent = 'm3d-a2-slice-receipt-fixture';
+    writeFileSync(join(receiptsDir, 'm3c-preserved-state-rehearsal'), receiptContent, 'utf8');
+    const receiptSha256 = createHash('sha256').update(receiptContent).digest('hex');
     writeFileSync(
       join(root, STATE_ROOT_ACTIVATION_FILE),
       `${JSON.stringify({
@@ -119,7 +127,7 @@ describe('M3D-A2 state-root call-site migration slices 1-9', () => {
         nodeRole: 'local',
         activatedAt: '2026-07-30T00:00:00.000Z',
         stores: Object.keys(STATE_STORES),
-        sourceReceipts: [{ kind: 'm3c-exec-graph', sha256: 'a'.repeat(64) }],
+        sourceReceipts: [{ kind: 'm3c-preserved-state-rehearsal', sha256: receiptSha256 }],
       })}\n`,
       'utf8',
     );
@@ -1063,6 +1071,12 @@ describe('M3D-A2 state-root call-site migration slice 10 — alert/audit/watch s
   function activateSlice10Root(): void {
     process.env.ATLAS_STATE_ROOT = root;
     process.env.ATLAS_STATE_ROOT_REQUIRED = '1';
+    process.env.ATLAS_NODE_ROLE = 'local';
+    const receiptsDir = join(root, 'activation-receipts');
+    mkdirSync(receiptsDir, { recursive: true });
+    const receiptContent = 'm3d-a2-slice10-receipt-fixture';
+    writeFileSync(join(receiptsDir, 'm3c-preserved-state-rehearsal'), receiptContent, 'utf8');
+    const receiptSha256 = createHash('sha256').update(receiptContent).digest('hex');
     writeFileSync(
       join(root, STATE_ROOT_ACTIVATION_FILE),
       `${JSON.stringify({
@@ -1070,7 +1084,7 @@ describe('M3D-A2 state-root call-site migration slice 10 — alert/audit/watch s
         nodeRole: 'local',
         activatedAt: '2026-07-31T00:00:00.000Z',
         stores: Object.keys(STATE_STORES),
-        sourceReceipts: [{ kind: 'm3d-a2-slice10', sha256: 'b'.repeat(64) }],
+        sourceReceipts: [{ kind: 'm3c-preserved-state-rehearsal', sha256: receiptSha256 }],
       })}\n`,
       'utf8',
     );
@@ -1217,6 +1231,12 @@ describe('M3D-A2 CWD and checkout invariance proof', () => {
   function activateRoot(): void {
     process.env.ATLAS_STATE_ROOT = root;
     process.env.ATLAS_STATE_ROOT_REQUIRED = '1';
+    process.env.ATLAS_NODE_ROLE = 'local';
+    const receiptsDir = join(root, 'activation-receipts');
+    mkdirSync(receiptsDir, { recursive: true });
+    const receiptContent = 'm3d-a2-invariance-receipt-fixture';
+    writeFileSync(join(receiptsDir, 'm3c-preserved-state-rehearsal'), receiptContent, 'utf8');
+    const receiptSha256 = createHash('sha256').update(receiptContent).digest('hex');
     writeFileSync(
       join(root, STATE_ROOT_ACTIVATION_FILE),
       `${JSON.stringify({
@@ -1224,7 +1244,7 @@ describe('M3D-A2 CWD and checkout invariance proof', () => {
         nodeRole: 'local',
         activatedAt: '2026-07-31T00:00:00.000Z',
         stores: Object.keys(STATE_STORES),
-        sourceReceipts: [{ kind: 'm3d-a2-invariance', sha256: 'c'.repeat(64) }],
+        sourceReceipts: [{ kind: 'm3c-preserved-state-rehearsal', sha256: receiptSha256 }],
       })}\n`,
       'utf8',
     );

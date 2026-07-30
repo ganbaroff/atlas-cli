@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createHash } from 'node:crypto';
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 
 import {
   assertStateRootActivated,
@@ -64,6 +65,12 @@ describe('atlas/state-root', () => {
 
   function writeActivationManifest(overrides: Record<string, unknown> = {}): void {
     mkdirSync(activationRoot, { recursive: true });
+    process.env.ATLAS_NODE_ROLE = 'local';
+    const receiptsDir = join(activationRoot, 'activation-receipts');
+    mkdirSync(receiptsDir, { recursive: true });
+    const receiptContent = 'm3c-preserved-state-rehearsal-fixture';
+    writeFileSync(join(receiptsDir, 'm3c-preserved-state-rehearsal'), receiptContent, 'utf8');
+    const receiptSha256 = createHash('sha256').update(receiptContent).digest('hex');
     writeFileSync(
       join(activationRoot, STATE_ROOT_ACTIVATION_FILE),
       `${JSON.stringify({
@@ -72,7 +79,7 @@ describe('atlas/state-root', () => {
         activatedAt: '2026-07-30T00:00:00.000Z',
         stores: Object.keys(STATE_STORES),
         sourceReceipts: [
-          { kind: 'm3c-exec-graph', sha256: 'a'.repeat(64) },
+          { kind: 'm3c-preserved-state-rehearsal', sha256: receiptSha256 },
         ],
         ...overrides,
       }, null, 2)}\n`,
@@ -217,6 +224,62 @@ describe('atlas/state-root', () => {
       expect(() =>
         constrainMigratingStatePath('operator-runs', 'relative-result.json'),
       ).toThrow('store_outside_root');
+    });
+
+    it('refuses store resolution when no external node role is bound', () => {
+      writeActivationManifest();
+      delete process.env.ATLAS_NODE_ROLE;
+      expect(() => resolveStateDir('exec-graph')).toThrow(/node_role_unbound/);
+      expect(existsSync(join(activationRoot, 'exec-graph'))).toBe(false);
+    });
+
+    it('refuses a node role that does not match the activation manifest', () => {
+      writeActivationManifest();
+      process.env.ATLAS_NODE_ROLE = 'railway';
+      expect(() => resolveStateDir('exec-graph')).toThrow(/node_role_mismatch/);
+      expect(existsSync(join(activationRoot, 'exec-graph'))).toBe(false);
+    });
+
+    it('refuses a source receipt whose artifact bytes do not match the manifest hash', () => {
+      writeActivationManifest();
+      writeFileSync(
+        join(activationRoot, 'activation-receipts', 'm3c-preserved-state-rehearsal'),
+        'tampered-fixture-bytes',
+        'utf8',
+      );
+      expect(() => resolveStateDir('exec-graph')).toThrow(/source_receipt_mismatch/);
+      expect(existsSync(join(activationRoot, 'exec-graph'))).toBe(false);
+    });
+
+    it('refuses a required source receipt whose artifact file is absent', () => {
+      writeActivationManifest();
+      rmSync(
+        join(activationRoot, 'activation-receipts', 'm3c-preserved-state-rehearsal'),
+        { force: true },
+      );
+      expect(() => resolveStateDir('exec-graph')).toThrow(/source_receipt_missing/);
+      expect(existsSync(join(activationRoot, 'exec-graph'))).toBe(false);
+    });
+
+    it('refuses a manifest that omits the required receipt kind even with another well-formed receipt', () => {
+      writeActivationManifest();
+      const receiptsDir = join(activationRoot, 'activation-receipts');
+      const otherContent = 'unrelated-well-formed-receipt';
+      writeFileSync(join(receiptsDir, 'unrelated-receipt'), otherContent, 'utf8');
+      const otherHash = createHash('sha256').update(otherContent).digest('hex');
+      writeActivationManifest({
+        sourceReceipts: [{ kind: 'unrelated-receipt', sha256: otherHash }],
+      });
+      expect(() => resolveStateDir('exec-graph')).toThrow(/source_receipt_missing/);
+      expect(existsSync(join(activationRoot, 'exec-graph'))).toBe(false);
+    });
+
+    it('refuses a traversal-shaped receipt kind without touching paths outside activation-receipts', () => {
+      writeActivationManifest({
+        sourceReceipts: [{ kind: '../evil', sha256: 'a'.repeat(64) }],
+      });
+      expect(() => resolveStateDir('exec-graph')).toThrow(/activation_manifest_invalid/);
+      expect(existsSync(resolve(activationRoot, '..', 'evil'))).toBe(false);
     });
   });
 
