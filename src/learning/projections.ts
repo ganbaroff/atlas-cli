@@ -16,15 +16,14 @@ import {
   deterministicSpendCorrelationId,
 } from './artifact-ids.js';
 import { withFileLock } from './claim-file-lock.js';
+import { resolveLearningProjectionDir } from './state-dir.js';
 
 function sanitizeFileKey(key: string): string {
   return key.replace(/[^a-zA-Z0-9._-]/g, '_');
 }
 
 export function resolveProjectionLockPath(idempotencyKey: string): string {
-  const root = process.env.ATLAS_LEARNING_EXCHANGE_DIR
-    ?? process.env.ATLAS_LEARNING_STATE_DIR
-    ?? join(process.cwd(), 'state', 'learning');
+  const root = resolveLearningProjectionDir();
   mkdirSync(join(root, 'projection-locks'), { recursive: true });
   return join(root, 'projection-locks', sanitizeFileKey(idempotencyKey));
 }

@@ -145,6 +145,11 @@ function stateRootRequired(): boolean {
   );
 }
 
+/** True only for the explicit, fail-closed activation mode. */
+export function isStateRootActivationRequired(): boolean {
+  return stateRootRequired();
+}
+
 /**
  * Resolve the single root all Atlas runtime state lives under.
  * Returns `ATLAS_STATE_ROOT` when set and non-empty; otherwise
@@ -324,18 +329,22 @@ export function resolveStateDir(store: StateStore, legacyEnv?: string): string {
  * Bridge one legacy call site without moving its live default during code
  * rollout. Before required activation, retain the legacy env/default. A
  * staged ATLAS_STATE_ROOT alone is deliberately ignored. Once required
- * activation is enabled, use the shared resolver and its manifest/containment
- * checks.
+ * activation is enabled, use the store's canonical shared resolver and its
+ * manifest/containment checks. An alternate `legacyEnv` argument is a
+ * pre-activation compatibility alias only; `null` disables registry-env
+ * lookup for a caller-supplied legacy default.
  */
 export function resolveMigratingStateDir(
   store: StateStore,
   legacyDefault: () => string,
-  legacyEnv?: string,
+  legacyEnv?: string | null,
 ): string {
   const required = stateRootRequired();
-  if (required) return resolveStateDir(store, legacyEnv);
+  if (required) return resolveStateDir(store);
 
-  const envName = legacyEnv ?? STATE_STORES[store];
+  const envName = legacyEnv === null
+    ? undefined
+    : legacyEnv ?? STATE_STORES[store];
   if (envName) {
     const legacy = readAbsoluteOverride(envName);
     if (legacy) return legacy;

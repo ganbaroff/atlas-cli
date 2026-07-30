@@ -114,7 +114,7 @@ function buildLearningRequest(
 export function createLearningHttpHandler(opts?: LearningHttpServerOptions) {
   const maxBody = opts?.maxBodyBytes ?? 65_536;
   const timeoutMs = opts?.requestTimeoutMs ?? 30_000;
-  const stateDir = () => opts?.stateDir ?? resolveLearningStateDir();
+  const stateDir = () => resolveLearningStateDir(opts?.stateDir);
 
   return async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
     try {

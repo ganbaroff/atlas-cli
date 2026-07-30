@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -23,6 +23,13 @@ import type { OperatorResult, OperatorTask } from '../operator/contracts.js';
 import { bundleRoot } from '../swarm-exec/run-bundle.js';
 import { draftsRoot } from '../swarm-exec/intake.js';
 import { resolveTaskResultsDir } from '../atlas/task-spawner.js';
+import { resolveProjectionLockPath } from '../learning/projections.js';
+import {
+  processLearningRequest,
+  resolveLearningExchangeDir,
+} from '../learning/request-port.js';
+import { resolveLearningStateDir } from '../learning/state-dir.js';
+import type { LearningRequest } from '../learning/contracts.js';
 
 const MANAGED_ENV_KEYS = [
   'ATLAS_STATE_ROOT',
@@ -30,10 +37,16 @@ const MANAGED_ENV_KEYS = [
   'ATLAS_EXEC_GRAPH_DIR',
   'ATLAS_EVIDENCE_DIR',
   'ATLAS_GOAL_BUDGET_DIR',
+  'ATLAS_LEARNING_EXCHANGE_DIR',
+  'ATLAS_LEARNING_STATE_DIR',
+  'ATLAS_SPEND_RECEIPT_DIR',
+  'ATLAS_READONLY',
+  'SUPABASE_URL',
+  'SUPABASE_SERVICE_ROLE_KEY',
 ] as const;
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-describe('M3D-A2 state-root call-site migration slices 1-4', () => {
+describe('M3D-A2 state-root call-site migration slices 1-5', () => {
   let root: string;
   let prior: Record<string, string | undefined>;
   let priorCwd: string;
@@ -103,6 +116,26 @@ describe('M3D-A2 state-root call-site migration slices 1-4', () => {
         sandbox_required: false,
         network_allowed: false,
         write_allowed: false,
+      },
+    };
+  }
+
+  function learningOutcomeRequest(suffix: string): LearningRequest {
+    return {
+      schemaVersion: '1.0',
+      kind: 'outcome',
+      requestId: `req_m3d_a2_learning_${suffix}`,
+      idempotencyKey: `idem_m3d_a2_learning_${suffix}`,
+      createdAt: '2026-07-30T00:00:00.000Z',
+      issuedBy: 'volaura',
+      payload: {
+        learnerId: 'm3d-a2',
+        concept: 'state-root',
+        decisionCorrelationId: 'idem_m3d_a2_learning',
+        completed: true,
+        correct: true,
+        responseTimeSec: 5,
+        selfReportedConfidence: 0.9,
       },
     };
   }
@@ -179,6 +212,146 @@ describe('M3D-A2 state-root call-site migration slices 1-4', () => {
     activateRoot();
 
     expect(resolveTaskResultsDir()).toBe(resolve(root, 'task-results'));
+  });
+
+  it('preserves each learning legacy resolver before required activation', () => {
+    process.env.ATLAS_STATE_ROOT = root;
+    const legacyState = resolve(root, 'legacy-learning-state');
+    const legacyExchange = resolve(root, 'legacy-learning-exchange');
+    const explicitState = resolve(root, 'explicit-learning-state');
+    process.env.ATLAS_LEARNING_STATE_DIR = legacyState;
+    process.env.ATLAS_LEARNING_EXCHANGE_DIR = legacyExchange;
+
+    expect(resolveLearningStateDir()).toBe(legacyState);
+    expect(resolveLearningExchangeDir()).toBe(legacyExchange);
+    expect(resolveLearningStateDir(explicitState)).toBe(explicitState);
+    expect(resolveProjectionLockPath('m3d-a2-learning')).toBe(
+      resolve(legacyExchange, 'projection-locks', 'm3d-a2-learning'),
+    );
+  });
+
+  it('rejects relative learning overrides under the stable-path contract', () => {
+    process.env.ATLAS_LEARNING_STATE_DIR = 'relative-learning-state';
+    expect(() => resolveLearningStateDir()).toThrow(/stable absolute path/);
+
+    delete process.env.ATLAS_LEARNING_STATE_DIR;
+    expect(() => resolveLearningExchangeDir('relative-learning-exchange')).toThrow(
+      /stable absolute path/,
+    );
+  });
+
+  it('routes every learning resolver through one activated store', () => {
+    activateRoot();
+    const legacyExchange = resolve(root, 'legacy-learning-exchange');
+    const explicitState = resolve(root, 'explicit-learning-state');
+    process.env.ATLAS_LEARNING_EXCHANGE_DIR = legacyExchange;
+
+    expect(resolveLearningStateDir(explicitState)).toBe(resolve(root, 'learning'));
+    expect(resolveLearningExchangeDir(legacyExchange)).toBe(resolve(root, 'learning'));
+    expect(resolveProjectionLockPath('m3d-a2-learning')).toBe(
+      resolve(root, 'learning', 'projection-locks', 'm3d-a2-learning'),
+    );
+    expect(process.env.ATLAS_EVIDENCE_DIR).toBe(resolve(root, 'evidence'));
+    expect(process.env.ATLAS_EXEC_GRAPH_DIR).toBe(resolve(root, 'exec-graph'));
+    expect(process.env.ATLAS_SPEND_RECEIPT_DIR).toBe(resolve(root, 'spend-receipts'));
+    expect(existsSync(explicitState)).toBe(false);
+    expect(existsSync(legacyExchange)).toBe(false);
+  });
+
+  it('refuses invalid learning activation before touching a legacy path', () => {
+    process.env.ATLAS_STATE_ROOT = root;
+    process.env.ATLAS_STATE_ROOT_REQUIRED = '1';
+    const legacyPath = resolve(root, 'legacy-learning-before-manifest');
+
+    expect(() => resolveLearningStateDir(legacyPath)).toThrow(
+      /activation_manifest_missing/,
+    );
+    expect(() => resolveLearningExchangeDir(legacyPath)).toThrow(
+      /activation_manifest_missing/,
+    );
+    expect(existsSync(legacyPath)).toBe(false);
+  });
+
+  it('writes a readonly learning receipt only under the activated store', async () => {
+    activateRoot();
+    process.env.ATLAS_READONLY = '1';
+    const legacyExchange = resolve(root, 'legacy-learning-write');
+
+    const receipt = await processLearningRequest({
+      schemaVersion: '1.0',
+      kind: 'decide',
+      requestId: 'req_m3d_a2_learning',
+      idempotencyKey: 'idem_m3d_a2_learning',
+      createdAt: '2026-07-30T00:00:00.000Z',
+      issuedBy: 'volaura',
+      payload: {
+        learnerId: 'm3d-a2',
+        concept: 'state-root',
+        mastery: 0.5,
+        lastAnswers: [true],
+        responseTimeSec: 5,
+        energy: 'medium',
+      },
+    }, { exchangeDir: legacyExchange });
+
+    expect(receipt.status).toBe('readonly');
+    expect(process.env.ATLAS_EVIDENCE_DIR).toBe(resolve(root, 'evidence'));
+    expect(process.env.ATLAS_EXEC_GRAPH_DIR).toBe(resolve(root, 'exec-graph'));
+    expect(process.env.ATLAS_SPEND_RECEIPT_DIR).toBe(resolve(root, 'spend-receipts'));
+    expect(existsSync(resolve(
+      root,
+      'learning',
+      'receipts',
+      'idem_m3d_a2_learning.json',
+    ))).toBe(true);
+    expect(existsSync(legacyExchange)).toBe(false);
+  });
+
+  it('refuses an escaped spend alias before a completed learning projection', async () => {
+    activateRoot();
+    process.env.SUPABASE_URL = '';
+    process.env.SUPABASE_SERVICE_ROLE_KEY = '';
+    const escapedSpend = resolve(
+      tmpdir(),
+      `${basename(root)}-escaped-learning-spend`,
+    );
+    process.env.ATLAS_SPEND_RECEIPT_DIR = escapedSpend;
+
+    try {
+      await expect(processLearningRequest(
+        learningOutcomeRequest('escaped_spend'),
+        { exchangeDir: resolve(root, 'legacy-learning-write') },
+      )).rejects.toThrow(/store_outside_root/);
+      expect(existsSync(resolve(root, 'learning', 'claims'))).toBe(false);
+      expect(existsSync(escapedSpend)).toBe(false);
+      expect(process.env.ATLAS_EVIDENCE_DIR).toBeUndefined();
+      expect(process.env.ATLAS_EXEC_GRAPH_DIR).toBeUndefined();
+    } finally {
+      rmSync(escapedSpend, { recursive: true, force: true });
+    }
+  });
+
+  it('writes a completed learning spend receipt under the activated store', async () => {
+    activateRoot();
+    process.env.SUPABASE_URL = '';
+    process.env.SUPABASE_SERVICE_ROLE_KEY = '';
+    const legacyExchange = resolve(root, 'legacy-learning-completed');
+
+    const receipt = await processLearningRequest(
+      learningOutcomeRequest('completed'),
+      { exchangeDir: legacyExchange },
+    );
+
+    expect(receipt.status).toBe('completed');
+    expect(process.env.ATLAS_SPEND_RECEIPT_DIR).toBe(
+      resolve(root, 'spend-receipts'),
+    );
+    expect(existsSync(resolve(
+      root,
+      'spend-receipts',
+      'spend-receipts.jsonl',
+    ))).toBe(true);
+    expect(existsSync(legacyExchange)).toBe(false);
   });
 
   it('writes operator state and default traces only under the activated root', () => {

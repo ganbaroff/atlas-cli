@@ -25,6 +25,7 @@ import {
 import { createLearningClaimStore } from './claim-store.js';
 import { generateCandidates } from './candidate-generator.js';
 import { decideNextAction, finalizeDecision } from './nba-engine.js';
+import { resolveLearningExchangeDir } from './state-dir.js';
 import {
   deterministicDecisionId,
   deterministicEvidenceClaimId,
@@ -32,14 +33,6 @@ import {
   deterministicSpendCorrelationId,
   applyLearningProjections,
 } from './projections.js';
-
-export function resolveLearningExchangeDir(): string {
-  const dir = process.env.ATLAS_LEARNING_EXCHANGE_DIR;
-  if (!dir) throw new Error('ATLAS_LEARNING_EXCHANGE_DIR not set');
-  mkdirSync(join(dir, 'requests'), { recursive: true });
-  mkdirSync(join(dir, 'claims'), { recursive: true });
-  return dir;
-}
 
 function receiptPath(dir: string, idempotencyKey: string): string {
   return join(dir, 'receipts', `${sanitizeFileKey(idempotencyKey)}.json`);
@@ -90,8 +83,9 @@ export function readLearningRequest(path: string): LearningRequest {
   return parseLearningRequest(raw);
 }
 
-export function listPendingLearningRequests(dir = resolveLearningExchangeDir()): string[] {
-  const reqDir = join(dir, 'requests');
+export function listPendingLearningRequests(dir?: string): string[] {
+  const resolvedDir = resolveLearningExchangeDir(dir);
+  const reqDir = join(resolvedDir, 'requests');
   if (!existsSync(reqDir)) return [];
   return readdirSync(reqDir)
     .filter((f) => f.endsWith('.json'))
@@ -218,7 +212,7 @@ export async function processLearningRequest(
     receiptWriter?: (dir: string, receipt: LearningReceipt) => void;
   },
 ): Promise<LearningReceipt> {
-  const dir = opts?.exchangeDir ?? resolveLearningExchangeDir();
+  const dir = resolveLearningExchangeDir(opts?.exchangeDir);
   const now = () => (opts?.now ? opts.now() : new Date()).toISOString();
   const store = createLearningClaimStore(dir);
   const owner = opts?.owner ?? newOperationOwner();
@@ -345,3 +339,4 @@ export function resetLearningRequestSeenForTests(): void {
 }
 
 export { LearningRequestParseError };
+export { resolveLearningExchangeDir };
