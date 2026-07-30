@@ -22,6 +22,7 @@ import { appendRunLedgerEntry } from '../operator/run-ledger.js';
 import type { OperatorResult, OperatorTask } from '../operator/contracts.js';
 import { bundleRoot } from '../swarm-exec/run-bundle.js';
 import { draftsRoot } from '../swarm-exec/intake.js';
+import { resolveTaskResultsDir } from '../atlas/task-spawner.js';
 
 const MANAGED_ENV_KEYS = [
   'ATLAS_STATE_ROOT',
@@ -32,7 +33,7 @@ const MANAGED_ENV_KEYS = [
 ] as const;
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-describe('M3D-A2 state-root call-site migration slices 1-3', () => {
+describe('M3D-A2 state-root call-site migration slices 1-4', () => {
   let root: string;
   let prior: Record<string, string | undefined>;
   let priorCwd: string;
@@ -124,6 +125,9 @@ describe('M3D-A2 state-root call-site migration slices 1-3', () => {
       resolve(REPO_ROOT, 'operator', 'state', 'operator-state.json'),
     );
     expect(operatorRunsDir()).toBe(resolve(REPO_ROOT, 'operator', 'runs'));
+    expect(resolveTaskResultsDir()).toBe(
+      resolve('C:/Projects/ATLAS/data/task-results'),
+    );
   });
 
   it('preserves explicit swarm roots before required activation', () => {
@@ -169,6 +173,12 @@ describe('M3D-A2 state-root call-site migration slices 1-3', () => {
     activateRoot();
 
     expect(operatorRunsDir()).toBe(resolve(root, 'operator-runs'));
+  });
+
+  it('routes task results through the activated shared root', () => {
+    activateRoot();
+
+    expect(resolveTaskResultsDir()).toBe(resolve(root, 'task-results'));
   });
 
   it('writes operator state and default traces only under the activated root', () => {

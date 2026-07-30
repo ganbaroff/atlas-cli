@@ -22,6 +22,7 @@ import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isPaused } from './spend-policy.js';
 import { controlAllowsModelCalls, describeControlBlock } from './control-plane.js';
+import { resolveMigratingStateDir } from './state-root.js';
 
 /**
  * Repo-root resolver, same landmark-walk idiom as exec-graph/ledger.ts's
@@ -49,7 +50,7 @@ function resolveAnusRoot(): string {
 
 const ANUS_ROOT = resolveAnusRoot();
 
-const TASK_DIR = 'C:/Projects/ATLAS/data/task-results';
+const LEGACY_TASK_RESULTS_DIR = 'C:/Projects/ATLAS/data/task-results';
 const MAX_TIMEOUT = 10 * 60 * 1000; // 10 minutes
 const MAX_OUTPUT = 3800; // Telegram limit minus overhead
 
@@ -70,6 +71,14 @@ function taskId(): string {
 
 export function isTaskRunning(): boolean {
   return activeTask !== null;
+}
+
+/** Preserve the legacy Atlas result directory until required root activation. */
+export function resolveTaskResultsDir(): string {
+  return resolveMigratingStateDir(
+    'task-results',
+    () => resolve(LEGACY_TASK_RESULTS_DIR),
+  );
 }
 
 export function runTask(description: string): Promise<TaskResult> {
@@ -105,6 +114,10 @@ export function runTask(description: string): Promise<TaskResult> {
       truncated: false,
     });
   }
+
+  // Resolve before starting the subprocess so a missing/invalid activated root
+  // refuses the task before model execution rather than losing its result later.
+  const taskResultsDir = resolveTaskResultsDir();
 
   const id = taskId();
   const t0 = Date.now();
@@ -155,9 +168,9 @@ export function runTask(description: string): Promise<TaskResult> {
 
       // Persist result
       try {
-        mkdirSync(TASK_DIR, { recursive: true });
+        mkdirSync(taskResultsDir, { recursive: true });
         writeFileSync(
-          join(TASK_DIR, `${id}.json`),
+          join(taskResultsDir, `${id}.json`),
           JSON.stringify({ id, description, output: fullOutput, exitCode: code, durationMs }, null, 2),
         );
       } catch { /* non-fatal */ }
