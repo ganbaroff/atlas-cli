@@ -2,13 +2,15 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
@@ -19,7 +21,11 @@ import {
   operatorStatePath as controlOperatorStatePath,
   writeOperatorState,
 } from '../atlas/control-plane.js';
-import { STATE_ROOT_ACTIVATION_FILE, STATE_STORES } from '../atlas/state-root.js';
+import {
+  resolveStateDir,
+  STATE_ROOT_ACTIVATION_FILE,
+  STATE_STORES,
+} from '../atlas/state-root.js';
 import {
   dispatchOperatorTask,
   operatorRunsDir,
@@ -1178,5 +1184,205 @@ describe('M3D-A2 state-root call-site migration slice 10 — alert/audit/watch s
     } finally {
       rmSync(outside, { recursive: true, force: true });
     }
+  });
+});
+
+describe('M3D-A2 CWD and checkout invariance proof', () => {
+  let root: string;
+  let prior: Record<string, string | undefined>;
+  let priorCwd: string;
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), 'atlas-m3d-a2-invariance-root-'));
+    priorCwd = process.cwd();
+    prior = {};
+    for (const key of MANAGED_ENV_KEYS) {
+      prior[key] = process.env[key];
+      delete process.env[key];
+    }
+  });
+
+  afterEach(() => {
+    for (const key of MANAGED_ENV_KEYS) {
+      const value = prior[key];
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    process.chdir(priorCwd);
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  function activateRoot(): void {
+    process.env.ATLAS_STATE_ROOT = root;
+    process.env.ATLAS_STATE_ROOT_REQUIRED = '1';
+    writeFileSync(
+      join(root, STATE_ROOT_ACTIVATION_FILE),
+      `${JSON.stringify({
+        schemaVersion: 1,
+        nodeRole: 'local',
+        activatedAt: '2026-07-31T00:00:00.000Z',
+        stores: Object.keys(STATE_STORES),
+        sourceReceipts: [{ kind: 'm3d-a2-invariance', sha256: 'c'.repeat(64) }],
+      })}\n`,
+      'utf8',
+    );
+  }
+
+  /**
+   * Labeled map of every registered production store resolver. Built inside
+   * the test file only — not exported — so it always calls the real
+   * production call sites, never a re-implementation of the routing logic.
+   */
+  function collectResolvedPaths(): Record<string, string> {
+    const resolveGoalBudgetDir = (
+      budgets as typeof budgets & { resolveGoalBudgetDir?: () => string }
+    ).resolveGoalBudgetDir;
+    const resolveSpendReceiptDir = (
+      spendTracker as typeof spendTracker & {
+        resolveSpendReceiptDir?: () => string;
+      }
+    ).resolveSpendReceiptDir;
+    const resolveInstanceLeaseDir = (
+      instanceLease as typeof instanceLease & {
+        resolveInstanceLeaseDir?: () => string;
+      }
+    ).resolveInstanceLeaseDir;
+    const resolveProviderHealthDir = (
+      providerHealth as typeof providerHealth & {
+        resolveProviderHealthDir?: () => string;
+      }
+    ).resolveProviderHealthDir;
+    const resolveBreadcrumbDir = (
+      breadcrumbs as typeof breadcrumbs & {
+        resolveBreadcrumbDir?: () => string;
+      }
+    ).resolveBreadcrumbDir;
+    const resolveQueueAuthDir = (
+      queueAuth as typeof queueAuth & { resolveQueueAuthDir?: () => string }
+    ).resolveQueueAuthDir;
+
+    return {
+      execGraph: resolveExecGraphDir(),
+      evidence: resolveEvidenceDir(),
+      goalBudgets: resolveGoalBudgetDir!(),
+      swarmRuns: bundleRoot(),
+      intakeDrafts: draftsRoot(),
+      controlOperatorState: controlOperatorStatePath(),
+      dispatcherOperatorState: dispatcherOperatorStatePath(),
+      operatorRuns: operatorRunsDir(),
+      taskResults: resolveTaskResultsDir(),
+      learningState: resolveLearningStateDir(),
+      learningExchange: resolveLearningExchangeDir(),
+      projectionLock: resolveProjectionLockPath('m3d-invariance'),
+      spendReceipts: resolveSpendReceiptDir!(),
+      instanceLease: resolveInstanceLeaseDir!(),
+      providerHealth: resolveProviderHealthDir!(),
+      breadcrumbs: resolveBreadcrumbDir!(),
+      notifyQueueFile: notifyQueue.queueFilePath(),
+      queueAuth: resolveQueueAuthDir!(),
+      opsboardExchange: opsboard.resolveExchangeDir(),
+      emotionAudit: resolveAuditPath(),
+      shellAudit: auditLogPath(),
+      // cost-router-state.ts delegates its own store directly to
+      // resolveStateDir('cost-router') — no separate call-site wrapper exists.
+      costRouter: resolveStateDir('cost-router'),
+    };
+  }
+
+  /** Recursive relative-path -> {size, mtimeMs} snapshot; tolerates a missing dir. */
+  function snapshotTree(dirRoot: string): Record<string, { size: number; mtimeMs: number }> {
+    const out: Record<string, { size: number; mtimeMs: number }> = {};
+    function walk(dir: string, prefix: string): void {
+      let entries;
+      try {
+        entries = readdirSync(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+        const abs = join(dir, entry.name);
+        if (entry.isDirectory()) {
+          walk(abs, rel);
+        } else {
+          const stat = statSync(abs);
+          out[rel] = { size: stat.size, mtimeMs: stat.mtimeMs };
+        }
+      }
+    }
+    walk(dirRoot, '');
+    return out;
+  }
+
+  it('pre-activation, checkout-resident stores really live in the checkout (the hazard)', () => {
+    process.env.ATLAS_STATE_ROOT = root;
+    process.chdir(REPO_ROOT);
+
+    expect(resolveExecGraphDir()).toBe(resolve(REPO_ROOT, 'state', 'exec-graph'));
+    expect(controlOperatorStatePath().startsWith(REPO_ROOT)).toBe(true);
+    expect(controlOperatorStatePath()).toBe(
+      resolve(REPO_ROOT, 'operator', 'state', 'operator-state.json'),
+    );
+    expect(resolveAuditPath()).toBe(resolve(REPO_ROOT, 'state', 'emotion-audit.jsonl'));
+  });
+
+  it('resolves every registered production store under the activated root identically from any cwd', () => {
+    activateRoot();
+    const altCwd = join(root, 'alt-cwd');
+    mkdirSync(altCwd, { recursive: true });
+
+    process.chdir(REPO_ROOT);
+    const fromRepoRoot = collectResolvedPaths();
+
+    process.chdir(altCwd);
+    const fromAltCwd = collectResolvedPaths();
+
+    for (const [label, path] of Object.entries(fromRepoRoot)) {
+      expect(path === root || path.startsWith(`${root}${sep}`), label).toBe(true);
+      expect(path.startsWith(`${REPO_ROOT}${sep}`), label).toBe(false);
+    }
+    for (const [label, path] of Object.entries(fromAltCwd)) {
+      expect(path === root || path.startsWith(`${root}${sep}`), label).toBe(true);
+      expect(path.startsWith(`${REPO_ROOT}${sep}`), label).toBe(false);
+    }
+
+    expect(fromAltCwd).toEqual(fromRepoRoot);
+
+    resetAlertState();
+    expect(existsSync(resolve(root, 'alert-state', 'alert-state.json'))).toBe(true);
+  });
+
+  it('leaves zero bytes in the checkout when writers run from inside it', async () => {
+    activateRoot();
+    process.chdir(REPO_ROOT);
+
+    const stateBefore = snapshotTree(resolve(REPO_ROOT, 'state'));
+    const operatorBefore = snapshotTree(resolve(REPO_ROOT, 'operator'));
+
+    expect(notifyQueue.enqueue('important', 'invariance-proof')).toBe('QUEUED');
+    resetAlertState();
+    providerHealth.recordProviderFailure('nvidia', 'invariance-probe');
+    logToneShift({
+      state: 'drive',
+      directive: 'match_energy_execute_fast',
+      ts: '2026-07-31T00:00:00.000Z',
+    });
+    await auditFsOp({ op: 'invariance-probe' });
+    resolveEvidenceDir();
+    opsboard.resolveExchangeDir();
+    // repo-watch's only writer (writeState) is module-private and unexported;
+    // its resolver-level routing under the activated root is already proven
+    // by slice 10's "routes the alert/audit/watch stores..." test. decideNotify
+    // itself only reads state here.
+    decideNotify([], 1, 1000);
+
+    const stateAfter = snapshotTree(resolve(REPO_ROOT, 'state'));
+    const operatorAfter = snapshotTree(resolve(REPO_ROOT, 'operator'));
+
+    expect(stateAfter).toEqual(stateBefore);
+    expect(operatorAfter).toEqual(operatorBefore);
+
+    expect(existsSync(resolve(root, 'notify-queue', 'notify-queue.json'))).toBe(true);
+    expect(existsSync(resolve(root, 'alert-state', 'alert-state.json'))).toBe(true);
   });
 });
