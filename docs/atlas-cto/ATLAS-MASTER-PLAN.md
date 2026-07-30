@@ -23,7 +23,7 @@ product systems as adapters rather than competing brains.
 
 **Current point:** M3 Shadow Consolidation, package M3C **VERIFIED** and M3D
 rollback/cutover packet **WRITTEN**; M3D-A1 inventory/activation contract and
-M3D-A2 state-family slices 1-6 are done; remaining call-site families are next.
+M3D-A2 state-family slices 1-7 are done; remaining call-site families are next.
 M1, fake-only M2, strict M3A,
 synthetic M3B, and one real retained-copy rehearsal are complete on a local
 branch. Physical consolidation is NO-GO. Live provider traffic has not started.
@@ -155,6 +155,12 @@ flowchart LR
    file mutation; ordinary local-I/O and Supabase failures remain non-blocking.
    Independent review returned `ACCEPT`; exact-tip 141/141 affected tests and
    typecheck pass.
+   Slice 7 is complete at `c3923c9`: instance lease, provider health, and
+   breadcrumbs preserve their shared legacy `~/.atlas`/env behavior before
+   activation and split into registered stores after activation. Invalid or
+   escaped activation refuses before writer mutation. Exact-tip 163/163 tests
+   and typecheck pass; the bounded implementation-review lane returned no
+   receipt and is `UNVERIFIED`.
    Remaining families plus expected-role/source-receipt
    provenance are still open. Physical
    cutover remains a separate Yusif gate after M3D-A through M3D-D.

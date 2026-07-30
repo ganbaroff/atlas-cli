@@ -55,6 +55,9 @@ recovery gates before any Atlas repository move or live binding change.
 - [x] Migrate slice 6 (`spend-receipts`); preserve the legacy env/home default
       before activation, fail closed before counter/file mutation on state-root
       denial, and keep ordinary local-I/O/Supabase failures non-blocking.
+- [x] Migrate slice 7 (`instance-lease`, `provider-health`, `breadcrumbs`);
+      preserve their shared legacy home/env behavior before activation and
+      refuse invalid/escaped activation before writer mutation.
 - [ ] Migrate remaining call sites in small store-family slices; keep explicit
       temporary roots in tests before activation.
 - [ ] Prove CWD/code-root invariance and no writes to checkout paths.
@@ -122,6 +125,16 @@ Both paths were repaired while state-root policy/configuration denials remain
 fail-closed. Spend-tracker unit tests now use isolated temporary directories.
 Bounded independent review returned `ACCEPT`. Evidence: 13 affected test files,
 141/141 exact-tip tests, clean typecheck and diff-check; no provider/network call.
+
+A2 slice-7 checkpoint `c3923c9`: three directory-shaped stores that formerly
+shared `~/.atlas` now use the migration bridge. Resolver-only RED was 3 failed /
+29 passed; post-repair acceptance proves staged-root inertia, exact legacy
+defaults, activated real writes under three registered subdirectories, and zero
+mutation on invalid activation. Model-router tests now isolate provider health
+from user state. Evidence: 11 affected test files, 163/163 tests, clean typecheck
+and diff-check, including two real child-process lease races. A bounded
+implementation-review lane was interrupted after its stop request returned no
+receipt, so it is `UNVERIFIED`; local command evidence is completion authority.
 
 ---
 
