@@ -105,7 +105,7 @@ retained-copy drill.
 - Adds rollback dependency `executeRollback(shadowRoot)` to the bounded seam so
   Task 4 can falsify rollback without a public proof option.
 
-- [ ] **Step 1: Write RED tests proving old low-level inputs are reachable**
+- [x] **Step 1: Write RED tests proving old low-level inputs are reachable**
 
 Add these production-shape cases to `shadow-rehearsal.test.ts`:
 
@@ -146,7 +146,7 @@ it('ignores a cast child script on the fixed cold-replay wrapper', () => {
 });
 ```
 
-- [ ] **Step 2: Run the two tests and observe the intended failures**
+- [x] **Step 2: Run the two tests and observe the intended failures**
 
 Run:
 
@@ -157,7 +157,7 @@ npx vitest run src/__tests__/shadow-rehearsal.test.ts -t "cast writer|cast child
 Expected: forged writer executes and forged child controls the replay; exit is
 nonzero.
 
-- [ ] **Step 3: Create the scoped test seam**
+- [x] **Step 3: Create the scoped test seam**
 
 Create `shadow-rehearsal-test-seam.ts` with this complete public shape:
 
@@ -196,7 +196,7 @@ In `shadow-rehearsal.ts`, remove `fileWriter` and `childScriptPath` from public
 signatures. Build module-private defaults, resolve them inside the fixed
 wrappers, and call `dependencies.executeRollback` from the orchestrator.
 
-- [ ] **Step 4: Move existing fault tests to the scoped installer**
+- [x] **Step 4: Move existing fault tests to the scoped installer**
 
 Replace direct writer/script arguments with:
 
@@ -214,7 +214,7 @@ withShadowRehearsalTestOverrides({ childScriptPath: faultScript }, () => {
 });
 ```
 
-- [ ] **Step 5: Add the importer boundary test**
+- [x] **Step 5: Add the importer boundary test**
 
 Clone the source-scanning structure from
 `cost-router-seam-boundary.test.ts`. Set:
@@ -232,7 +232,7 @@ Normalize `type` prefixes before comparing names. Fail when any non-test file
 imports `withShadowRehearsalTestOverrides`, or any production file other than
 `shadow-rehearsal.ts` imports the seam.
 
-- [ ] **Step 6: Run Task 1 GREEN and regressions**
+- [x] **Step 6: Run Task 1 GREEN and regressions**
 
 Run:
 
@@ -244,7 +244,7 @@ git diff --check
 
 Expected: all listed tests pass; typecheck and diff-check exit 0.
 
-- [ ] **Step 7: Commit Task 1 only**
+- [x] **Step 7: Commit Task 1 only**
 
 ```powershell
 git add -- src/atlas/shadow-rehearsal-test-seam.ts src/atlas/shadow-rehearsal.ts src/__tests__/shadow-rehearsal.test.ts src/__tests__/shadow-rehearsal-seam-boundary.test.ts

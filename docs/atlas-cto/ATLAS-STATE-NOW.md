@@ -20,7 +20,7 @@ push, merge, deployment, scheduler cutover, or live-state activation is active.
 | Cost Router design | **ACCEPTED** | two Opus reviews closed; roadmap and ceilings approved | implement package-by-package |
 | Cost Router implementation | **M2 VERIFIED LOCAL** | `23e8574`; 97/97 focused tests, typecheck, runtime refusal-receipt enforcement | keep live providers off |
 | Fable session router | **REPAIRED / LIVE RECEIPT PENDING** | hook registered; stale `/model` and thread-context regressions fixed; 32/32 tests | verify on next natural clean Fable prompt; contaminated threads stay Opus |
-| Shadow consolidation | **M3B VERIFIED / M3C IMPLEMENTATION NEXT** | M3B `462176c` + repairs `44c84de`, `c528ef0`; M3C direction A, closed Opus review, and detailed TDD plan | Task 1: mechanically bound M3B test seams |
+| Shadow consolidation | **M3C TASK 1/6 DONE** | fixed M3B proof wrappers + scoped override seam + importer boundary `9c79419`; 18/18 tests, typecheck | Task 2: derived proof paths and bounded timeout |
 | Physical consolidation | **NO-GO** | nested worktrees, unique legacy state, runtime bindings remain | completed shadow rehearsal plus CEO cutover gate |
 | Subscription research | **OFF** | Perplexity interactive access only; no durable adapter proof | public synthetic live gate |
 | Research swarm | **OFF** | `RESEARCH_ONLY_LIMITED` | two-provider `READY_FOR_RESEARCH` gate |
@@ -30,10 +30,10 @@ push, merge, deployment, scheduler cutover, or live-state activation is active.
 
 We are at **Milestone M3 — Shadow Consolidation**. M1 durable foundation, M2
 safe router, M3A strict comparison, and M3B synthetic rehearsal are complete
-on the local `codex/atlas-cost-router-design` branch. Active package: M3C
-fixture-first implementation; production changes have not started.
+on the local `codex/atlas-cost-router-design` branch. Active package: M3C Task 2;
+Task 1 mechanically bounded M3B test seams without live-state action.
 
-`M1 ✓  →  M2 ✓  →  M3A ✓  →  M3B ✓  →  M3C IMPLEMENT  →  CEO CUTOVER GATE`
+`M1 ✓  →  M2 ✓  →  M3A ✓  →  M3B ✓  →  M3C 1/6  →  CEO CUTOVER GATE`
 
 1. **Done:** define a strict explicit-path shadow manifest and semantic
    comparator; reject empty authoritative input;
@@ -43,8 +43,9 @@ fixture-first implementation; production changes have not started.
 3. **Done:** close receipt-forgery bypass by keeping rollback/receipt
    primitives private and binding proof to exact source, replay, parity, and
    removed shadow root;
-4. **Now:** execute Task 1 of the reviewed plan: harden the M3B test seam with
-   RED→GREEN proof and a mechanical import boundary.
+4. **Done:** Task 1 moved fault overrides behind a scoped test seam and added a
+   mechanical production-import boundary. **Now:** Task 2 derives M3B receipt
+   and shadow paths and bounds child timeout.
    No live resolver switch, untracking, move, or cutover.
 
 ## External review closure
@@ -158,8 +159,8 @@ Fable/Opus routing closure:
 7. **Done:** isolated synthetic copy/replay, durable pre-rename flush, fixed
    proof dependencies, strict parity, executed rollback, bound proof, and
    post-rollback receipt. No live-root activation.
-8. **Now:** execute the closed M3C plan fixture-first; still no resolver switch,
-   untracking, or move.
+8. **In progress:** Task 1/6 is committed at `9c79419`; execute Task 2
+   fixture-first. Still no resolver switch, untracking, or move.
 9. **CEO cutover gate:** only after preserved-copy proof and remaining state
    integrity/effect-durability gates.
 10. **Live research broker:** one provider at a time, public synthetic prompts.

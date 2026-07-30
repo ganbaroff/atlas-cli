@@ -101,7 +101,8 @@ flowchart LR
    `docs/superpowers/specs/2026-07-30-m3c-preserved-state-rehearsal-design.md`.
    Detailed TDD plan:
    `docs/superpowers/plans/2026-07-30-m3c-preserved-state-rehearsal.md`.
-   First slice mechanically bounds M3B test seams; no real copy occurs yet.
+   Task 1/6 mechanically bounded M3B test seams at `9c79419`; Task 2 derives
+   proof paths and timeout bounds. No real copy occurs yet.
 4. **M3D — rollback and cutover packet.** Prove the old root remains readable,
    record exact rollback commands and hashes, then present the physical
    cutover as a separate Yusif gate.
