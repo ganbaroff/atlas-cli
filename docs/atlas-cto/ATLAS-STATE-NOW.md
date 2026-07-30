@@ -20,7 +20,7 @@ push, merge, deployment, scheduler cutover, or live-state activation is active.
 | Cost Router design | **ACCEPTED** | two Opus reviews closed; roadmap and ceilings approved | implement package-by-package |
 | Cost Router implementation | **M2 VERIFIED LOCAL** | `23e8574`; 97/97 focused tests, typecheck, runtime refusal-receipt enforcement | keep live providers off |
 | Fable session router | **REPAIRED / LIVE RECEIPT PENDING** | hook registered; stale `/model` and thread-context regressions fixed; 32/32 tests | verify on next natural clean Fable prompt; contaminated threads stay Opus |
-| Shadow consolidation | **M3B VERIFIED / M3C NEXT** | `462176c` + repair `44c84de`; 213/213 regression tests, typecheck | separately preserved-state copy rehearsal |
+| Shadow consolidation | **M3B VERIFIED / M3C NEXT** | `462176c` + repairs `44c84de`, `c528ef0`; 216/216 regression tests, typecheck | separately preserved-state copy rehearsal |
 | Physical consolidation | **NO-GO** | nested worktrees, unique legacy state, runtime bindings remain | completed shadow rehearsal plus CEO cutover gate |
 | Subscription research | **OFF** | Perplexity interactive access only; no durable adapter proof | public synthetic live gate |
 | Research swarm | **OFF** | `RESEARCH_ONLY_LIMITED` | two-provider `READY_FOR_RESEARCH` gate |
@@ -36,8 +36,9 @@ on the local `codex/atlas-cost-router-design` branch. Active package: M3C.
 
 1. **Done:** define a strict explicit-path shadow manifest and semantic
    comparator; reject empty authoritative input;
-2. **Done:** prove atomic copy, cold replay, strict parity, executed rollback,
-   and post-rollback receipt in synthetic temporary fixtures;
+2. **Done:** prove flushed atomic copy, fixed-identity cold replay, strict
+   parity, executed rollback, and post-rollback receipt in synthetic temporary
+   fixtures;
 3. **Done:** close receipt-forgery bypass by keeping rollback/receipt
    primitives private and binding proof to exact source, replay, parity, and
    removed shadow root;
@@ -115,7 +116,12 @@ M3B local closure:
 - Commit `44c84de` keeps delete/mint/write primitives private and binds the
   private token to the exact source inspection, child replay, accepted parity,
   and removed shadow root. Public-API regression was observed RED then GREEN.
-- Independent command evidence at exact code tip: 11/11 files and 213/213
+- **ACCEPT AND REPAIR AGAIN:** later Codex design inspection found that the
+  required pre-rename flush was absent and the proof-producing orchestrator
+  still accepted caller-controlled writer and child-script test seams. Commit
+  `c528ef0` uses Node's durable flush option and removes both seams from the
+  receipt path; three regressions were observed RED then GREEN.
+- Independent command evidence at exact code tip: 12/12 files and 216/216
   tests passed; `npx tsc --noEmit` and diff checks exited 0.
 - **Still open:** `replay_spawn_failed` lacks a deterministic test; real-state
   rehearsal, activation, untracking, and physical consolidation remain later
@@ -147,8 +153,9 @@ Fable/Opus routing closure:
    fake-provider integration, refusal receipts, and runtime receipt invariant.
 6. **Done:** strict read-only exec-graph inspection and pair comparison,
    including fail-closed rejection of empty authoritative input.
-7. **Done:** isolated synthetic copy/replay, strict parity, executed rollback,
-   bound proof, and post-rollback receipt. No live-root activation.
+7. **Done:** isolated synthetic copy/replay, durable pre-rename flush, fixed
+   proof dependencies, strict parity, executed rollback, bound proof, and
+   post-rollback receipt. No live-root activation.
 8. **Now:** repeat rehearsal against a separately preserved copy of current
    state; still no resolver switch, untracking, or move.
 9. **CEO cutover gate:** only after preserved-copy proof and remaining state

@@ -21,9 +21,9 @@
 one Telegram poller, one local PC/browser executor, cost-aware research, and
 product systems as adapters rather than competing brains.
 
-**Current point:** M3 Shadow Consolidation, package M3B. M1 and fake-only M2
-are complete on a local branch. Physical consolidation is NO-GO. Live provider
-traffic has not started.
+**Current point:** M3 Shadow Consolidation, package M3C design. M1, fake-only
+M2, strict M3A, and synthetic M3B are complete on a local branch. Physical
+consolidation is NO-GO. Live provider traffic has not started.
 
 ```mermaid
 flowchart LR
@@ -88,11 +88,14 @@ flowchart LR
    and a machine-readable comparison receipt that records no live resolver
    change. Commit `0dfb15d`; 9/9 focused tests; current 96-event source
    inspected read-only.
-2. **M3B — NOW — synthetic copy/replay proof.** Copy a valid fixture into an isolated
-   shadow root, cold-replay it, prove event/goal/task/hash parity, and prove
-   source bytes remain unchanged.
-3. **M3C — preserved-state rehearsal.** Run the same tool against a separately
-   preserved copy of current state. Never point a live writer at the shadow.
+2. **M3B — DONE — synthetic copy/replay proof.** Copy a valid fixture into an
+   isolated shadow root, flush before atomic rename, cold-replay through fixed
+   proof dependencies, prove event/goal/task/hash parity, then execute and
+   verify rollback before receipt. Writer `462176c`; proof repair `44c84de`;
+   durability/seam repair `c528ef0`; 216/216 regression tests.
+3. **M3C — NOW — preserved-state rehearsal design.** Run the same tool against
+   a separately preserved copy of current state. Never point a live writer at
+   the shadow.
 4. **M3D — rollback and cutover packet.** Prove the old root remains readable,
    record exact rollback commands and hashes, then present the physical
    cutover as a separate Yusif gate.
