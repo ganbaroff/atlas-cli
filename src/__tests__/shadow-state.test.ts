@@ -125,6 +125,17 @@ describe('atlas/shadow-state', () => {
     );
   });
 
+  it('rejects an empty ledger even when the snapshot is also empty', () => {
+    const directory = join(sandboxDir, 'empty-state');
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(join(directory, 'ledger.jsonl'), '', 'utf8');
+    writeFileSync(join(directory, 'graph.json'), '{"goals":[],"tasks":[]}\n', 'utf8');
+
+    expect(() => inspectExecGraphDirectory(directory)).toThrow(
+      expect.objectContaining({ code: 'ledger_empty' }),
+    );
+  });
+
   it('rejects a valid snapshot that diverges from its ledger fold', () => {
     const directory = writeValidGraphFixture('diverged');
     writeFileSync(join(directory, 'graph.json'), '{"goals":[],"tasks":[]}\n', 'utf8');

@@ -27,6 +27,7 @@ export type ShadowStateErrorCode =
   | 'directory_missing'
   | 'ledger_not_regular'
   | 'snapshot_not_regular'
+  | 'ledger_empty'
   | 'ledger_invalid'
   | 'snapshot_invalid'
   | 'snapshot_diverged';
@@ -157,6 +158,13 @@ function parseLedger(raw: Buffer, path: string): LedgerEvent[] {
     }
 
     events.push(event);
+  }
+
+  if (events.length === 0) {
+    throw new ShadowStateError(
+      'ledger_empty',
+      `shadow ledger contains no authoritative events: ${path}`,
+    );
   }
 
   return events;
