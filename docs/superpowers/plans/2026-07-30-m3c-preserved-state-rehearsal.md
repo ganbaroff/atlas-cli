@@ -269,7 +269,7 @@ git commit -m "refactor(shadow): Bound rehearsal test seams"
 - Export `rehearsalReceiptSchema` for Task 4 strict readback.
 - Fixed receipt basename: `shadow-rehearsal-receipt.json`.
 
-- [ ] **Step 1: Write RED proof-path and timeout tests**
+- [x] **Step 1: Write RED proof-path and timeout tests**
 
 Add tests that:
 
@@ -289,7 +289,7 @@ expect(receipt.shadowRoot).not.toContain('forged-shadow');
 Also assert `0`, `30_001`, `1.5`, `NaN`, and `Infinity` produce
 `timeout_invalid` before `workDirectory` gains any entries.
 
-- [ ] **Step 2: Run RED tests**
+- [x] **Step 2: Run RED tests**
 
 ```powershell
 npx vitest run src/__tests__/shadow-rehearsal.test.ts -t "derives proof paths|timeout_invalid"
@@ -297,7 +297,7 @@ npx vitest run src/__tests__/shadow-rehearsal.test.ts -t "derives proof paths|ti
 
 Expected: current caller paths are honored and timeout values are unbounded.
 
-- [ ] **Step 3: Implement exact option and error contracts**
+- [x] **Step 3: Implement exact option and error contracts**
 
 Use:
 
@@ -322,7 +322,7 @@ Validate timeout and refuse an existing derived receipt before source
 inspection, shadow creation, or other mutation. Generate the shadow name with
 `shadow-${randomUUID()}` and never read unknown option keys.
 
-- [ ] **Step 4: Persist the derived M3B receipt atomically**
+- [x] **Step 4: Persist the derived M3B receipt atomically**
 
 The private writer must:
 
@@ -347,13 +347,13 @@ race without overwriting. On failure, remove only the exact temporary file and
 throw `receipt_write_failed`. Strictly parse the persisted bytes with an
 exported `.strict()` Zod schema before returning.
 
-- [ ] **Step 5: Extend durability and overwrite tests**
+- [x] **Step 5: Extend durability and overwrite tests**
 
 Capture writes whose basename starts `.shadow-rehearsal-receipt-`; require
 `flush: true`. Run twice against the same work directory and require the second
 call to fail `receipt_exists` before creating a new shadow.
 
-- [ ] **Step 6: Run Task 2 GREEN and regressions**
+- [x] **Step 6: Run Task 2 GREEN and regressions**
 
 ```powershell
 npx vitest run src/__tests__/shadow-rehearsal.test.ts src/__tests__/shadow-rehearsal-durability.test.ts src/__tests__/shadow-rehearsal-seam-boundary.test.ts
@@ -361,7 +361,7 @@ npx tsc --noEmit
 git diff --check
 ```
 
-- [ ] **Step 7: Commit Task 2 only**
+- [x] **Step 7: Commit Task 2 only**
 
 ```powershell
 git add -- src/atlas/shadow-rehearsal.ts src/__tests__/shadow-rehearsal.test.ts src/__tests__/shadow-rehearsal-durability.test.ts
