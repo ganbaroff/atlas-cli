@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  ClearanceRefusalError,
   DEFAULT_PROVIDER_CLASS_TABLE,
   DEFAULT_ROUTE_AVAILABILITY,
   isWeakerClass,
@@ -331,6 +332,19 @@ describe('atlas/cost-router-classify: M2C destination-bound clearance', () => {
   });
 
   describe('M2D repair: refusal receipts for every clearance-refusal reason (independent review found none did)', () => {
+    it('ClearanceRefusalError rejects an invalid receipt at runtime, even when a caller bypasses TypeScript', () => {
+      expect(
+        () =>
+          new ClearanceRefusalError(
+            'destination_class_unknown',
+            KEYED_SERVICE,
+            undefined,
+            'runtime invariant probe',
+            undefined as never,
+          ),
+      ).toThrow(expect.objectContaining({ code: 'cost_router_receipt_invalid' }));
+    });
+
     const baseFields = {
       reason: 'attempted self-grant',
       approvedBy: 'the-calling-code-itself',

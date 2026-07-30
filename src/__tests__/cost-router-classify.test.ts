@@ -180,6 +180,18 @@ describe('atlas/cost-router-classify', () => {
   });
 
   describe('M2D repair: every refusal carries a receipt (independent review found none did)', () => {
+    it('RouteRefusalError rejects an invalid receipt at runtime, even when a caller bypasses TypeScript', () => {
+      expect(
+        () =>
+          new RouteRefusalError(
+            'unclassifiable',
+            undefined,
+            'runtime invariant probe',
+            undefined as never,
+          ),
+      ).toThrow(expect.objectContaining({ code: 'cost_router_receipt_invalid' }));
+    });
+
     /** Shared assertion for every refusal-class test below. */
     function assertRefusalReceipt(error: unknown, reason: string): void {
       expect(error).toBeInstanceOf(Error);

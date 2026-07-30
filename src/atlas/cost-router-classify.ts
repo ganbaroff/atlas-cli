@@ -91,6 +91,7 @@ export class RouteRefusalError extends Error {
     readonly receipt: CostRouterReceipt,
   ) {
     super(message);
+    assertCostRouterReceipt(receipt);
     this.name = 'RouteRefusalError';
   }
 }
@@ -526,6 +527,7 @@ export class ClearanceRefusalError extends Error {
     readonly receipt: CostRouterReceipt,
   ) {
     super(message);
+    assertCostRouterReceipt(receipt);
     this.name = 'ClearanceRefusalError';
   }
 }
