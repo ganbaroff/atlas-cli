@@ -395,7 +395,7 @@ preserveExecGraphSnapshot(options: {
   hashes/counts, comparison booleans, `sourceStable: true`, and
   `preservationAccepted: true`.
 
-- [ ] **Step 1: Create the fixture helper and RED happy-path test**
+- [x] **Step 1: Create the fixture helper and RED happy-path test**
 
 The helper exports `writeExecGraphFixture(parent, name, title?)` and writes two
 valid events plus the exact folded snapshot. The test calls the missing public
@@ -420,7 +420,7 @@ expect(readdirSync(artifactDirectory).sort()).toEqual([
 ]);
 ```
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```powershell
 npx vitest run src/__tests__/preserved-state-preservation.test.ts
@@ -428,7 +428,7 @@ npx vitest run src/__tests__/preserved-state-preservation.test.ts
 
 Expected: module/function missing.
 
-- [ ] **Step 3: Define strict schemas and path validation**
+- [x] **Step 3: Define strict schemas and path validation**
 
 Use Zod `.strict()` objects for inspections, comparison, and manifest. Validate:
 
@@ -445,7 +445,7 @@ Require absolute source/parent, strict artifact basename, existing normal
 parent directory, no source/parent overlap in either direction, and absent final
 artifact before creating staging.
 
-- [ ] **Step 4: Implement S0/S1/S2/P0 stable-window preservation**
+- [x] **Step 4: Implement S0/S1/S2/P0 stable-window preservation**
 
 Use this exact order:
 
@@ -501,7 +501,7 @@ Manifest inspection values omit staging directory names; top-level paths bind
 only final resolved source/artifact/preserved paths. Read back and strictly
 validate the final manifest and final preserved directory before returning.
 
-- [ ] **Step 5: Add RED→GREEN failure cases**
+- [x] **Step 5: Add RED→GREEN failure cases**
 
 Use `withShadowRehearsalTestOverrides({ fileWriter })` to produce deterministic
 source mutation and divergent-copy cases. Add exact assertions for:
@@ -513,7 +513,7 @@ source mutation and divergent-copy cases. Add exact assertions for:
 - relative/overlap/traversal/separator names fail before creation;
 - manifest write observes `{ encoding: 'utf8', flush: true }`.
 
-- [ ] **Step 6: Run Task 3 GREEN**
+- [x] **Step 6: Run Task 3 GREEN**
 
 ```powershell
 npx vitest run src/__tests__/preserved-state-preservation.test.ts src/__tests__/preserved-state-durability.test.ts src/__tests__/shadow-rehearsal-seam-boundary.test.ts
@@ -521,7 +521,7 @@ npx tsc --noEmit
 git diff --check
 ```
 
-- [ ] **Step 7: Commit Task 3 only**
+- [x] **Step 7: Commit Task 3 only**
 
 ```powershell
 git add -- src/atlas/preserved-state-rehearsal.ts src/__tests__/fixtures/exec-graph-shadow-fixture.ts src/__tests__/preserved-state-preservation.test.ts src/__tests__/preserved-state-durability.test.ts

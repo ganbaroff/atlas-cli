@@ -20,7 +20,7 @@ push, merge, deployment, scheduler cutover, or live-state activation is active.
 | Cost Router design | **ACCEPTED** | two Opus reviews closed; roadmap and ceilings approved | implement package-by-package |
 | Cost Router implementation | **M2 VERIFIED LOCAL** | `23e8574`; 97/97 focused tests, typecheck, runtime refusal-receipt enforcement | keep live providers off |
 | Fable session router | **REPAIRED / LIVE RECEIPT PENDING** | hook registered; stale `/model` and thread-context regressions fixed; 32/32 tests | verify on next natural clean Fable prompt; contaminated threads stay Opus |
-| Shadow consolidation | **M3C TASK 2/6 DONE** | derived proof paths, bounded timeout, strict atomic receipt `f2588a3`; 28/28 tests, typecheck | Task 3: atomic stable preserved snapshot |
+| Shadow consolidation | **M3C TASK 3/6 DONE** | stable S0/S1/S2/P0 retained-copy proof `c927189`; 27/27 tests, typecheck | Task 4: rehearse, clean, receipt, verify |
 | Physical consolidation | **NO-GO** | nested worktrees, unique legacy state, runtime bindings remain | completed shadow rehearsal plus CEO cutover gate |
 | Subscription research | **OFF** | Perplexity interactive access only; no durable adapter proof | public synthetic live gate |
 | Research swarm | **OFF** | `RESEARCH_ONLY_LIMITED` | two-provider `READY_FOR_RESEARCH` gate |
@@ -30,10 +30,10 @@ push, merge, deployment, scheduler cutover, or live-state activation is active.
 
 We are at **Milestone M3 — Shadow Consolidation**. M1 durable foundation, M2
 safe router, M3A strict comparison, and M3B synthetic rehearsal are complete
-on the local `codex/atlas-cost-router-design` branch. Active package: M3C Task 3;
-Tasks 1-2 bounded M3B seams, destinations, timeout, and receipt persistence.
+on the local `codex/atlas-cost-router-design` branch. Active package: M3C Task 4;
+Tasks 1-3 now include strict atomic preserved-snapshot construction.
 
-`M1 ✓  →  M2 ✓  →  M3A ✓  →  M3B ✓  →  M3C 2/6  →  CEO CUTOVER GATE`
+`M1 ✓  →  M2 ✓  →  M3A ✓  →  M3B ✓  →  M3C 3/6  →  CEO CUTOVER GATE`
 
 1. **Done:** define a strict explicit-path shadow manifest and semantic
    comparator; reject empty authoritative input;
@@ -43,9 +43,10 @@ Tasks 1-2 bounded M3B seams, destinations, timeout, and receipt persistence.
 3. **Done:** close receipt-forgery bypass by keeping rollback/receipt
    primitives private and binding proof to exact source, replay, parity, and
    removed shadow root;
-4. **Done:** Tasks 1-2 moved fault overrides behind a scoped test seam, derived
-   proof paths, bounded child time, and made receipt persistence strict and
-   atomic. **Now:** Task 3 preserves one stable exec-graph snapshot atomically.
+4. **Done:** Tasks 1-3 bounded M3B seams and proof paths, then proved one strict
+   flushed S0/S1/S2/P0 preservation artifact with guarded cleanup and final
+   byte readback. **Now:** Task 4 rehearses only that copy, removes work, writes
+   the bound receipt, and verifies independently.
    No live resolver switch, untracking, move, or cutover.
 
 ## External review closure
@@ -159,7 +160,7 @@ Fable/Opus routing closure:
 7. **Done:** isolated synthetic copy/replay, durable pre-rename flush, fixed
    proof dependencies, strict parity, executed rollback, bound proof, and
    post-rollback receipt. No live-root activation.
-8. **In progress:** Task 2/6 is committed at `f2588a3`; execute Task 3
+8. **In progress:** Task 3/6 is committed at `c927189`; execute Task 4
    fixture-first. Still no resolver switch, untracking, or move.
 9. **CEO cutover gate:** only after preserved-copy proof and remaining state
    integrity/effect-durability gates.

@@ -334,6 +334,11 @@ in memory. M3C does not claim proof against whole-volume loss, hardware
 write-cache failure, or a power cut during directory-metadata update; those
 require a separate reboot or storage-fault drill.
 
+The first live drill is Windows-only. It relies on Windows directory rename
+refusing an existing destination, plus immediate before/error checks. Node has
+no portable directory `RENAME_NOREPLACE`; POSIX empty-destination races are not
+a live-drill guarantee until a native no-replace port exists.
+
 The OneDrive source has weaker latency and synchronisation characteristics than
 the preservation parent. M3C claims no source durability: OneDrive activity
 that changes observable bytes during `S0`/`S1`/`S2` fails closed as
