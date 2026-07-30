@@ -58,6 +58,9 @@ recovery gates before any Atlas repository move or live binding change.
 - [x] Migrate slice 7 (`instance-lease`, `provider-health`, `breadcrumbs`);
       preserve their shared legacy home/env behavior before activation and
       refuse invalid/escaped activation before writer mutation.
+- [x] Migrate slice 8 (`queue-auth`, `notify-queue`); preserve legacy directory
+      and file overrides before activation, derive fixed activated leaves, and
+      refuse existing or dangling leaf symlinks before state I/O.
 - [ ] Migrate remaining call sites in small store-family slices; keep explicit
       temporary roots in tests before activation.
 - [ ] Prove CWD/code-root invariance and no writes to checkout paths.
@@ -135,6 +138,16 @@ from user state. Evidence: 11 affected test files, 163/163 tests, clean typechec
 and diff-check, including two real child-process lease races. A bounded
 implementation-review lane was interrupted after its stop request returned no
 receipt, so it is `UNVERIFIED`; local command evidence is completion authority.
+
+A2 slice-8 checkpoint `746ccf7`: notification queue and runner nonce ledger now
+use file/directory migration bridges. The first GREEN passed 247 tests. A
+bounded independent review then found existing leaf-symlink escapes; Codex
+reproduced them RED and repaired exact-leaf containment. Rereview found the
+dangling-symlink variant; a second RED reproduced it and `lstatSync`-aware
+canonicalization closed it before any outside target could be created. Final
+rereview returned `ACCEPT`. Exact-tip evidence: 11 files, 249/249 tests, clean
+typecheck and commit diff-check; Cost Router's explicit nonce ledger remained
+caller-owned and unchanged.
 
 ---
 
