@@ -44,6 +44,9 @@ recovery gates before any Atlas repository move or live binding change.
 - [x] Migrate slice 2 (`swarm-runs`, `intake-drafts`) through the same bridge;
       preserve explicit temporary roots before activation and make those
       overrides unreachable after required activation.
+- [x] Migrate slice 3 (`operator-state`, `operator-runs`); centralize duplicate
+      state paths, constrain file-level trace/ledger overrides, reject default
+      store junction escape, and use activated paths for manual result readback.
 - [ ] Migrate remaining call sites in small store-family slices; keep explicit
       temporary roots in tests before activation.
 - [ ] Prove CWD/code-root invariance and no writes to checkout paths.
@@ -77,6 +80,15 @@ activation; the centralized resolvers now retain those legacy/test overrides
 before activation and ignore them after valid required activation. Evidence:
 5 affected files, 39/39 exact-tip tests, clean typecheck and diff-check. No live
 root, manifest, checkout state, or provider was touched.
+
+A2 slice-3 checkpoint `2cbc85f`: operator state, result traces, lifecycle
+results, and run ledger now use the migration bridge. Separate RED waves proved
+three unmigrated path seams, two file-level escape hatches, missing directory
+creation for a valid contained trace, a default-store junction escape, and
+manual promotion readback through the old checkout path. All were repaired.
+Evidence: 14 affected files, 173/173 exact-tip tests, clean typecheck and
+diff-check. A bounded LUNA review produced no receipt despite stop/interrupt,
+so that external lane is **UNVERIFIED** and is not completion evidence.
 
 ---
 
