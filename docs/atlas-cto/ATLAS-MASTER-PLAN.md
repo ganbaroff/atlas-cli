@@ -23,7 +23,7 @@ product systems as adapters rather than competing brains.
 
 **Current point:** M3 Shadow Consolidation, package M3C **VERIFIED** and M3D
 rollback/cutover packet **WRITTEN**; M3D-A1 inventory/activation contract and
-M3D-A2 state-family slices 1-4 are done; remaining call-site families are next.
+M3D-A2 state-family slices 1-5 are done; remaining call-site families are next.
 M1, fake-only M2, strict M3A,
 synthetic M3B, and one real retained-copy rehearsal are complete on a local
 branch. Physical consolidation is NO-GO. Live provider traffic has not started.
@@ -144,6 +144,11 @@ flowchart LR
    result writer preserves its old directory before activation, routes to
    `task-results` after activation, and rejects invalid activation before
    spawning a model subprocess; exact-tip 123/123 tests and typecheck pass.
+   Slice 5 is complete at `94e7426`: learning state, file exchange, projection
+   locks, HTTP injection, and direct processing converge on `learning` after
+   activation. Independent review found an activated spend-receipt escape;
+   RED reproduced it, atomic side-store binding repaired it, and repeat review
+   accepted the result. Exact-tip 113/113 tests and typecheck pass.
    Remaining families plus expected-role/source-receipt
    provenance are still open. Physical
    cutover remains a separate Yusif gate after M3D-A through M3D-D.

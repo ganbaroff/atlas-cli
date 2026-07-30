@@ -49,6 +49,9 @@ recovery gates before any Atlas repository move or live binding change.
       store junction escape, and use activated paths for manual result readback.
 - [x] Migrate slice 4 (`task-results`); preserve the legacy hardcoded directory
       before activation and validate the activated root before subprocess spawn.
+- [x] Migrate slice 5 (`learning`); preserve its three legacy precedence modes,
+      ignore caller path injection after activation, and bind evidence,
+      exec-graph, and spend side effects before claim or receipt mutation.
 - [ ] Migrate remaining call sites in small store-family slices; keep explicit
       temporary roots in tests before activation.
 - [ ] Prove CWD/code-root invariance and no writes to checkout paths.
@@ -98,6 +101,16 @@ and activated path contracts were absent; a mocked subprocess regression proves
 a missing activation manifest yields zero spawn calls. Evidence: 5 affected
 files, 123/123 exact-tip tests, clean typecheck and diff-check. The legacy
 `C:\Projects\ATLAS\data\task-results` directory was not modified.
+
+A2 slice-5 checkpoint `94e7426`: learning state bootstrap, file exchange,
+projection locks, HTTP `stateDir`, and direct `exchangeDir` processing retain
+stable absolute legacy behavior before activation and converge on `learning`
+after activation. A bounded independent review found direct processing could
+still write spend receipts outside the activated root. RED reproduced both the
+unset binding and escaped alias; atomic validation/binding now occurs before
+directory, claim, or receipt mutation. Repeat review returned `ACCEPT`.
+Evidence: 8 learning/state-root files / 113 tests, typecheck and diff-check
+clean.
 
 ---
 
