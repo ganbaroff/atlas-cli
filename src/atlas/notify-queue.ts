@@ -19,6 +19,11 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, dirname } from 'node:path';
+import {
+  resolveMigratingStateFile,
+  StateRootActivationError,
+  StateRootConfigurationError,
+} from './state-root.js';
 
 export type NotifyPriority = 'panic' | 'normal';
 
@@ -72,7 +77,12 @@ export function redactSecrets(text: string): string {
 // ── Queue file I/O ──────────────────────────────────────────────────
 
 export function queueFilePath(): string {
-  return process.env.ATLAS_NOTIFY_QUEUE_PATH || join(homedir(), '.atlas', 'notify-queue.json');
+  return resolveMigratingStateFile(
+    'notify-queue',
+    'notify-queue.json',
+    () => join(homedir(), '.atlas', 'notify-queue.json'),
+    'ATLAS_NOTIFY_QUEUE_PATH',
+  );
 }
 
 export function readQueue(): NotifyQueueState {
@@ -83,7 +93,13 @@ export function readQueue(): NotifyQueueState {
       return { entries: parsed.entries };
     }
     return { entries: [] };
-  } catch {
+  } catch (error) {
+    if (
+      error instanceof StateRootActivationError ||
+      error instanceof StateRootConfigurationError
+    ) {
+      throw error;
+    }
     return { entries: [] };
   }
 }

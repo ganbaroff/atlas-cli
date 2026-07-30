@@ -16,8 +16,6 @@
  */
 
 import { hostname } from 'node:os';
-import { join } from 'node:path';
-import { homedir } from 'node:os';
 import type { TypedEffect } from '../goal-runner/types.js';
 import { classifyEffect, hasRedLine, redLineReason, checkRedLineWithClassifier } from '../goal-runner/red-line.js';
 import { deriveEffectsFromText } from './action-router.js';
@@ -34,7 +32,7 @@ import {
 import { inspectBuildFreshness, type BuildFreshness } from './build-freshness.js';
 import {
   verifyPayload,
-  createNonceLedger,
+  createQueueAuthNonceLedger,
   getSigningKey,
   type NonceLedger,
   type VerifyResult,
@@ -84,7 +82,6 @@ export function _resetNoKeyWarning(): void {
 }
 
 export function defaultRunnerDeps(): RunnerDeps {
-  const stateDir = process.env['ATLAS_STATE_DIR'] ?? join(homedir(), '.atlas');
   return {
     claim: claimNextCommand,
     complete: completeCommand,
@@ -96,7 +93,7 @@ export function defaultRunnerDeps(): RunnerDeps {
     isPaused: () => effectivelyPaused(),
     workerId: resolveWorkerId(),
     getSigningKey,
-    nonceLedger: createNonceLedger(stateDir),
+    nonceLedger: createQueueAuthNonceLedger(),
   };
 }
 

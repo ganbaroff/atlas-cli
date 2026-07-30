@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -34,6 +42,9 @@ import * as spendTracker from '../atlas/spend-tracker.js';
 import * as instanceLease from '../atlas/instance-lease.js';
 import * as providerHealth from '../atlas/provider-health.js';
 import * as breadcrumbs from '../atlas/write-back-hook.js';
+import * as notifyQueue from '../atlas/notify-queue.js';
+import * as queueAuth from '../atlas/queue-auth.js';
+import { defaultRunnerDeps } from '../atlas/atlas-runner.js';
 
 const MANAGED_ENV_KEYS = [
   'ATLAS_STATE_ROOT',
@@ -47,13 +58,15 @@ const MANAGED_ENV_KEYS = [
   'ATLAS_INSTANCE_LEASE_DIR',
   'ATLAS_PROVIDER_HEALTH_DIR',
   'ATLAS_BREADCRUMB_DIR',
+  'ATLAS_NOTIFY_QUEUE_PATH',
+  'ATLAS_STATE_DIR',
   'ATLAS_READONLY',
   'SUPABASE_URL',
   'SUPABASE_SERVICE_ROLE_KEY',
 ] as const;
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-describe('M3D-A2 state-root call-site migration slices 1-7', () => {
+describe('M3D-A2 state-root call-site migration slices 1-8', () => {
   let root: string;
   let prior: Record<string, string | undefined>;
   let priorCwd: string;
@@ -437,6 +450,144 @@ describe('M3D-A2 state-root call-site migration slices 1-7', () => {
     expect(existsSync(resolve(root, 'provider-health'))).toBe(false);
     expect(existsSync(resolve(root, 'breadcrumbs'))).toBe(false);
     expect(breadcrumbs.hasSessionBreadcrumb()).toBe(false);
+  });
+
+  it('keeps file-shaped queue stores on their legacy paths while root is staged', () => {
+    process.env.ATLAS_STATE_ROOT = root;
+    const legacyNotifyFile = resolve(root, 'legacy-notify', 'queue.json');
+    const legacyQueueAuthDir = resolve(root, 'legacy-queue-auth');
+    process.env.ATLAS_NOTIFY_QUEUE_PATH = legacyNotifyFile;
+    process.env.ATLAS_STATE_DIR = legacyQueueAuthDir;
+    const queueAuthResolver = (queueAuth as typeof queueAuth & {
+      resolveQueueAuthDir?: () => string;
+    }).resolveQueueAuthDir;
+
+    expect(notifyQueue.queueFilePath()).toBe(legacyNotifyFile);
+    expect(queueAuthResolver?.()).toBe(legacyQueueAuthDir);
+  });
+
+  it('routes file-shaped queue stores through their activated directories', () => {
+    activateRoot();
+    const queueAuthResolver = (queueAuth as typeof queueAuth & {
+      resolveQueueAuthDir?: () => string;
+    }).resolveQueueAuthDir;
+
+    expect(notifyQueue.queueFilePath()).toBe(
+      resolve(root, 'notify-queue', 'notify-queue.json'),
+    );
+    expect(queueAuthResolver?.()).toBe(resolve(root, 'queue-auth'));
+  });
+
+  it('ignores an escaped notify file but refuses an escaped queue-auth directory after activation', () => {
+    activateRoot();
+    const escapedNotify = resolve(tmpdir(), `${basename(root)}-escaped-notify.json`);
+    const escapedQueueAuth = resolve(tmpdir(), `${basename(root)}-escaped-queue-auth`);
+    process.env.ATLAS_NOTIFY_QUEUE_PATH = escapedNotify;
+    process.env.ATLAS_STATE_DIR = escapedQueueAuth;
+    const queueAuthResolver = (queueAuth as typeof queueAuth & {
+      resolveQueueAuthDir?: () => string;
+    }).resolveQueueAuthDir;
+
+    try {
+      expect(notifyQueue.queueFilePath()).toBe(
+        resolve(root, 'notify-queue', 'notify-queue.json'),
+      );
+      expect(() => queueAuthResolver?.()).toThrow(/store_outside_root/);
+      expect(existsSync(escapedNotify)).toBe(false);
+      expect(existsSync(escapedQueueAuth)).toBe(false);
+    } finally {
+      rmSync(escapedNotify, { force: true });
+      rmSync(escapedQueueAuth, { recursive: true, force: true });
+    }
+  });
+
+  it('does not turn invalid notify activation into an empty queue', () => {
+    process.env.ATLAS_STATE_ROOT = root;
+    process.env.ATLAS_STATE_ROOT_REQUIRED = '1';
+
+    expect(() => notifyQueue.readQueue()).toThrow(/activation_manifest_missing/);
+    expect(() => notifyQueue.enqueue('important', 'must-not-write')).toThrow(
+      /activation_manifest_missing/,
+    );
+    expect(() => queueAuth.createQueueAuthNonceLedger()).toThrow(
+      /activation_manifest_missing/,
+    );
+    expect(existsSync(resolve(root, 'notify-queue'))).toBe(false);
+    expect(existsSync(resolve(root, 'queue-auth'))).toBe(false);
+  });
+
+  it('writes notify and queue-auth state only below the activated root', () => {
+    activateRoot();
+
+    expect(notifyQueue.enqueue('important', 'm3d-a2-slice-8')).toBe('QUEUED');
+    expect(defaultRunnerDeps().nonceLedger?.recordIfFresh(
+      'm3d-a2-slice-8-nonce',
+    )).toBe(true);
+
+    expect(existsSync(resolve(
+      root,
+      'notify-queue',
+      'notify-queue.json',
+    ))).toBe(true);
+    expect(existsSync(resolve(
+      root,
+      'queue-auth',
+      'nonce-ledger.json',
+    ))).toBe(true);
+  });
+
+  it('refuses existing queue leaf symlinks before following them outside the activated root', () => {
+    activateRoot();
+    const outside = mkdtempSync(join(tmpdir(), 'atlas-m3d-a2-slice-8-outside-'));
+    const outsideNotify = resolve(outside, 'notify-queue.json');
+    const outsideNonce = resolve(outside, 'nonce-ledger.json');
+    const notifyStore = resolve(root, 'notify-queue');
+    const queueAuthStore = resolve(root, 'queue-auth');
+    const notifyLeaf = resolve(notifyStore, 'notify-queue.json');
+    const nonceLeaf = resolve(queueAuthStore, 'nonce-ledger.json');
+    writeFileSync(outsideNotify, 'notify-sentinel', 'utf8');
+    writeFileSync(outsideNonce, 'nonce-sentinel', 'utf8');
+    mkdirSync(notifyStore, { recursive: true });
+    mkdirSync(queueAuthStore, { recursive: true });
+    symlinkSync(outsideNotify, notifyLeaf, 'file');
+    symlinkSync(outsideNonce, nonceLeaf, 'file');
+
+    try {
+      expect(() => notifyQueue.readQueue()).toThrow(/store_outside_root/);
+      expect(() => queueAuth.createQueueAuthNonceLedger()).toThrow(
+        /store_outside_root/,
+      );
+      expect(readFileSync(outsideNotify, 'utf8')).toBe('notify-sentinel');
+      expect(readFileSync(outsideNonce, 'utf8')).toBe('nonce-sentinel');
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses dangling queue leaf symlinks before an outside target can be created', () => {
+    activateRoot();
+    const outside = mkdtempSync(join(tmpdir(), 'atlas-m3d-a2-slice-8-dangling-'));
+    const outsideNotify = resolve(outside, 'missing-notify.json');
+    const outsideNonce = resolve(outside, 'missing-nonce.json');
+    const notifyStore = resolve(root, 'notify-queue');
+    const queueAuthStore = resolve(root, 'queue-auth');
+    mkdirSync(notifyStore, { recursive: true });
+    mkdirSync(queueAuthStore, { recursive: true });
+    symlinkSync(outsideNotify, resolve(notifyStore, 'notify-queue.json'), 'file');
+    symlinkSync(outsideNonce, resolve(queueAuthStore, 'nonce-ledger.json'), 'file');
+
+    try {
+      expect(() => notifyQueue.readQueue()).toThrow(/store_outside_root/);
+      expect(() => {
+        queueAuth.createQueueAuthNonceLedger().recordIfFresh(
+          'm3d-a2-slice-8-dangling-nonce',
+        );
+      }).toThrow(/store_outside_root/);
+      expect(existsSync(outsideNotify)).toBe(false);
+      expect(existsSync(outsideNonce)).toBe(false);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
   });
 
   it('preserves each learning legacy resolver before required activation', () => {

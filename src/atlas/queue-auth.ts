@@ -16,6 +16,11 @@ import {
   existsSync, readFileSync, writeFileSync, mkdirSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import { homedir } from 'node:os';
+import {
+  constrainMigratingStatePath,
+  resolveMigratingStateDir,
+} from './state-root.js';
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -121,8 +126,7 @@ interface LedgerEntry {
  * and evicts those older than 24h (bounded growth). Persists on every
  * write so it survives runner restarts.
  */
-export function createNonceLedger(stateDir: string): NonceLedger {
-  const ledgerPath = join(stateDir, 'nonce-ledger.json');
+function createNonceLedgerAtPath(stateDir: string, ledgerPath: string): NonceLedger {
   mkdirSync(stateDir, { recursive: true });
 
   // Load + evict stale entries
@@ -173,6 +177,27 @@ export function createNonceLedger(stateDir: string): NonceLedger {
       return true;
     },
   };
+}
+
+export function createNonceLedger(stateDir: string): NonceLedger {
+  return createNonceLedgerAtPath(stateDir, join(stateDir, 'nonce-ledger.json'));
+}
+
+/** Production queue-auth ledger; explicit generic ledgers remain caller-owned. */
+export function resolveQueueAuthDir(): string {
+  return resolveMigratingStateDir(
+    'queue-auth',
+    () => join(homedir(), '.atlas'),
+  );
+}
+
+export function createQueueAuthNonceLedger(): NonceLedger {
+  const stateDir = resolveQueueAuthDir();
+  const ledgerPath = constrainMigratingStatePath(
+    'queue-auth',
+    join(stateDir, 'nonce-ledger.json'),
+  );
+  return createNonceLedgerAtPath(stateDir, ledgerPath);
 }
 
 // ── Key accessor (injectable for runner deps) ──────────────────────────

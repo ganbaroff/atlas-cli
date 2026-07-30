@@ -30,7 +30,7 @@
  */
 
 import { homedir } from 'node:os';
-import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, normalize, parse, relative, resolve } from 'node:path';
 import { z } from 'zod';
 
@@ -171,13 +171,24 @@ export function resolveStateRoot(): string {
 function canonicalizeExistingPrefix(path: string): string {
   const missingTail: string[] = [];
   let probe = path;
-  while (!existsSync(probe)) {
+  while (!pathEntryExists(probe)) {
     const parent = dirname(probe);
     if (parent === probe) return normalize(path);
     missingTail.unshift(basename(probe));
     probe = parent;
   }
   return resolve(realpathSync(probe), ...missingTail);
+}
+
+function pathEntryExists(path: string): boolean {
+  try {
+    lstatSync(path);
+    return true;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'ENOENT' || code === 'ENOTDIR') return false;
+    throw error;
+  }
 }
 
 function isStrictChildPath(root: string, candidate: string): boolean {
@@ -353,6 +364,49 @@ export function resolveMigratingStateDir(
   return normalizeStableAbsolute(
     legacyDefault(),
     `legacy default for ${store}`,
+  );
+}
+
+/**
+ * Bridge a legacy file-shaped store. Before activation, preserve its absolute
+ * file override/default. After required activation, derive one fixed basename
+ * below the registered store directory and ignore the legacy file override.
+ */
+export function resolveMigratingStateFile(
+  store: StateStore,
+  fileName: string,
+  legacyDefault: () => string,
+  legacyEnv?: string | null,
+): string {
+  if (
+    !fileName ||
+    fileName.trim() !== fileName ||
+    fileName === '.' ||
+    fileName === '..' ||
+    /[\\/]/.test(fileName)
+  ) {
+    throw new StateRootConfigurationError(
+      `file name for ${store}`,
+      `file name for '${store}' must be one fixed basename`,
+    );
+  }
+
+  if (stateRootRequired()) {
+    const storeDir = resolveStateDir(store);
+    const filePath = join(storeDir, fileName);
+    assertPathContained(
+      storeDir,
+      filePath,
+      `file '${fileName}' for '${store}'`,
+      `activated store '${store}'`,
+    );
+    return filePath;
+  }
+
+  return resolveMigratingStateDir(
+    store,
+    legacyDefault,
+    legacyEnv,
   );
 }
 

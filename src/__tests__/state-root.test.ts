@@ -7,6 +7,7 @@ import {
   assertStateRootActivated,
   constrainMigratingStatePath,
   resolveMigratingStateDir,
+  resolveMigratingStateFile,
   resolveStateRoot,
   resolveStateDir,
   STATE_ROOT_ACTIVATION_FILE,
@@ -26,6 +27,7 @@ const MANAGED_ENV_KEYS = [
   'ATLAS_SPEND_RECEIPT_DIR',
   'ATLAS_BREADCRUMB_DIR',
   'ATLAS_OPSBOARD_EXCHANGE_DIR',
+  'ATLAS_NOTIFY_QUEUE_PATH',
 ] as const;
 
 const ABSOLUTE_STATE_ROOT = join(tmpdir(), 'atlas-state-root-test');
@@ -352,6 +354,37 @@ describe('atlas/state-root', () => {
     it('preserves a relative file override before activation', () => {
       expect(constrainMigratingStatePath('operator-runs', 'relative-result.json'))
         .toBe('relative-result.json');
+    });
+  });
+
+  describe('resolveMigratingStateFile()', () => {
+    it('derives one fixed basename below the activated store', () => {
+      process.env.ATLAS_STATE_ROOT = activationRoot;
+      process.env.ATLAS_STATE_ROOT_REQUIRED = '1';
+      process.env.ATLAS_NOTIFY_QUEUE_PATH = join(tmpdir(), 'escaped-notify.json');
+      writeActivationManifest();
+      const fallback = vi.fn(() => join(tmpdir(), 'legacy-notify.json'));
+
+      expect(resolveMigratingStateFile(
+        'notify-queue',
+        'notify-queue.json',
+        fallback,
+        'ATLAS_NOTIFY_QUEUE_PATH',
+      )).toBe(join(activationRoot, 'notify-queue', 'notify-queue.json'));
+      expect(fallback).not.toHaveBeenCalled();
+    });
+
+    it('rejects a basename that could escape its activated store', () => {
+      expect(() => resolveMigratingStateFile(
+        'notify-queue',
+        '../outside.json',
+        () => join(tmpdir(), 'legacy-notify.json'),
+      )).toThrow(/one fixed basename/);
+      expect(() => resolveMigratingStateFile(
+        'notify-queue',
+        'nested\\outside.json',
+        () => join(tmpdir(), 'legacy-notify.json'),
+      )).toThrow(/one fixed basename/);
     });
   });
 
