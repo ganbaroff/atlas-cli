@@ -21,17 +21,18 @@
 one Telegram poller, one local PC/browser executor, cost-aware research, and
 product systems as adapters rather than competing brains.
 
-**Current point:** M3 Shadow Consolidation, package M3C **VERIFIED**; M3D plan
-next. M1, fake-only M2, strict M3A, synthetic M3B, and one real retained-copy
-rehearsal are complete on a local branch. Physical consolidation is NO-GO.
-Live provider traffic has not started.
+**Current point:** M3 Shadow Consolidation, package M3C **VERIFIED** and M3D
+rollback/cutover packet **WRITTEN**; M3D-A state-root activation is next. M1,
+fake-only M2, strict M3A, synthetic M3B, and one real retained-copy rehearsal
+are complete on a local branch. Physical consolidation is NO-GO. Live provider
+traffic has not started.
 
 ```mermaid
 flowchart LR
     M0["M0 Freeze and preserve<br/>DONE"]
     M1["M1 Durable foundation<br/>DONE"]
     M2["M2 Safe runtime and router<br/>DONE LOCAL"]
-    M3["M3 Shadow consolidation<br/>M3C VERIFIED · M3D PLAN NEXT"]
+    M3["M3 Shadow consolidation<br/>M3C VERIFIED · M3D PACKET WRITTEN"]
     G{"Yusif cutover gate"}
     M4["M4 One Atlas cutover"]
     M5["M5 Live research broker"]
@@ -49,7 +50,7 @@ flowchart LR
 | M0 Freeze and preserve | **DONE** | runner recovery, legacy bundle/ZIP/patch, dirty worktree ref | recoverable checkpoints exist; no source destroyed |
 | M1 Durable foundation | **DONE LOCAL** | repaired state root; durable Cost Router record; restart/exact-once resume proof | 58/58 focused tests; typecheck; child-process restart |
 | M2 Safe runtime and router | **DONE LOCAL** | pure router, error buckets, provider-bound privacy, runner wrapper/liveness | 97/97 fake-only tests; typecheck; no live traffic or silent fallback |
-| M3 Shadow consolidation | **M3C VERIFIED / M3D PLAN NEXT** | copy/replay, outcome diff, legacy extraction, rollback rehearsal | parity and rollback receipts; no physical move |
+| M3 Shadow consolidation | **M3C VERIFIED / M3D PACKET WRITTEN** | copy/replay, outcome diff, root activation, write/effect integrity, rollback packet | M3D-A through M3D-D green; no physical move |
 | M4 One Atlas cutover | **CEO GATE** | detach nested worktrees, select canon, update path bindings, one authority | clean restart, rollback, Telegram/runner authority proof |
 | M5 Live research broker | **OFF** | Perplexity quick research; Gemini/ChatGPT deep research | public synthetic tests; no secrets/files; no paid API |
 | M6 Research swarm | **OFF** | multi-provider research behind Cost Router | two source-bearing providers; `READY_FOR_RESEARCH` |
@@ -113,9 +114,18 @@ flowchart LR
    Manifest SHA-256 is `432984c34c373c13fce53ef21828aa7e88231180c343d03a21b5619a3b2b3d25`;
    source/preserved hashes and 96/4/10 counts match, rollback/work cleanup verify,
    and no live authority changed.
-4. **M3D — PLAN NEXT — rollback and cutover packet.** Prove the old root remains readable,
-   record exact rollback commands and hashes, then present the physical
-   cutover as a separate Yusif gate.
+4. **M3D — PACKET WRITTEN / IMPLEMENTATION NEXT — cutover readiness.** Design
+   and TDD plan are
+   `docs/superpowers/specs/2026-07-30-m3d-cutover-readiness-and-rollback-design.md`
+   and
+   `docs/superpowers/plans/2026-07-30-m3d-cutover-readiness-and-rollback.md`.
+   Verified inventory confirms the target remains occupied by a 45-path dirty
+   legacy repository, six nested worktrees, three junctions, OneDrive-bound
+   scheduler, Railway path binding, and ANUS-only `.env`. Code inspection also
+   found incomplete root routing, four mutators missing read-only enforcement,
+   non-transactional ledger writes, and effect replay ambiguity after crash.
+   M3D-A state inventory/root activation is next. Physical cutover remains a
+   separate Yusif gate after M3D-A through M3D-D.
 
 ### Current CEO control
 
