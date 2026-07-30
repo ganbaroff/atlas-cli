@@ -8,7 +8,7 @@ ATLAS is preserved and recoverable, but physical consolidation and live
 multi-provider research remain **NO-GO**. Durable foundation M1 and fake-only
 Cost Router M2 and M3C retained-copy rehearsal are verified locally. M3D
 rollback/cutover design and TDD plan are written. M3D-A1 inventory/activation
-contract and M3D-A2 slices 1-5 are done; remaining call-site families are next.
+contract and M3D-A2 slices 1-6 are done; remaining call-site families are next.
 Physical movement remains separately gated. No live provider traffic, push,
 merge, deployment, scheduler cutover, or live-state activation is active.
 
@@ -22,7 +22,7 @@ merge, deployment, scheduler cutover, or live-state activation is active.
 | Cost Router design | **ACCEPTED** | two Opus reviews closed; roadmap and ceilings approved | implement package-by-package |
 | Cost Router implementation | **M2 VERIFIED LOCAL** | `23e8574`; 97/97 focused tests, typecheck, runtime refusal-receipt enforcement | keep live providers off |
 | Fable session router | **REPAIRED / LIVE RECEIPT PENDING** | hook registered; stale `/model` and thread-context regressions fixed; 32/32 tests | verify on next natural clean Fable prompt; contaminated threads stay Opus |
-| Shadow consolidation | **M3C VERIFIED / M3D-A2 SLICES 1-5 DONE** | root activation `97a300e`; first `ca324fe`; swarm `0c9723d`; operator `2cbc85f`; task-results `4dca9fe`; learning `94e7426` | remaining A2 families; no cutover |
+| Shadow consolidation | **M3C VERIFIED / M3D-A2 SLICES 1-6 DONE** | root activation `97a300e`; first `ca324fe`; swarm `0c9723d`; operator `2cbc85f`; task-results `4dca9fe`; learning `94e7426`; spend `af3f48a` | remaining A2 families; no cutover |
 | Physical consolidation | **NO-GO** | nested worktrees, unique legacy state, runtime bindings remain | completed shadow rehearsal plus CEO cutover gate |
 | Subscription research | **OFF** | Perplexity interactive access only; no durable adapter proof | public synthetic live gate |
 | Research swarm | **OFF** | `RESEARCH_ONLY_LIMITED` | two-provider `READY_FOR_RESEARCH` gate |
@@ -35,9 +35,10 @@ safe router, M3A strict comparison, M3B synthetic rehearsal, and M3C real
 retained-copy rehearsal are complete on local branch
 `codex/atlas-cost-router-design`. M3D design and implementation plan are now
 written. M3D-A1 classified state inventory and fail-closed activation contract
-are complete. M3D-A2 slices 1-5 route exec-graph, evidence, goal budgets, swarm
-runs, intake drafts, operator state/runs, task results, and learning state only
-after required manifest-bound activation. Active package: remaining M3D-A2
+are complete. M3D-A2 slices 1-6 route exec-graph, evidence, goal budgets, swarm
+runs, intake drafts, operator state/runs, task results, learning state, and the
+global spend receipt writer only after required manifest-bound activation.
+Active package: remaining M3D-A2
 state-root call-site families; no physical cutover is authorized.
 
 `M1 ✓  →  M2 ✓  →  M3A ✓  →  M3B ✓  →  M3C ✓  →  M3D PACKET ✓  →  A1 ✓  →  A2…D  →  CEO CUTOVER GATE`
@@ -69,6 +70,9 @@ state-root call-site families; no physical cutover is authorized.
    refuses invalid activation before subprocess spawn. **Done:** slice 5
    migrates learning state/exchange/projection paths and binds learning's
    evidence, exec-graph, and spend side effects before any activated claim.
+   **Done:** slice 6 migrates the global spend writer, fails closed on
+   state-root policy/configuration denial before counter or file mutation, and
+   preserves non-blocking ordinary local-I/O and Supabase failures.
    **Now:** migrate remaining store families and close
    expected-role/source-receipt provenance before any live activation. No live
    resolver switch, untracking, move, or cutover.
@@ -209,8 +213,8 @@ Fable/Opus routing closure:
    current-state copy, fresh-process verification, and no-cutover proof.
 9. **Done:** M3D rollback/cutover packet, current physical inventory, NO-GO
    gates, rollback order, and implementation plan.
-10. **In progress:** M3D-A1 is done at `97a300e`; M3D-A2 slices 1-5 are done at
-    `ca324fe`, `0c9723d`, `2cbc85f`, `4dca9fe`, and `94e7426`. **Next:**
+10. **In progress:** M3D-A1 is done at `97a300e`; M3D-A2 slices 1-6 are done at
+    `ca324fe`, `0c9723d`, `2cbc85f`, `4dca9fe`, `94e7426`, and `af3f48a`. **Next:**
     remaining bounded call-site families and activation
     provenance, then M3D-B mutation integrity, M3D-C effect durability, and
     M3D-D full-root recovery.

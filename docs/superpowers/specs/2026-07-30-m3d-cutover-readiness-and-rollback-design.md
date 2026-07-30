@@ -77,9 +77,9 @@ shell execution, or self-certification.
 ## M3D-A — state-root activation
 
 The `state-root.ts` registry now covers 23 stores. Cost Router uses the direct
-resolver; A2 slices 1-5 route exec-graph, evidence, goal budgets, swarm runs,
-intake drafts, operator state/runs, task results, and learning state through a
-compatibility bridge.
+resolver; A2 slices 1-6 route exec-graph, evidence, goal budgets, swarm runs,
+intake drafts, operator state/runs, task results, learning state, and the global
+spend receipt writer through a compatibility bridge.
 Explicit test/legacy roots remain valid before activation but cannot bypass a
 required activated root. File-level operator overrides must be strict
 junction-aware children of `operator-runs`, and registered default store
@@ -87,9 +87,11 @@ directories may not junction outside the root. Task-results activation is
 validated before subprocess execution. Learning's state bootstrap, exchange,
 projection locks, HTTP injection, and direct process overrides converge after
 activation; evidence, exec-graph, and spend bindings validate atomically before
-learning mutation. Remaining classified families are split across lease,
-queue-auth nonce ledger, provider health, spend, notifications, pause/control,
-breadcrumbs, and alert state.
+learning mutation. The global spend writer preserves legacy env/home placement
+before activation, then fails closed on state-root denials before counter/file
+mutation while ordinary telemetry failures remain non-blocking. Remaining
+classified families are split across lease, queue-auth nonce ledger, provider
+health, notifications, pause/control, breadcrumbs, and alert state.
 
 Before migration, classify every filesystem writer into exactly one category:
 

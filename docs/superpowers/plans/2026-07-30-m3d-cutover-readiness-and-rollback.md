@@ -52,6 +52,9 @@ recovery gates before any Atlas repository move or live binding change.
 - [x] Migrate slice 5 (`learning`); preserve its three legacy precedence modes,
       ignore caller path injection after activation, and bind evidence,
       exec-graph, and spend side effects before claim or receipt mutation.
+- [x] Migrate slice 6 (`spend-receipts`); preserve the legacy env/home default
+      before activation, fail closed before counter/file mutation on state-root
+      denial, and keep ordinary local-I/O/Supabase failures non-blocking.
 - [ ] Migrate remaining call sites in small store-family slices; keep explicit
       temporary roots in tests before activation.
 - [ ] Prove CWD/code-root invariance and no writes to checkout paths.
@@ -111,6 +114,14 @@ unset binding and escaped alias; atomic validation/binding now occurs before
 directory, claim, or receipt mutation. Repeat review returned `ACCEPT`.
 Evidence: 8 learning/state-root files / 113 tests, typecheck and diff-check
 clean.
+
+A2 slice-6 checkpoint `af3f48a`: the global spend writer now uses the migration
+bridge. RED first proved the resolver/activation gap, then a second RED proved
+that correlation-ID duplicate lookup could leak an ordinary local-I/O error.
+Both paths were repaired while state-root policy/configuration denials remain
+fail-closed. Spend-tracker unit tests now use isolated temporary directories.
+Bounded independent review returned `ACCEPT`. Evidence: 13 affected test files,
+141/141 exact-tip tests, clean typecheck and diff-check; no provider/network call.
 
 ---
 
