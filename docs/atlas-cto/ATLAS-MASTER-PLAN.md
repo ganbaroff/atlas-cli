@@ -21,7 +21,7 @@
 one Telegram poller, one local PC/browser executor, cost-aware research, and
 product systems as adapters rather than competing brains.
 
-**Current point:** M3 Shadow Consolidation, package M3A. M1 and fake-only M2
+**Current point:** M3 Shadow Consolidation, package M3B. M1 and fake-only M2
 are complete on a local branch. Physical consolidation is NO-GO. Live provider
 traffic has not started.
 
@@ -83,10 +83,12 @@ flowchart LR
 
 ### M3 work packages
 
-1. **M3A — NOW — strict shadow contract.** Explicit source/target paths,
+1. **M3A — DONE — strict shadow contract.** Explicit source/target paths,
    fail-closed ledger parsing, semantic snapshot comparison, content hashes,
-   and a machine-readable rollback receipt. Tests use temporary fixtures only.
-2. **M3B — synthetic copy/replay proof.** Copy a valid fixture into an isolated
+   and a machine-readable comparison receipt that records no live resolver
+   change. Commit `0dfb15d`; 9/9 focused tests; current 96-event source
+   inspected read-only.
+2. **M3B — NOW — synthetic copy/replay proof.** Copy a valid fixture into an isolated
    shadow root, cold-replay it, prove event/goal/task/hash parity, and prove
    source bytes remain unchanged.
 3. **M3C — preserved-state rehearsal.** Run the same tool against a separately

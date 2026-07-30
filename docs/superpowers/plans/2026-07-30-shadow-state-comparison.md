@@ -71,7 +71,7 @@ export interface ExecGraphInspection {
 export function inspectExecGraphDirectory(directory: string): ExecGraphInspection;
 ```
 
-- [ ] **Step 1: Write failing tests for valid inspection and fail-closed input**
+- [x] **Step 1: Write failing tests for valid inspection and fail-closed input**
 
 Create temp directories in `beforeEach`, remove only those exact temp
 directories in `afterEach`, and add these assertions:
@@ -113,7 +113,7 @@ The fixture must build schema-valid `goal-created` and `task-created` events,
 write them as JSONL, call `foldEvents(events)`, and write the corresponding
 array-shaped `graph.json`.
 
-- [ ] **Step 2: Run the tests and verify RED**
+- [x] **Step 2: Run the tests and verify RED**
 
 Run:
 
@@ -123,7 +123,7 @@ npx vitest run src/__tests__/shadow-state.test.ts
 
 Expected: FAIL because `../atlas/shadow-state.js` does not exist.
 
-- [ ] **Step 3: Implement the strict inspector**
+- [x] **Step 3: Implement the strict inspector**
 
 Implementation rules:
 
@@ -141,7 +141,7 @@ Implementation rules:
    sorted by id.
 8. Throw only `ShadowStateError` with one of the declared codes.
 
-- [ ] **Step 4: Run the focused tests and verify GREEN**
+- [x] **Step 4: Run the focused tests and verify GREEN**
 
 Run:
 
@@ -183,7 +183,7 @@ export function compareExecGraphDirectories(
 ): ShadowStateComparison;
 ```
 
-- [ ] **Step 1: Write failing parity and mismatch tests**
+- [x] **Step 1: Write failing parity and mismatch tests**
 
 ```ts
 it('accepts byte-identical ledger and semantically identical state', () => {
@@ -213,7 +213,7 @@ it('refuses a candidate whose valid ledger represents different state', () => {
 });
 ```
 
-- [ ] **Step 2: Run the named tests and verify RED**
+- [x] **Step 2: Run the named tests and verify RED**
 
 Run:
 
@@ -223,7 +223,7 @@ npx vitest run src/__tests__/shadow-state.test.ts -t "accepts|refuses"
 
 Expected: FAIL because `compareExecGraphDirectories` is absent.
 
-- [ ] **Step 3: Implement minimal comparison**
+- [x] **Step 3: Implement minimal comparison**
 
 Call the strict inspector once per side. `accepted` requires ledger byte hash,
 semantic hash, event count, goal count, and task count to match. Snapshot byte
@@ -246,7 +246,7 @@ On mismatch, `blocker` names each failed predicate and `nextAction` is:
 repair the isolated candidate and rerun comparison; do not activate it
 ```
 
-- [ ] **Step 4: Verify focused suite, typecheck, and diff**
+- [x] **Step 4: Verify focused suite, typecheck, and diff**
 
 Run:
 
@@ -258,7 +258,7 @@ git diff --check
 
 Expected: all shadow-state tests pass; TypeScript and diff checks exit 0.
 
-- [ ] **Step 5: Commit only M3A files**
+- [x] **Step 5: Commit only M3A files**
 
 ```powershell
 git add -- src/atlas/shadow-state.ts src/__tests__/shadow-state.test.ts
@@ -266,3 +266,15 @@ git commit -m "feat(atlas): Add strict shadow state comparison"
 ```
 
 Do not stage roadmap files or any pre-existing dirty path in this code commit.
+
+## Execution receipt
+
+- Code commit: `0dfb15d`.
+- Observed RED: missing module; missing pair comparator; duplicate event,
+  orphan event, and duplicate snapshot rows initially produced false passes.
+- Final GREEN: 9/9 focused tests; 87/87 combined shadow-state, exec-graph, and
+  state-root tests; `npx tsc --noEmit` and `git diff --check` exit 0.
+- Live-source read-only inspection: 96 events, 4 goals, 10 tasks; preserved
+  ledger and snapshot hashes matched.
+- No copy, delete, live resolver switch, network/provider call, merge, push,
+  deployment, scheduler change, or physical move.
