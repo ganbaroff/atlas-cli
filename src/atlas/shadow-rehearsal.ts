@@ -118,7 +118,7 @@ function isRecognizedRollbackToken(candidate: unknown): candidate is RollbackVer
 export type FileWriter = (destinationPath: string, contents: Buffer) => void;
 
 function defaultFileWriter(destinationPath: string, contents: Buffer): void {
-  writeFileSync(destinationPath, contents);
+  writeFileSync(destinationPath, contents, { flush: true });
 }
 
 /**
@@ -428,9 +428,7 @@ export interface ShadowRehearsalOptions {
   readonly workDirectory: string;
   readonly shadowRootName?: string;
   readonly childTimeoutMs?: number;
-  readonly childScriptPath?: string;
   readonly receiptPath?: string;
-  readonly fileWriter?: FileWriter;
 }
 
 /**
@@ -455,7 +453,6 @@ export function runShadowRehearsal(
     resolvedSource,
     options.workDirectory,
     shadowRootName,
-    options.fileWriter,
   );
 
   try {
@@ -473,7 +470,6 @@ export function runShadowRehearsal(
 
     const childReplay = coldReplayExecGraphDirectory(shadowRoot, {
       timeoutMs: options.childTimeoutMs,
-      childScriptPath: options.childScriptPath,
     });
 
     const parity = assertStrictParity(resolvedSource, shadowRoot, childReplay);

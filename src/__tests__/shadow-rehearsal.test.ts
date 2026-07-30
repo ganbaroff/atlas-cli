@@ -186,6 +186,52 @@ describe('atlas/shadow-rehearsal', () => {
     expect(api).not.toHaveProperty('writeRehearsalReceipt');
   });
 
+  it(
+    'does not let callers replace the durable writer used by the receipt orchestrator',
+    () => {
+      const source = writeValidGraphFixture('source');
+      const workDir = mkdtempSync(join(tmpdir(), 'atlas-shadow-work-'));
+      const forgedWriter = (): never => {
+        throw new Error('caller-controlled writer ran');
+      };
+
+      try {
+        const receipt = runShadowRehearsal(source, {
+          workDirectory: workDir,
+          shadowRootName: 'shadow',
+          fileWriter: forgedWriter,
+        } as unknown as Parameters<typeof runShadowRehearsal>[1]);
+
+        expect(receipt.rollbackVerified).toBe(true);
+      } finally {
+        rmSync(workDir, { recursive: true, force: true });
+      }
+    },
+    CHILD_TEST_TIMEOUT,
+  );
+
+  it(
+    'does not let callers replace the cold-replay child used by the receipt orchestrator',
+    () => {
+      const source = writeValidGraphFixture('source');
+      const workDir = mkdtempSync(join(tmpdir(), 'atlas-shadow-work-'));
+      const forgedChild = writeFaultScript('forged-child.ts', 'process.exit(47);\n');
+
+      try {
+        const receipt = runShadowRehearsal(source, {
+          workDirectory: workDir,
+          shadowRootName: 'shadow',
+          childScriptPath: forgedChild,
+        } as unknown as Parameters<typeof runShadowRehearsal>[1]);
+
+        expect(receipt.rollbackVerified).toBe(true);
+      } finally {
+        rmSync(workDir, { recursive: true, force: true });
+      }
+    },
+    CHILD_TEST_TIMEOUT,
+  );
+
   // --- strict parity ------------------------------------------------------
 
   it('fails parity and never reaches a receipt when the candidate represents different state', () => {
@@ -249,13 +295,12 @@ describe('atlas/shadow-rehearsal', () => {
     }
   });
 
-  // --- cold replay failure modes, end to end through the orchestrator -------
+  // --- cold replay failure modes --------------------------------------------
 
   it(
-    'fails the rehearsal and leaves no shadow root when the child process exits non-zero',
+    'fails cold replay when the child process exits non-zero',
     () => {
-      const source = writeValidGraphFixture('source');
-      const workDir = mkdtempSync(join(tmpdir(), 'atlas-shadow-work-'));
+      const shadow = writeValidGraphFixture('shadow');
       const faultScript = writeFaultScript(
         'nonzero-exit.ts',
         [
@@ -264,82 +309,54 @@ describe('atlas/shadow-rehearsal', () => {
           '',
         ].join('\n'),
       );
-      try {
-        expect(() =>
-          runShadowRehearsal(source, {
-            workDirectory: workDir,
-            shadowRootName: 'shadow',
-            childScriptPath: faultScript,
-          }),
-        ).toThrow(expect.objectContaining({ code: 'replay_nonzero_exit' }));
-        expect(existsSync(join(workDir, 'shadow'))).toBe(false);
-      } finally {
-        rmSync(workDir, { recursive: true, force: true });
-      }
+
+      expect(() =>
+        coldReplayExecGraphDirectory(shadow, { childScriptPath: faultScript }),
+      ).toThrow(expect.objectContaining({ code: 'replay_nonzero_exit' }));
     },
     CHILD_TEST_TIMEOUT,
   );
 
   it(
-    'fails the rehearsal and leaves no shadow root when the child process prints nothing',
+    'fails cold replay when the child process prints nothing',
     () => {
-      const source = writeValidGraphFixture('source');
-      const workDir = mkdtempSync(join(tmpdir(), 'atlas-shadow-work-'));
+      const shadow = writeValidGraphFixture('shadow');
       const faultScript = writeFaultScript('empty-output.ts', 'process.exit(0);\n');
-      try {
-        expect(() =>
-          runShadowRehearsal(source, {
-            workDirectory: workDir,
-            shadowRootName: 'shadow',
-            childScriptPath: faultScript,
-          }),
-        ).toThrow(expect.objectContaining({ code: 'replay_empty_output' }));
-        expect(existsSync(join(workDir, 'shadow'))).toBe(false);
-      } finally {
-        rmSync(workDir, { recursive: true, force: true });
-      }
+
+      expect(() =>
+        coldReplayExecGraphDirectory(shadow, { childScriptPath: faultScript }),
+      ).toThrow(expect.objectContaining({ code: 'replay_empty_output' }));
     },
     CHILD_TEST_TIMEOUT,
   );
 
   it(
-    'fails the rehearsal and leaves no shadow root when the child process prints unparseable output',
+    'fails cold replay when the child process prints unparseable output',
     () => {
-      const source = writeValidGraphFixture('source');
-      const workDir = mkdtempSync(join(tmpdir(), 'atlas-shadow-work-'));
+      const shadow = writeValidGraphFixture('shadow');
       const faultScript = writeFaultScript(
         'unparseable-output.ts',
         "process.stdout.write('not-json-at-all');\n",
       );
-      try {
-        expect(() =>
-          runShadowRehearsal(source, {
-            workDirectory: workDir,
-            shadowRootName: 'shadow',
-            childScriptPath: faultScript,
-          }),
-        ).toThrow(expect.objectContaining({ code: 'replay_unparseable_output' }));
-        expect(existsSync(join(workDir, 'shadow'))).toBe(false);
-      } finally {
-        rmSync(workDir, { recursive: true, force: true });
-      }
+
+      expect(() =>
+        coldReplayExecGraphDirectory(shadow, { childScriptPath: faultScript }),
+      ).toThrow(expect.objectContaining({ code: 'replay_unparseable_output' }));
     },
     CHILD_TEST_TIMEOUT,
   );
 
   it(
-    'fails the rehearsal and leaves no shadow root when the child process times out',
+    'fails the rehearsal and removes the shadow root when the real child times out',
     () => {
       const source = writeValidGraphFixture('source');
       const workDir = mkdtempSync(join(tmpdir(), 'atlas-shadow-work-'));
-      const faultScript = writeFaultScript('timeout.ts', 'setInterval(() => {}, 1000);\n');
       try {
         expect(() =>
           runShadowRehearsal(source, {
             workDirectory: workDir,
             shadowRootName: 'shadow',
-            childScriptPath: faultScript,
-            childTimeoutMs: 500,
+            childTimeoutMs: 1,
           }),
         ).toThrow(expect.objectContaining({ code: 'replay_timeout' }));
         expect(existsSync(join(workDir, 'shadow'))).toBe(false);
