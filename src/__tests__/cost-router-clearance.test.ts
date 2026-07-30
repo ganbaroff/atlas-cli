@@ -17,7 +17,11 @@ import {
   type TrustedRoutedAttemptParams,
 } from '../atlas/cost-router-classify.js';
 import { withTrustedTables } from '../atlas/cost-router-test-seam.js';
-import { createGoalRouterRecord, loadGoalRouterRecord } from '../atlas/cost-router-state.js';
+import {
+  assertCostRouterReceipt,
+  createGoalRouterRecord,
+  loadGoalRouterRecord,
+} from '../atlas/cost-router-state.js';
 
 const NOW = '2026-07-30T00:00:00.000Z';
 
@@ -322,6 +326,194 @@ describe('atlas/cost-router-classify: M2C destination-bound clearance', () => {
           }),
         ),
       ).rejects.toMatchObject({ reason: 'exception_signing_key_not_configured' });
+      expect(attempt).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('M2D repair: refusal receipts for every clearance-refusal reason (independent review found none did)', () => {
+    const baseFields = {
+      reason: 'attempted self-grant',
+      approvedBy: 'the-calling-code-itself',
+      permittedClass: IDENTITY_UNBOUNDED_AGENTIC,
+    };
+    const agenticTables = {
+      availability: DEFAULT_ROUTE_AVAILABILITY,
+      providerClasses: { 'agentic-1': IDENTITY_UNBOUNDED_AGENTIC },
+    };
+
+    /** Shared assertion: the rejected promise's error carries a receipt built by the same assertCostRouterReceipt as the success path, with blocker/nextAction non-empty and blocker naming the reason. */
+    async function assertClearanceRefusalReceipt(
+      promise: Promise<unknown>,
+      reason: string,
+    ): Promise<void> {
+      try {
+        await promise;
+        throw new Error(`expected refusal ${reason}`);
+      } catch (error) {
+        expect(error).toMatchObject({ reason });
+        const receipt = (error as { receipt?: unknown }).receipt;
+        expect(receipt).toBeDefined();
+        expect(() =>
+          assertCostRouterReceipt(receipt as Parameters<typeof assertCostRouterReceipt>[0]),
+        ).not.toThrow();
+        const r = receipt as { blocker: string; nextAction: string };
+        expect(r.blocker).toBeTruthy();
+        expect(r.nextAction).toBeTruthy();
+        expect(r.blocker).toContain(reason);
+      }
+    }
+
+    it('destination_class_too_weak carries a fully populated receipt', async () => {
+      const goalId = 'goal-clearance-receipt-too-weak';
+      await createGoalRouterRecord(goalId, NOW, { rootDir });
+      const route = resolveRoute({ taskId: 'task-receipt-too-weak', needsLocalWorker: true });
+      const attempt = vi.fn().mockReturnValue({ ok: true });
+
+      await assertClearanceRefusalReceipt(
+        withTrustedTables(
+          { availability: DEFAULT_ROUTE_AVAILABILITY, providerClasses: { 'weak-1': IDENTITY_SESSION } },
+          () =>
+            runTrustedRoutedAttempt({
+              route,
+              goalId,
+              taskId: 'task-receipt-too-weak',
+              now: NOW,
+              currentProvider: { providerId: 'weak-1', tier: 'cheap' },
+              attempt,
+              options: { rootDir },
+              briefClearance: KEYED_SERVICE,
+            }),
+        ),
+        'destination_class_too_weak',
+      );
+      expect(attempt).not.toHaveBeenCalled();
+    });
+
+    it('exception_unsigned carries a fully populated receipt', async () => {
+      vi.stubEnv('ATLAS_CLEARANCE_SIGNING_KEY', 'test-fake-signing-key-not-real');
+      const goalId = 'goal-clearance-receipt-unsigned';
+      await createGoalRouterRecord(goalId, NOW, { rootDir });
+      const route = resolveRoute({ taskId: 'task-receipt-unsigned', needsLocalWorker: true });
+      const attempt = vi.fn().mockReturnValue({ ok: true });
+      const unsigned: ClearanceException = { ...baseFields };
+
+      await assertClearanceRefusalReceipt(
+        withTrustedTables(agenticTables, () =>
+          runTrustedRoutedAttempt({
+            route,
+            goalId,
+            taskId: 'task-receipt-unsigned',
+            now: NOW,
+            currentProvider: { providerId: 'agentic-1', tier: 'cheap' },
+            attempt,
+            options: { rootDir },
+            briefClearance: KEYED_SERVICE,
+            clearanceException: unsigned,
+          }),
+        ),
+        'exception_unsigned',
+      );
+      expect(attempt).not.toHaveBeenCalled();
+    });
+
+    it('exception_signature_mismatch carries a fully populated receipt', async () => {
+      vi.stubEnv('ATLAS_CLEARANCE_SIGNING_KEY', 'test-fake-signing-key-not-real');
+      const goalId = 'goal-clearance-receipt-mismatch';
+      await createGoalRouterRecord(goalId, NOW, { rootDir });
+      const route = resolveRoute({ taskId: 'task-receipt-mismatch', needsLocalWorker: true });
+      const attempt = vi.fn().mockReturnValue({ ok: true });
+      const signed = signClearanceException(baseFields, 'test-fake-signing-key-not-real');
+      const tampered: ClearanceException = { ...signed, approvedBy: 'a-different-approver' };
+
+      await assertClearanceRefusalReceipt(
+        withTrustedTables(agenticTables, () =>
+          runTrustedRoutedAttempt({
+            route,
+            goalId,
+            taskId: 'task-receipt-mismatch',
+            now: NOW,
+            currentProvider: { providerId: 'agentic-1', tier: 'cheap' },
+            attempt,
+            options: { rootDir },
+            briefClearance: KEYED_SERVICE,
+            clearanceException: tampered,
+          }),
+        ),
+        'exception_signature_mismatch',
+      );
+      expect(attempt).not.toHaveBeenCalled();
+    });
+
+    it('exception_signature_replayed carries a fully populated receipt', async () => {
+      vi.stubEnv('ATLAS_CLEARANCE_SIGNING_KEY', 'test-fake-signing-key-not-real');
+      const goalId = 'goal-clearance-receipt-replay';
+      await createGoalRouterRecord(goalId, NOW, { rootDir });
+      const attempt = vi.fn().mockReturnValue({ ok: true });
+      const signed = signClearanceException(baseFields, 'test-fake-signing-key-not-real');
+
+      const routeFirst = resolveRoute({ taskId: 'task-receipt-replay-1', needsLocalWorker: true });
+      const first = await withTrustedTables(agenticTables, () =>
+        runTrustedRoutedAttempt({
+          route: routeFirst,
+          goalId,
+          taskId: 'task-receipt-replay-1',
+          now: NOW,
+          currentProvider: { providerId: 'agentic-1', tier: 'cheap' },
+          attempt,
+          options: { rootDir },
+          briefClearance: KEYED_SERVICE,
+          clearanceException: signed,
+        }),
+      );
+      expect(first.status).toBe('succeeded');
+
+      const routeSecond = resolveRoute({ taskId: 'task-receipt-replay-2', needsLocalWorker: true });
+      await assertClearanceRefusalReceipt(
+        withTrustedTables(agenticTables, () =>
+          runTrustedRoutedAttempt({
+            route: routeSecond,
+            goalId,
+            taskId: 'task-receipt-replay-2',
+            now: NOW,
+            currentProvider: { providerId: 'agentic-1', tier: 'cheap' },
+            attempt,
+            options: { rootDir },
+            briefClearance: KEYED_SERVICE,
+            clearanceException: signed,
+          }),
+        ),
+        'exception_signature_replayed',
+      );
+    });
+
+    it('exception_signing_key_not_configured carries a fully populated receipt', async () => {
+      const goalId = 'goal-clearance-receipt-nokey';
+      await createGoalRouterRecord(goalId, NOW, { rootDir });
+      const route = resolveRoute({ taskId: 'task-receipt-nokey', needsLocalWorker: true });
+      const attempt = vi.fn().mockReturnValue({ ok: true });
+      const unverifiable: ClearanceException = {
+        ...baseFields,
+        sig: 'deadbeef',
+        ts: NOW,
+        nonce: 'nonce-receipt-nokey-1',
+      };
+
+      await assertClearanceRefusalReceipt(
+        withTrustedTables(agenticTables, () =>
+          runTrustedRoutedAttempt({
+            route,
+            goalId,
+            taskId: 'task-receipt-nokey',
+            now: NOW,
+            currentProvider: { providerId: 'agentic-1', tier: 'cheap' },
+            attempt,
+            options: { rootDir },
+            briefClearance: KEYED_SERVICE,
+            clearanceException: unverifiable,
+          }),
+        ),
+        'exception_signing_key_not_configured',
+      );
       expect(attempt).not.toHaveBeenCalled();
     });
   });

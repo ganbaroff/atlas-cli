@@ -14,7 +14,7 @@ import {
   type RouteAvailability,
   type RouteTaskInput,
 } from '../atlas/cost-router-classify.js';
-import { createGoalRouterRecord, loadGoalRouterRecord } from '../atlas/cost-router-state.js';
+import { assertCostRouterReceipt, createGoalRouterRecord, loadGoalRouterRecord } from '../atlas/cost-router-state.js';
 
 const NOW = '2026-07-30T00:00:00.000Z';
 const EXPIRES = '2026-07-30T00:30:00.000Z';
@@ -176,6 +176,56 @@ describe('atlas/cost-router-classify', () => {
         expect.objectContaining({ reason: 'route_disabled', route: 'T2' })
       );
       expect(() => checkRouteAvailability('T0', availability)).not.toThrow();
+    });
+  });
+
+  describe('M2D repair: every refusal carries a receipt (independent review found none did)', () => {
+    /** Shared assertion for every refusal-class test below. */
+    function assertRefusalReceipt(error: unknown, reason: string): void {
+      expect(error).toBeInstanceOf(Error);
+      const receipt = (error as { receipt?: unknown }).receipt;
+      expect(receipt).toBeDefined();
+      // Built and validated by the SAME assertCostRouterReceipt used on the
+      // success path — no second, laxer builder.
+      expect(() => assertCostRouterReceipt(receipt as Parameters<typeof assertCostRouterReceipt>[0])).not.toThrow();
+      const r = receipt as { blocker: string; nextAction: string };
+      expect(r.blocker).toBeTruthy();
+      expect(r.nextAction).toBeTruthy();
+      expect(r.blocker).toContain(reason);
+    }
+
+    it('route_disabled (checkRouteAvailability) carries a fully populated receipt', () => {
+      const availability: RouteAvailability = { ...DEFAULT_ROUTE_AVAILABILITY, T2: false };
+      try {
+        checkRouteAvailability('T2', availability);
+        throw new Error('expected checkRouteAvailability to throw');
+      } catch (error) {
+        assertRefusalReceipt(error, 'route_disabled');
+      }
+    });
+
+    it('unclassifiable (classifyRoute) carries a fully populated receipt with NOT_APPLICABLE for fields that cannot apply before a route is resolved', () => {
+      try {
+        classifyRoute({ taskId: 'task-unclassifiable-receipt' });
+        throw new Error('expected classifyRoute to throw');
+      } catch (error) {
+        assertRefusalReceipt(error, 'unclassifiable');
+        const receipt = (error as { receipt: { provider: unknown; sources: unknown } }).receipt;
+        expect(receipt.provider).toBe('not-applicable');
+        expect(receipt.sources).toBe('not-applicable');
+      }
+    });
+
+    it('t3_trigger_missing (classifyRoute) carries a fully populated receipt', () => {
+      try {
+        classifyRoute({ taskId: 'task-t3-trigger-missing-receipt', needsPremiumReasoning: true });
+        throw new Error('expected classifyRoute to throw');
+      } catch (error) {
+        assertRefusalReceipt(error, 't3_trigger_missing');
+        const receipt = (error as { receipt: { provider: unknown; sources: unknown } }).receipt;
+        expect(receipt.provider).toBe('not-applicable');
+        expect(receipt.sources).toBe('not-applicable');
+      }
     });
   });
 });

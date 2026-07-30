@@ -14,13 +14,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   acquirePremiumOwner,
+  assertCostRouterReceipt,
   claimScheduledAsyncResume,
   consumeLocalSlice,
   createGoalRouterRecord,
   loadGoalRouterRecord,
+  NOT_APPLICABLE,
   recordRetryEvent,
   registerAsyncResearchHandle,
   releasePremiumOwner,
+  type CostRouterReceipt,
 } from '../atlas/cost-router-state.js';
 
 const NOW = '2026-07-30T00:00:00.000Z';
@@ -744,6 +747,38 @@ describe('atlas/cost-router-state', () => {
         transportRetries: 0,
         providerFailovers: 0,
       });
+    });
+  });
+
+  describe('M2D repair: assertCostRouterReceipt rejects an empty sources array', () => {
+    function receiptWith(sources: CostRouterReceipt['sources']): CostRouterReceipt {
+      return {
+        provider: 'trusted-keyed-1',
+        elapsedMs: 0,
+        sources,
+        retries: { transportRetries: 0, providerFailovers: 0 },
+        privacyDecision: 'cleared',
+        costClass: 'free',
+        verifierStatus: NOT_APPLICABLE,
+        blocker: NOT_APPLICABLE,
+        nextAction: 'deliver result to caller',
+      };
+    }
+
+    it('rejects an empty sources array — a route with no sources must use NOT_APPLICABLE, never []', () => {
+      expect(() => assertCostRouterReceipt(receiptWith([]))).toThrow(
+        expect.objectContaining({ code: 'cost_router_receipt_invalid' })
+      );
+    });
+
+    it('accepts the NOT_APPLICABLE marker for sources', () => {
+      expect(() => assertCostRouterReceipt(receiptWith(NOT_APPLICABLE))).not.toThrow();
+    });
+
+    it('accepts a genuinely populated sources array', () => {
+      expect(() =>
+        assertCostRouterReceipt(receiptWith(['https://example.test/source']))
+      ).not.toThrow();
     });
   });
 });

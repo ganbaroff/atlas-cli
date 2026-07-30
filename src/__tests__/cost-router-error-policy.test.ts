@@ -16,7 +16,7 @@ import {
   type RouteAvailability,
 } from '../atlas/cost-router-classify.js';
 import { withTrustedTables } from '../atlas/cost-router-test-seam.js';
-import { createGoalRouterRecord } from '../atlas/cost-router-state.js';
+import { assertCostRouterReceipt, createGoalRouterRecord } from '../atlas/cost-router-state.js';
 
 const NOW = '2026-07-30T00:00:00.000Z';
 
@@ -226,6 +226,36 @@ describe('atlas/cost-router-classify: M2B error buckets and availability enforce
         }),
       ).rejects.toMatchObject({ reason: 'availability_not_checked' });
 
+      expect(attempt).not.toHaveBeenCalled();
+    });
+
+    it('M2D repair: the availability_not_checked refusal carries a fully populated receipt', async () => {
+      const forged = { route: 'T2', predicate: 'forged' } as unknown as AvailableRoute;
+      const attempt = vi.fn();
+
+      try {
+        await runTrustedRoutedAttempt({
+          route: forged,
+          goalId: 'goal-forged-receipt',
+          taskId: 'task-forged-receipt-1',
+          now: NOW,
+          currentProvider: { providerId: 'p1', tier: 'free' },
+          attempt,
+          briefClearance: STRONG_CLASS,
+        });
+        throw new Error('expected runTrustedRoutedAttempt to throw');
+      } catch (error) {
+        expect(error).toMatchObject({ reason: 'availability_not_checked' });
+        const receipt = (error as { receipt?: unknown }).receipt;
+        expect(receipt).toBeDefined();
+        expect(() =>
+          assertCostRouterReceipt(receipt as Parameters<typeof assertCostRouterReceipt>[0]),
+        ).not.toThrow();
+        const r = receipt as { blocker: string; nextAction: string };
+        expect(r.blocker).toBeTruthy();
+        expect(r.nextAction).toBeTruthy();
+        expect(r.blocker).toContain('availability_not_checked');
+      }
       expect(attempt).not.toHaveBeenCalled();
     });
   });

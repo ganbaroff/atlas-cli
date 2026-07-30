@@ -83,10 +83,58 @@ export class RouteRefusalError extends Error {
     readonly reason: RouteRefusalReason,
     readonly route: RouteTier | undefined,
     message: string,
+    /**
+     * M2D repair: a refusal is exactly the outcome that most needs a
+     * receipt, so every `RouteRefusalError` carries one from construction —
+     * never optional, never attached after the fact.
+     */
+    readonly receipt: CostRouterReceipt,
   ) {
     super(message);
     this.name = 'RouteRefusalError';
   }
+}
+
+/**
+ * M2D repair: elapsed time for a refusal built outside `executeRoutedAttempt`
+ * (where `startedAt` is already in scope). Genuinely measured from function
+ * entry to throw, never fabricated — usually near-zero since these are pure
+ * checks, but it is a real `Date.now()` delta, not a hardcoded value.
+ */
+function elapsedSince(startedAt: number): number {
+  return Math.max(0, Date.now() - startedAt);
+}
+
+/**
+ * M2D repair: the single receipt builder for every refusal this module
+ * throws. Reuses `assertCostRouterReceipt` — the exact same validator the
+ * success path in `executeRoutedAttempt` uses — so a refusal receipt can
+ * never be a second, laxer shape. Fields the caller does not pass default to
+ * `NOT_APPLICABLE` (or the zero-retries object, which is always accurate for
+ * a refusal: no attempt was made, so no retry could have happened).
+ */
+function buildRefusalReceipt(args: {
+  provider?: CostRouterReceipt['provider'];
+  sources?: CostRouterReceipt['sources'];
+  privacyDecision?: CostRouterReceipt['privacyDecision'];
+  costClass?: CostRouterReceipt['costClass'];
+  elapsedMs: number;
+  blocker: string;
+  nextAction: string;
+}): CostRouterReceipt {
+  const receipt: CostRouterReceipt = {
+    provider: args.provider ?? NOT_APPLICABLE,
+    elapsedMs: args.elapsedMs,
+    sources: args.sources ?? NOT_APPLICABLE,
+    retries: { transportRetries: 0, providerFailovers: 0 },
+    privacyDecision: args.privacyDecision ?? NOT_APPLICABLE,
+    costClass: args.costClass ?? NOT_APPLICABLE,
+    verifierStatus: NOT_APPLICABLE,
+    blocker: args.blocker,
+    nextAction: args.nextAction,
+  };
+  assertCostRouterReceipt(receipt);
+  return receipt;
 }
 
 interface RoutePredicate {
@@ -134,15 +182,23 @@ const T3_TRIGGER_SET: ReadonlySet<string> = new Set(T3_TRIGGERS);
  * objective triggers. Never returns a route it cannot justify.
  */
 export function classifyRoute(task: RouteTaskInput): RouteMatch {
+  const startedAt = Date.now();
   for (const predicate of ROUTE_PREDICATES) {
     if (!predicate.test(task)) continue;
 
     if (predicate.route === 'T3') {
       if (!task.trigger || !T3_TRIGGER_SET.has(task.trigger)) {
+        const message = `task ${task.taskId} routed T3 without one of the mandatory triggers: ${T3_TRIGGERS.join(', ')}`;
         throw new RouteRefusalError(
           't3_trigger_missing',
           'T3',
-          `task ${task.taskId} routed T3 without one of the mandatory triggers: ${T3_TRIGGERS.join(', ')}`,
+          message,
+          buildRefusalReceipt({
+            elapsedMs: elapsedSince(startedAt),
+            blocker: `t3_trigger_missing: ${message}`,
+            nextAction:
+              'supply one of the mandatory T3 triggers on the task before retrying',
+          }),
         );
       }
       return { route: 'T3', predicate: predicate.name, trigger: task.trigger };
@@ -151,10 +207,17 @@ export function classifyRoute(task: RouteTaskInput): RouteMatch {
     return { route: predicate.route, predicate: predicate.name };
   }
 
+  const message = `task ${task.taskId} matched no route predicate; refusing rather than defaulting`;
   throw new RouteRefusalError(
     'unclassifiable',
     undefined,
-    `task ${task.taskId} matched no route predicate; refusing rather than defaulting`,
+    message,
+    buildRefusalReceipt({
+      elapsedMs: elapsedSince(startedAt),
+      blocker: `unclassifiable: ${message}`,
+      nextAction:
+        'set one objective capability flag (deterministicTool/needsWebResearch/needsLocalWorker/needsPremiumReasoning) that matches a route predicate before retrying',
+    }),
   );
 }
 
@@ -182,11 +245,19 @@ export function checkRouteAvailability(
   route: RouteTier,
   availability: RouteAvailability = DEFAULT_ROUTE_AVAILABILITY,
 ): void {
+  const startedAt = Date.now();
   if (!availability[route]) {
+    const message = `route ${route} is disabled or its provider is unavailable; refusing rather than falling through to another route`;
     throw new RouteRefusalError(
       'route_disabled',
       route,
-      `route ${route} is disabled or its provider is unavailable; refusing rather than falling through to another route`,
+      message,
+      buildRefusalReceipt({
+        elapsedMs: elapsedSince(startedAt),
+        blocker: `route_disabled: ${message}`,
+        nextAction:
+          'wait for the route to become available, or route this task to a different available tier',
+      }),
     );
   }
 }
@@ -254,10 +325,18 @@ function assertRouteAvailabilityChecked(
   route: AvailableRoute,
 ): asserts route is AvailableRoute {
   if (!route || typeof route !== 'object' || !RESOLVED_ROUTES.has(route)) {
+    const startedAt = Date.now();
+    const message = 'route was not obtained from resolveRoute(); availability was never checked';
     throw new RouteRefusalError(
       'availability_not_checked',
       (route as RouteMatch | undefined)?.route,
-      'route was not obtained from resolveRoute(); availability was never checked',
+      message,
+      buildRefusalReceipt({
+        elapsedMs: elapsedSince(startedAt),
+        blocker: `availability_not_checked: ${message}`,
+        nextAction:
+          'call resolveRoute() to obtain a genuinely availability-checked route before spending a provider attempt',
+      }),
     );
   }
 }
@@ -286,12 +365,20 @@ export async function acquireT3RouteOwner(
   availability: RouteAvailability = DEFAULT_ROUTE_AVAILABILITY,
   options?: GoalRouterStateOptions,
 ): Promise<{ match: RouteMatch; record: DurableGoalRouterRecord }> {
+  const startedAt = Date.now();
   const match = resolveRoute(task, availability);
   if (match.route !== 'T3') {
+    const message = `task ${task.taskId} did not classify to T3 (got ${match.route}); refusing premium acquisition`;
     throw new RouteRefusalError(
       'unclassifiable',
       match.route,
-      `task ${task.taskId} did not classify to T3 (got ${match.route}); refusing premium acquisition`,
+      message,
+      buildRefusalReceipt({
+        elapsedMs: elapsedSince(startedAt),
+        blocker: `unclassifiable: ${message}`,
+        nextAction:
+          'route this task through the tier it actually classified to, or supply flags that classify it to T3 before requesting premium ownership',
+      }),
     );
   }
 
@@ -435,9 +522,29 @@ export class ClearanceRefusalError extends Error {
     readonly requiredClass: ProviderClass,
     readonly actualClass: ProviderClass | undefined,
     message: string,
+    /** M2D repair: same guarantee as `RouteRefusalError.receipt` — never optional. */
+    readonly receipt: CostRouterReceipt,
   ) {
     super(message);
     this.name = 'ClearanceRefusalError';
+  }
+}
+
+/** M2D repair: concrete next step per signature-verification refusal reason. */
+function clearanceVerificationNextAction(reason: ClearanceRefusalReason): string {
+  switch (reason) {
+    case 'exception_unsigned':
+      return 'sign the clearance exception with the operator-held key before retrying';
+    case 'exception_signature_mismatch':
+      return 're-sign the clearance exception; the signature did not match its canonical fields';
+    case 'exception_signature_expired':
+      return 'issue a fresh clearance exception; the previous signature is older than the accepted window';
+    case 'exception_signature_replayed':
+      return 'issue a fresh clearance exception; this nonce was already spent';
+    case 'exception_signing_key_not_configured':
+      return 'configure ATLAS_CLEARANCE_SIGNING_KEY before permitting any cross-class clearance exception';
+    default:
+      return 'escalate for manual review of the clearance exception';
   }
 }
 
@@ -580,23 +687,38 @@ export function assertDestinationClearance(
   destination: ProviderClass | undefined,
   exception?: ClearanceException,
 ): void {
+  const startedAt = Date.now();
   if (!destination) {
+    const message = 'destination declared no provider class; refusing rather than assuming clearance';
     throw new ClearanceRefusalError(
       'destination_class_unknown',
       required,
       undefined,
-      'destination declared no provider class; refusing rather than assuming clearance',
+      message,
+      buildRefusalReceipt({
+        elapsedMs: elapsedSince(startedAt),
+        blocker: `destination_class_unknown: ${message}`,
+        nextAction:
+          'declare the destination provider class in the provider-class table before routing to it',
+      }),
     );
   }
 
   const effectiveRequired = exception ? exception.permittedClass : required;
   if (!isWeakerClass(destination, effectiveRequired)) return;
 
+  const message = 'destination class is weaker than the brief was cleared for; refusing rather than sending silently';
   throw new ClearanceRefusalError(
     'destination_class_too_weak',
     required,
     destination,
-    'destination class is weaker than the brief was cleared for; refusing rather than sending silently',
+    message,
+    buildRefusalReceipt({
+      elapsedMs: elapsedSince(startedAt),
+      blocker: `destination_class_too_weak: ${message}`,
+      nextAction:
+        'obtain a signed operator clearance exception permitting this destination class, or route to a destination that meets the required class',
+    }),
   );
 }
 
@@ -761,11 +883,17 @@ async function executeRoutedAttempt(
       createNonceLedger(ledgerDir),
     );
     if (!verification.ok) {
+      const message = `clearance exception for task ${params.taskId} failed signature verification: ${verification.reason}`;
       throw new ClearanceRefusalError(
         verification.reason,
         params.briefClearance,
         undefined,
-        `clearance exception for task ${params.taskId} failed signature verification: ${verification.reason}`,
+        message,
+        buildRefusalReceipt({
+          elapsedMs: elapsedSince(startedAt),
+          blocker: `${verification.reason}: ${message}`,
+          nextAction: clearanceVerificationNextAction(verification.reason),
+        }),
       );
     }
     verifiedClearanceException = params.clearanceException;

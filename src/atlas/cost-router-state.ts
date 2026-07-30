@@ -291,8 +291,8 @@ export const costRouterReceiptSchema = z.object({
   provider: maybeNotApplicableStringSchema,
   /** Wall-clock milliseconds spent executing the routed attempt. Always applicable, including 0 for zero-call outcomes. */
   elapsedMs: nonNegativeIntegerSchema,
-  /** Sources returned by a research-style provider, or NOT_APPLICABLE for routes/providers that never return sources. */
-  sources: z.union([z.array(z.string().min(1)), notApplicableSchema]),
+  /** Sources returned by a research-style provider, or NOT_APPLICABLE for routes/providers that never return sources. An empty array is invalid — a route with zero sources must use NOT_APPLICABLE, never `[]`, so a reader never has to guess whether an empty array means "checked, found nothing" or "never populated". */
+  sources: z.union([z.array(z.string().min(1)).min(1), notApplicableSchema]),
   /** Same-provider transport retries and non-premium provider failovers actually spent on this attempt. Always applicable. */
   retries: z
     .object({
