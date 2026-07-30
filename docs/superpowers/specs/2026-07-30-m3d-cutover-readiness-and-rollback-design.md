@@ -77,10 +77,11 @@ shell execution, or self-certification.
 ## M3D-A — state-root activation
 
 The `state-root.ts` registry now covers 23 stores. Cost Router uses the direct
-resolver; A2 slices 1-9 route exec-graph, evidence, goal budgets, swarm runs,
+resolver; A2 slices 1-10 route exec-graph, evidence, goal budgets, swarm runs,
 intake drafts, operator state/runs, task results, learning state, the global
 spend receipt writer, instance lease, provider health, breadcrumbs, queue-auth,
-notify-queue, and opsboard-exchange through a compatibility bridge.
+notify-queue, opsboard-exchange, alert-state, emotion-audit, repo-watch, and
+shell-audit through a compatibility bridge.
 Explicit test/legacy roots remain valid before activation but cannot bypass a
 required activated root. File-level operator overrides must be strict
 junction-aware children of `operator-runs`, and registered default store
@@ -94,9 +95,14 @@ mutation while ordinary telemetry failures remain non-blocking. Queue file
 stores derive fixed activated leaves and reject both live and dangling leaf
 symlinks before I/O. OPSBOARD's goal-request port now validates the
 correlation id before resolving its exchange directories, so a rejected
-request creates no exchange-tree residue. Remaining classified families are
-split across alert-state, emotion-audit, repo-watch, shell-audit,
-pause-control, and runner-log.
+request creates no exchange-tree residue. Slice 10 migrated alert-state,
+emotion-audit, repo-watch, and shell-audit: state reads rethrow activation
+denials instead of fabricating empty state, best-effort audit appends stay
+never-throw but write nothing anywhere (residue-free) on invalid activation,
+and shell-audit — shared by fs-guard and shell tooling — is resolved at call
+time rather than import time. This leaves only the external writers
+pause-control and runner-log classified for cutover, not call-site
+migration.
 
 Before migration, classify every filesystem writer into exactly one category:
 

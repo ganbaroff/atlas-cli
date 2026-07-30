@@ -23,7 +23,10 @@ product systems as adapters rather than competing brains.
 
 **Current point:** M3 Shadow Consolidation, package M3C **VERIFIED** and M3D
 rollback/cutover packet **WRITTEN**; M3D-A1 inventory/activation contract and
-M3D-A2 state-family slices 1-9 are done; remaining call-site families are next.
+M3D-A2 state-family slices 1-10 are done; every production-TypeScript store
+family is migrated; the two remaining registered stores (pause-control,
+runner-log) are external writers handled at cutover, not by call-site
+migration.
 M1, fake-only M2, strict M3A,
 synthetic M3B, and one real retained-copy rehearsal are complete on a local
 branch. Physical consolidation is NO-GO. Live provider traffic has not started.
@@ -185,8 +188,26 @@ flowchart LR
    previous reviewer lane was already closed and its quota is exhausted; this
    is recorded honestly as `UNVERIFIED`, with closure resting on local
    RED→GREEN plus command evidence.
-   Remaining families plus expected-role/source-receipt
-   provenance are still open. Physical
+   Slice 10 is complete at `5fd6b29`: the last four production-TypeScript
+   file-shaped stores — `alert-state` (src/atlas/autonomy-loop.ts),
+   `emotion-audit` (src/atlas/emotional-safety.ts), `repo-watch`
+   (src/atlas/repo-watch.ts), and `shell-audit` (shared by
+   src/tools/fs-guard.ts and src/tools/shell.ts) — now route through
+   `resolveMigratingStateFile`. Legacy env/default placement is preserved
+   before activation; after required activation each store derives one fixed
+   leaf under `<root>/<store>/`, escaped overrides are ignored, and leaf
+   symlinks are refused. State reads rethrow activation denials instead of
+   fabricating empty state; best-effort audit appends (`logToneShift`,
+   `auditFsOp`, shell audit) keep their never-throw contracts but write
+   nothing anywhere on invalid activation. `shell-audit` became a call-time
+   resolver — the import-time `AUDIT_LOG_PATH` constant is gone. Independent
+   verification re-ran 122/122 tests across 4 files and `tsc` clean. With
+   slice 10, every production-TypeScript store family in the registry is
+   migrated; the only remaining registered stores, `pause-control` and
+   `runner-log`, are written outside production TypeScript (desktop panic
+   control; `scripts/start-runner.cmd`) and are handled at activation/cutover,
+   not by call-site migration.
+   Expected-role/source-receipt provenance is still open. Physical
    cutover remains a separate Yusif gate after M3D-A through M3D-D.
 
 ### Current CEO control

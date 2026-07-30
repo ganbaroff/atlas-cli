@@ -61,8 +61,13 @@ recovery gates before any Atlas repository move or live binding change.
 - [x] Migrate slice 8 (`queue-auth`, `notify-queue`); preserve legacy directory
       and file overrides before activation, derive fixed activated leaves, and
       refuse existing or dangling leaf symlinks before state I/O.
-- [ ] Migrate remaining call sites in small store-family slices; keep explicit
-      temporary roots in tests before activation.
+- [x] Migrate slice 10 (alert-state, emotion-audit, repo-watch, shell-audit);
+      rethrow activation denials from state reads, keep never-throw audit
+      appends residue-free, and resolve the shared shell-audit leaf at call
+      time.
+- [x] Migrate remaining call sites in small store-family slices; keep explicit
+      temporary roots in tests before activation. (complete as of slice 10;
+      pause-control and runner-log are external writers handled at cutover)
 - [ ] Prove CWD/code-root invariance and no writes to checkout paths.
 - [ ] Before any live activation, bind the manifest to an externally expected
       node role and verify allowlisted source-receipt artifacts/hashes; fields
@@ -163,6 +168,20 @@ verified by `git apply --check --reverse`. Evidence: focused 3 files/57/57
 tests; wider affected matrix 10 files/226/226 tests; clean typecheck; 0 staged
 secret-scan hits. Independent review was not obtained (previous reviewer lane
 closed, quota exhausted) and is recorded as `UNVERIFIED`.
+
+A2 slice-10 checkpoint `5fd6b29`: the last four production-TypeScript
+file-shaped stores — `alert-state`, `emotion-audit`, `repo-watch`, and
+`shell-audit` — now use the migration bridge. Legacy env/default placement is
+preserved before activation; after required activation each store derives one
+fixed leaf under `<root>/<store>/`, escaped overrides are ignored, and leaf
+symlinks are refused. State reads rethrow activation denials instead of
+fabricating empty state; best-effort audit appends (`logToneShift`,
+`auditFsOp`, shell audit) keep their never-throw contracts but write nothing
+anywhere on invalid activation. `shell-audit` became a call-time resolver —
+the import-time `AUDIT_LOG_PATH` constant is gone. Independently re-run:
+122/122 tests across 4 files, clean typecheck. With slice 10, call-site
+migration is complete; only the external writers `pause-control` and
+`runner-log` remain, handled at cutover.
 
 ---
 
