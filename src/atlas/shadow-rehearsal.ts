@@ -98,13 +98,16 @@ export interface RehearsalReceipt {
 class RollbackVerifiedToken {
   constructor(
     readonly shadowRoot: string,
+    readonly source: ExecGraphInspection,
+    readonly childReplay: ChildReplayResult,
+    readonly parity: ShadowStateComparison,
     readonly verifiedAt: string,
   ) {}
 }
 
 const recognizedRollbackTokens = new WeakSet<RollbackVerifiedToken>();
 
-export type RollbackToken = RollbackVerifiedToken;
+type RollbackToken = RollbackVerifiedToken;
 
 function isRecognizedRollbackToken(candidate: unknown): candidate is RollbackVerifiedToken {
   return candidate instanceof RollbackVerifiedToken && recognizedRollbackTokens.has(candidate);
@@ -311,7 +314,7 @@ export function assertStrictParity(
 
 // --- Rollback ---------------------------------------------------------------
 
-export function executeRollback(shadowRoot: string): void {
+function executeRollback(shadowRoot: string): void {
   rmSync(shadowRoot, { recursive: true, force: true });
 }
 
@@ -321,14 +324,37 @@ export function executeRollback(shadowRoot: string): void {
  * Only on success does this mint a token; the mint is the only place
  * `recognizedRollbackTokens` is written to.
  */
-export function verifyRollback(
+function verifyRollback(
   shadowRoot: string,
   sourceBeforeCopy: ExecGraphInspection,
+  childReplay: ChildReplayResult,
+  parity: ShadowStateComparison,
 ): RollbackToken {
-  if (existsSync(shadowRoot)) {
+  const resolvedShadowRoot = resolve(shadowRoot);
+  if (existsSync(resolvedShadowRoot)) {
     throw new ShadowRehearsalError(
       'rollback_not_executed',
-      `shadow root still exists after rollback: ${shadowRoot}`,
+      `shadow root still exists after rollback: ${resolvedShadowRoot}`,
+    );
+  }
+
+  const childMatchesParity =
+    childReplay.ledgerSha256 === parity.candidate.ledgerSha256 &&
+    childReplay.snapshotSha256 === parity.candidate.snapshotSha256 &&
+    childReplay.semanticSha256 === parity.candidate.semanticSha256 &&
+    childReplay.eventCount === parity.candidate.eventCount &&
+    childReplay.goalCount === parity.candidate.goalCount &&
+    childReplay.taskCount === parity.candidate.taskCount;
+  if (
+    !parity.accepted ||
+    resolve(parity.source.directory) !== resolve(sourceBeforeCopy.directory) ||
+    resolve(parity.candidate.directory) !== resolvedShadowRoot ||
+    resolve(childReplay.directory) !== resolvedShadowRoot ||
+    !childMatchesParity
+  ) {
+    throw new ShadowRehearsalError(
+      'rollback_verification_failed',
+      'rollback proof does not belong to this source, shadow root, and accepted replay',
     );
   }
 
@@ -344,22 +370,21 @@ export function verifyRollback(
     );
   }
 
-  const token = new RollbackVerifiedToken(resolve(shadowRoot), new Date().toISOString());
+  const token = new RollbackVerifiedToken(
+    resolvedShadowRoot,
+    sourceAfterRollback,
+    childReplay,
+    parity,
+    new Date().toISOString(),
+  );
   recognizedRollbackTokens.add(token);
   return token;
 }
 
 // --- Receipt ----------------------------------------------------------------
 
-export function writeRehearsalReceipt(
+function writeRehearsalReceipt(
   token: RollbackToken,
-  payload: {
-    readonly sourceDirectory: string;
-    readonly shadowRoot: string;
-    readonly source: ExecGraphInspection;
-    readonly childReplay: ChildReplayResult;
-    readonly parity: ShadowStateComparison;
-  },
   receiptPath?: string,
 ): RehearsalReceipt {
   if (!isRecognizedRollbackToken(token)) {
@@ -368,7 +393,7 @@ export function writeRehearsalReceipt(
       'refusing to write a rehearsal receipt: rollback token is not a recognized instance minted by verifyRollback',
     );
   }
-  if (!payload.parity.accepted) {
+  if (!token.parity.accepted) {
     throw new ShadowRehearsalError(
       'parity_mismatch',
       'refusing to write a rehearsal receipt: parity comparison was not accepted',
@@ -376,17 +401,17 @@ export function writeRehearsalReceipt(
   }
 
   const receipt: RehearsalReceipt = {
-    sourceDirectory: resolve(payload.sourceDirectory),
-    shadowRoot: resolve(payload.shadowRoot),
-    sourceLedgerSha256: payload.source.ledgerSha256,
-    sourceSnapshotSha256: payload.source.snapshotSha256,
-    sourceSemanticSha256: payload.source.semanticSha256,
-    childReplayEventCount: payload.childReplay.eventCount,
-    childReplayGoalCount: payload.childReplay.goalCount,
-    childReplayTaskCount: payload.childReplay.taskCount,
+    sourceDirectory: token.source.directory,
+    shadowRoot: token.shadowRoot,
+    sourceLedgerSha256: token.source.ledgerSha256,
+    sourceSnapshotSha256: token.source.snapshotSha256,
+    sourceSemanticSha256: token.source.semanticSha256,
+    childReplayEventCount: token.childReplay.eventCount,
+    childReplayGoalCount: token.childReplay.goalCount,
+    childReplayTaskCount: token.childReplay.taskCount,
     parityAccepted: true,
     rollbackVerified: true,
-    rehearsalCompletedAt: new Date().toISOString(),
+    rehearsalCompletedAt: token.verifiedAt,
   };
 
   if (receiptPath) {
@@ -454,19 +479,9 @@ export function runShadowRehearsal(
     const parity = assertStrictParity(resolvedSource, shadowRoot, childReplay);
 
     executeRollback(shadowRoot);
-    const token = verifyRollback(shadowRoot, sourceAfterCopy);
+    const token = verifyRollback(shadowRoot, sourceAfterCopy, childReplay, parity);
 
-    return writeRehearsalReceipt(
-      token,
-      {
-        sourceDirectory: resolvedSource,
-        shadowRoot,
-        source: sourceAfterCopy,
-        childReplay,
-        parity,
-      },
-      options.receiptPath,
-    );
+    return writeRehearsalReceipt(token, options.receiptPath);
   } catch (error) {
     try {
       rmSync(shadowRoot, { recursive: true, force: true });

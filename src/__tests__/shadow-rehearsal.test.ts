@@ -19,8 +19,6 @@ import {
   copyExecGraphDirectoryAtomic,
   coldReplayExecGraphDirectory,
   runShadowRehearsal,
-  verifyRollback,
-  writeRehearsalReceipt,
   type ChildReplayResult,
 } from '../atlas/shadow-rehearsal.js';
 
@@ -180,95 +178,12 @@ describe('atlas/shadow-rehearsal', () => {
 
   // --- rollback token -----------------------------------------------------
 
-  it('refuses verifyRollback when the shadow root was never removed', () => {
-    const source = writeValidGraphFixture('source');
-    const workDir = mkdtempSync(join(tmpdir(), 'atlas-shadow-work-'));
-    try {
-      const shadowRoot = copyExecGraphDirectoryAtomic(source, workDir, 'shadow');
-      const sourceInspection = inspectExecGraphDirectory(source);
+  it('does not expose rollback-token minting or receipt-writing primitives', async () => {
+    const api = await import('../atlas/shadow-rehearsal.js');
 
-      expect(() => verifyRollback(shadowRoot, sourceInspection)).toThrow(
-        expect.objectContaining({ code: 'rollback_not_executed' }),
-      );
-    } finally {
-      rmSync(workDir, { recursive: true, force: true });
-    }
-  });
-
-  it('refuses a receipt built from a fabricated token', () => {
-    const source = writeValidGraphFixture('source');
-    const sourceInspection = inspectExecGraphDirectory(source);
-    const parity = assertStrictParity(source, source, {
-      directory: source,
-      ledgerSha256: sourceInspection.ledgerSha256,
-      snapshotSha256: sourceInspection.snapshotSha256,
-      semanticSha256: sourceInspection.semanticSha256,
-      eventCount: sourceInspection.eventCount,
-      goalCount: sourceInspection.goalCount,
-      taskCount: sourceInspection.taskCount,
-    });
-
-    const fabricated = { shadowRoot: source, verifiedAt: NOW } as unknown as Parameters<
-      typeof writeRehearsalReceipt
-    >[0];
-
-    expect(() =>
-      writeRehearsalReceipt(fabricated, {
-        sourceDirectory: source,
-        shadowRoot: source,
-        source: sourceInspection,
-        childReplay: parity.candidate,
-        parity,
-      }),
-    ).toThrow(expect.objectContaining({ code: 'rollback_token_invalid' }));
-  });
-
-  it('refuses a receipt built from a spread copy of a genuine token', () => {
-    const source = writeValidGraphFixture('source');
-    const workDir = mkdtempSync(join(tmpdir(), 'atlas-shadow-work-'));
-    try {
-      const shadowRoot = copyExecGraphDirectoryAtomic(source, workDir, 'shadow');
-      const sourceInspection = inspectExecGraphDirectory(source);
-      rmSync(shadowRoot, { recursive: true, force: true });
-      const genuineToken = verifyRollback(shadowRoot, sourceInspection);
-
-      const spreadCopy = { ...genuineToken } as unknown as Parameters<
-        typeof writeRehearsalReceipt
-      >[0];
-      const assignCopy = Object.assign({}, genuineToken) as unknown as Parameters<
-        typeof writeRehearsalReceipt
-      >[0];
-
-      const parity = assertStrictParity(source, source, {
-        directory: source,
-        ledgerSha256: sourceInspection.ledgerSha256,
-        snapshotSha256: sourceInspection.snapshotSha256,
-        semanticSha256: sourceInspection.semanticSha256,
-        eventCount: sourceInspection.eventCount,
-        goalCount: sourceInspection.goalCount,
-        taskCount: sourceInspection.taskCount,
-      });
-      const payload = {
-        sourceDirectory: source,
-        shadowRoot,
-        source: sourceInspection,
-        childReplay: parity.candidate,
-        parity,
-      };
-
-      expect(() => writeRehearsalReceipt(spreadCopy, payload)).toThrow(
-        expect.objectContaining({ code: 'rollback_token_invalid' }),
-      );
-      expect(() => writeRehearsalReceipt(assignCopy, payload)).toThrow(
-        expect.objectContaining({ code: 'rollback_token_invalid' }),
-      );
-
-      // The genuine token, unmodified, still works.
-      const receipt = writeRehearsalReceipt(genuineToken, payload);
-      expect(receipt.rollbackVerified).toBe(true);
-    } finally {
-      rmSync(workDir, { recursive: true, force: true });
-    }
+    expect(api).not.toHaveProperty('executeRollback');
+    expect(api).not.toHaveProperty('verifyRollback');
+    expect(api).not.toHaveProperty('writeRehearsalReceipt');
   });
 
   // --- strict parity ------------------------------------------------------
