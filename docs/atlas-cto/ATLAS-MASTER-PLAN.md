@@ -22,10 +22,10 @@ one Telegram poller, one local PC/browser executor, cost-aware research, and
 product systems as adapters rather than competing brains.
 
 **Current point:** M3 Shadow Consolidation, package M3C **VERIFIED** and M3D
-rollback/cutover packet **WRITTEN**; M3D-A state-root activation is next. M1,
-fake-only M2, strict M3A, synthetic M3B, and one real retained-copy rehearsal
-are complete on a local branch. Physical consolidation is NO-GO. Live provider
-traffic has not started.
+rollback/cutover packet **WRITTEN**; M3D-A1 inventory/activation contract is
+done and M3D-A2 call-site migration is next. M1, fake-only M2, strict M3A,
+synthetic M3B, and one real retained-copy rehearsal are complete on a local
+branch. Physical consolidation is NO-GO. Live provider traffic has not started.
 
 ```mermaid
 flowchart LR
@@ -124,8 +124,12 @@ flowchart LR
    scheduler, Railway path binding, and ANUS-only `.env`. Code inspection also
    found incomplete root routing, four mutators missing read-only enforcement,
    non-transactional ledger writes, and effect replay ambiguity after crash.
-   M3D-A state inventory/root activation is next. Physical cutover remains a
-   separate Yusif gate after M3D-A through M3D-D.
+   M3D-A1 is complete at `97a300e`: source inventory covers 44 production
+   writer files and 23 classified root stores; explicit activation manifest,
+   unknown-mode refusal, complete-store binding, and junction-aware containment
+   pass 132/132 affected tests plus typecheck. M3D-A2 call-site migration is
+   next. Physical cutover remains a separate Yusif gate after M3D-A through
+   M3D-D.
 
 ### Current CEO control
 

@@ -32,12 +32,12 @@ recovery gates before any Atlas repository move or live binding change.
 - Add: source-level inventory fixture/allowlist if needed
 - Update: M3D design only when source evidence changes it
 
-- [ ] Enumerate every production filesystem write call under `src/` and assign
+- [x] Enumerate every production filesystem write call under `src/` and assign
       authoritative, operational, ephemeral, or configuration/content.
-- [ ] Observe RED for an unclassified writer and for production activation
+- [x] Observe RED for an unclassified writer and for production activation
       without an explicit stable root.
-- [ ] Add complete classified registry and activation-manifest validation.
-- [ ] Refuse classified legacy overrides that escape an activated root.
+- [x] Add complete classified registry and activation-manifest validation.
+- [x] Refuse classified legacy overrides that escape an activated root.
 - [ ] Migrate call sites in small store-family slices; keep explicit temporary
       roots in tests.
 - [ ] Prove CWD/code-root invariance and no writes to checkout paths.
@@ -46,6 +46,12 @@ recovery gates before any Atlas repository move or live binding change.
 
 Done bar: all production writers classified; all authoritative/selected
 operational paths resolve under one explicit root; activation fails closed.
+
+A1 checkpoint `97a300e`: 44 production writer files are source-scanned, 23
+root-managed stores are classified, activation requires an explicit root plus
+strict complete manifest, and lexical/junction escapes fail closed. Evidence:
+8 affected files, 132/132 tests, clean typecheck and diff-check. Call-site
+migration and live activation remain open.
 
 ---
 

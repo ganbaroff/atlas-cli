@@ -7,9 +7,10 @@ Updated: 2026-07-30 Baku
 ATLAS is preserved and recoverable, but physical consolidation and live
 multi-provider research remain **NO-GO**. Durable foundation M1 and fake-only
 Cost Router M2 and M3C retained-copy rehearsal are verified locally. M3D
-rollback/cutover design and TDD plan are written; M3D-A state-root activation is
-next. Physical movement remains separately gated. No live provider traffic,
-push, merge, deployment, scheduler cutover, or live-state activation is active.
+rollback/cutover design and TDD plan are written. M3D-A1 inventory/activation
+contract is done; M3D-A2 call-site migration is next. Physical movement remains
+separately gated. No live provider traffic, push, merge, deployment, scheduler
+cutover, or live-state activation is active.
 
 ## CEO dashboard
 
@@ -21,7 +22,7 @@ push, merge, deployment, scheduler cutover, or live-state activation is active.
 | Cost Router design | **ACCEPTED** | two Opus reviews closed; roadmap and ceilings approved | implement package-by-package |
 | Cost Router implementation | **M2 VERIFIED LOCAL** | `23e8574`; 97/97 focused tests, typecheck, runtime refusal-receipt enforcement | keep live providers off |
 | Fable session router | **REPAIRED / LIVE RECEIPT PENDING** | hook registered; stale `/model` and thread-context regressions fixed; 32/32 tests | verify on next natural clean Fable prompt; contaminated threads stay Opus |
-| Shadow consolidation | **M3C VERIFIED / M3D PACKET WRITTEN** | retained artifact `atlas-exec-graph-m3c-20260730T145320Z-b16264df`; M3D code/path inventory and rollback design | M3D-A root activation; no cutover |
+| Shadow consolidation | **M3C VERIFIED / M3D-A1 DONE** | M3D packet `63e3b07`; root inventory/activation `97a300e`; 132/132 affected tests | M3D-A2 call-site migration; no cutover |
 | Physical consolidation | **NO-GO** | nested worktrees, unique legacy state, runtime bindings remain | completed shadow rehearsal plus CEO cutover gate |
 | Subscription research | **OFF** | Perplexity interactive access only; no durable adapter proof | public synthetic live gate |
 | Research swarm | **OFF** | `RESEARCH_ONLY_LIMITED` | two-provider `READY_FOR_RESEARCH` gate |
@@ -33,10 +34,11 @@ We are at **Milestone M3 — Shadow Consolidation**. M1 durable foundation, M2
 safe router, M3A strict comparison, M3B synthetic rehearsal, and M3C real
 retained-copy rehearsal are complete on local branch
 `codex/atlas-cost-router-design`. M3D design and implementation plan are now
-written. Active package: M3D-A classified state inventory and explicit root
-activation; no physical cutover is authorized.
+written. M3D-A1 classified state inventory and fail-closed activation contract
+are complete. Active package: M3D-A2 state-root call-site migration; no physical
+cutover is authorized.
 
-`M1 ✓  →  M2 ✓  →  M3A ✓  →  M3B ✓  →  M3C ✓  →  M3D PACKET ✓  →  M3D-A…D  →  CEO CUTOVER GATE`
+`M1 ✓  →  M2 ✓  →  M3A ✓  →  M3B ✓  →  M3C ✓  →  M3D PACKET ✓  →  A1 ✓  →  A2…D  →  CEO CUTOVER GATE`
 
 1. **Done:** define a strict explicit-path shadow manifest and semantic
    comparator; reject empty authoritative input;
@@ -54,8 +56,10 @@ activation; no physical cutover is authorized.
    passed the full gate and one bounded review, then retained and independently
    verified one exact current-state copy without switching any live authority.
    **Done:** write M3D rollback/cutover packet from local code and physical-path
-   evidence. **Now:** implement M3D-A state inventory/root activation under
-   TDD. No live resolver switch, untracking, move, or cutover.
+   evidence. **Done:** M3D-A1 classifies 44 writer files/23 root stores and
+   makes activation fail closed, including junction escape. **Now:** migrate
+   call sites in bounded store families. No live resolver switch, untracking,
+   move, or cutover.
 
 ## External review closure
 
@@ -193,9 +197,9 @@ Fable/Opus routing closure:
    current-state copy, fresh-process verification, and no-cutover proof.
 9. **Done:** M3D rollback/cutover packet, current physical inventory, NO-GO
    gates, rollback order, and implementation plan.
-10. **Next:** M3D-A complete state-store classification and explicit root
-    activation. Then M3D-B mutation integrity, M3D-C effect durability, and
-    M3D-D full-root recovery.
+10. **In progress:** M3D-A1 classification/activation is done at `97a300e`.
+    **Next:** M3D-A2 bounded call-site migration, then M3D-B mutation integrity,
+    M3D-C effect durability, and M3D-D full-root recovery.
 11. **Live research broker:** one provider at a time, public synthetic prompts.
 12. **Research swarm:** only after `READY_FOR_RESEARCH`.
 
