@@ -569,7 +569,7 @@ export interface VerifiedPreservedStateRehearsal {
   preserved hashes/counts, nested strict M3B receipt, four accepted booleans,
   and `workDirectoryAbsent: true`.
 
-- [ ] **Step 1: Write the RED happy path and no-receipt failure tests**
+- [x] **Step 1: Write the RED happy path and no-receipt failure tests**
 
 Happy path requires the final artifact layout and these facts:
 
@@ -592,7 +592,7 @@ With a nonzero child test script in the bounded seam, require
 `rehearsal_failed` and no `rehearsal-receipt.json`. With no-op rollback in the
 seam, require the same no-receipt result.
 
-- [ ] **Step 2: Run RED**
+- [x] **Step 2: Run RED**
 
 ```powershell
 npx vitest run src/__tests__/preserved-state-rehearsal.test.ts
@@ -600,14 +600,14 @@ npx vitest run src/__tests__/preserved-state-rehearsal.test.ts
 
 Expected: rehearsal/verifier exports missing.
 
-- [ ] **Step 3: Implement strict readback and work creation**
+- [x] **Step 3: Implement strict readback and work creation**
 
 Validate timeout before mutation. Read raw manifest bytes, hash them, parse
 strictly, and require every manifest path to equal the derived resolved path.
 Reinspect preserved files before creating `.m3c-work-${randomUUID()}` as a
 normal sibling of the artifact.
 
-- [ ] **Step 4: Bind and validate the M3B receipt**
+- [x] **Step 4: Bind and validate the M3B receipt**
 
 Call only:
 
@@ -623,7 +623,7 @@ Read the fixed M3B receipt from `m3bReceipt.receiptPath`, parse it with
 Require its source path/hashes/counts to match the preserved manifest and its
 shadow path to be absent.
 
-- [ ] **Step 5: Implement safe recursive cleanup**
+- [x] **Step 5: Implement safe recursive cleanup**
 
 Before `rmSync(target, { recursive: true, force: true })`, enforce:
 
@@ -654,7 +654,7 @@ function cleanupUnsafe(target: string): PreservedStateRehearsalError {
 After removal, `existsSync(target)` must be false. A cleanup failure supersedes
 the underlying rehearsal error and leaves no M3C receipt.
 
-- [ ] **Step 6: Make cleanup structurally precede the M3C receipt**
+- [x] **Step 6: Make cleanup structurally precede the M3C receipt**
 
 After M3B success, reinspect preserved state. Build the prospective receipt,
 clean and observe the work directory, then and only then write
@@ -662,7 +662,7 @@ clean and observe the work directory, then and only then write
 to `rehearsal-receipt.json`, and invoke the independent verifier. Never call the
 receipt writer from a `finally` block.
 
-- [ ] **Step 7: Add the remaining falsifiers**
+- [x] **Step 7: Add the remaining falsifiers**
 
 Add exact cases for:
 
@@ -677,7 +677,7 @@ Add exact cases for:
 - cast writer/child/receipt/name payload ignored;
 - CWD and `ATLAS_EXEC_GRAPH_DIR` changes having no effect.
 
-- [ ] **Step 8: Run Task 4 GREEN**
+- [x] **Step 8: Run Task 4 GREEN**
 
 ```powershell
 npx vitest run src/__tests__/preserved-state-preservation.test.ts src/__tests__/preserved-state-rehearsal.test.ts src/__tests__/preserved-state-cleanup.test.ts src/__tests__/preserved-state-durability.test.ts src/__tests__/shadow-rehearsal.test.ts src/__tests__/shadow-rehearsal-seam-boundary.test.ts
@@ -685,12 +685,17 @@ npx tsc --noEmit
 git diff --check
 ```
 
-- [ ] **Step 9: Commit Task 4 only**
+- [x] **Step 9: Commit Task 4 only**
 
 ```powershell
 git add -- src/atlas/preserved-state-rehearsal.ts src/__tests__/preserved-state-rehearsal.test.ts src/__tests__/preserved-state-cleanup.test.ts src/__tests__/preserved-state-durability.test.ts
 git commit -m "feat(shadow): Rehearse preserved state"
 ```
+
+Completed in `40c7631`. Fresh gate: 6/6 files and 80/80 tests passed,
+`npx tsc --noEmit` exited 0, and staged diff-check exited 0. Codex RED→GREEN
+review also closed promoted-receipt readback cleanup and exact canonical work-path
+binding before commit.
 
 ---
 

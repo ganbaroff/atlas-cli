@@ -21,9 +21,9 @@
 one Telegram poller, one local PC/browser executor, cost-aware research, and
 product systems as adapters rather than competing brains.
 
-**Current point:** M3 Shadow Consolidation, package M3C Task 4 fixture-first
-implementation. M1, fake-only M2, strict M3A, synthetic M3B, and M3C atomic
-preservation construction are complete on a local branch. Physical
+**Current point:** M3 Shadow Consolidation, package M3C Task 5 bounded CLI
+wiring. M1, fake-only M2, strict M3A, synthetic M3B, and M3C Tasks 1-4 are
+complete on a local branch. Physical
 consolidation is NO-GO. Live provider traffic has not started.
 
 ```mermaid
@@ -101,10 +101,11 @@ flowchart LR
    `docs/superpowers/specs/2026-07-30-m3c-preserved-state-rehearsal-design.md`.
    Detailed TDD plan:
    `docs/superpowers/plans/2026-07-30-m3c-preserved-state-rehearsal.md`.
-   Tasks 1-3/6 are complete through `c927189`: bounded M3B seams, derived proof
-   paths/timeouts, and strict S0/S1/S2/P0 atomic preservation. Task 4 adds the
-   rehearsal, cleanup-bound receipt, and independent verifier. No real copy has
-   occurred yet.
+   Tasks 1-4/6 are complete through `40c7631`: bounded M3B seams, derived proof
+   paths/timeouts, strict S0/S1/S2/P0 atomic preservation, preserved-copy-only
+   rehearsal, cleanup-bound receipt, and independent verifier. Task 4 gate is
+   80/80 focused tests plus clean typecheck. Task 5 adds only the bounded
+   explicit-path `run`/`verify` CLI. No real copy has occurred yet.
 4. **M3D — rollback and cutover packet.** Prove the old root remains readable,
    record exact rollback commands and hashes, then present the physical
    cutover as a separate Yusif gate.
