@@ -77,13 +77,15 @@ shell execution, or self-certification.
 ## M3D-A — state-root activation
 
 The `state-root.ts` registry now covers 23 stores. Cost Router uses the direct
-resolver; A2 slices 1-3 route exec-graph, evidence, goal budgets, swarm runs,
-intake drafts, operator state, and operator runs through a compatibility bridge.
+resolver; A2 slices 1-4 route exec-graph, evidence, goal budgets, swarm runs,
+intake drafts, operator state/runs, and task results through a compatibility
+bridge.
 Explicit test/legacy roots remain valid before activation but cannot bypass a
 required activated root. File-level operator overrides must be strict
 junction-aware children of `operator-runs`, and registered default store
-directories may not junction outside the root. Remaining checkout-bound writers
-include learning state and the legacy hardcoded task-results path.
+directories may not junction outside the root. Task-results activation is
+validated before subprocess execution. Remaining checkout-bound writers include
+learning state.
 Home-directory writers also remain split across lease, queue-auth nonce ledger,
 provider health, spend, notifications, pause/control, breadcrumbs, and alert
 state.

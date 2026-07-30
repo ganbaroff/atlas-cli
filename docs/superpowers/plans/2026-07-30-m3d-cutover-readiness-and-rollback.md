@@ -47,6 +47,8 @@ recovery gates before any Atlas repository move or live binding change.
 - [x] Migrate slice 3 (`operator-state`, `operator-runs`); centralize duplicate
       state paths, constrain file-level trace/ledger overrides, reject default
       store junction escape, and use activated paths for manual result readback.
+- [x] Migrate slice 4 (`task-results`); preserve the legacy hardcoded directory
+      before activation and validate the activated root before subprocess spawn.
 - [ ] Migrate remaining call sites in small store-family slices; keep explicit
       temporary roots in tests before activation.
 - [ ] Prove CWD/code-root invariance and no writes to checkout paths.
@@ -89,6 +91,13 @@ manual promotion readback through the old checkout path. All were repaired.
 Evidence: 14 affected files, 173/173 exact-tip tests, clean typecheck and
 diff-check. A bounded LUNA review produced no receipt despite stop/interrupt,
 so that external lane is **UNVERIFIED** and is not completion evidence.
+
+A2 slice-4 checkpoint `4dca9fe`: the task spawner now resolves its result store
+through the migration bridge before any subprocess starts. RED proved staged
+and activated path contracts were absent; a mocked subprocess regression proves
+a missing activation manifest yields zero spawn calls. Evidence: 5 affected
+files, 123/123 exact-tip tests, clean typecheck and diff-check. The legacy
+`C:\Projects\ATLAS\data\task-results` directory was not modified.
 
 ---
 
