@@ -8,6 +8,8 @@ import { resolveExecGraphDir } from '../exec-graph/ledger.js';
 import { resolveEvidenceDir } from '../evidence/ledger.js';
 import * as budgets from '../goal-runner/budgets.js';
 import { STATE_ROOT_ACTIVATION_FILE, STATE_STORES } from '../atlas/state-root.js';
+import { bundleRoot } from '../swarm-exec/run-bundle.js';
+import { draftsRoot } from '../swarm-exec/intake.js';
 
 const MANAGED_ENV_KEYS = [
   'ATLAS_STATE_ROOT',
@@ -18,7 +20,7 @@ const MANAGED_ENV_KEYS = [
 ] as const;
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-describe('M3D-A2 state-root call-site migration slice 1', () => {
+describe('M3D-A2 state-root call-site migration slices 1-2', () => {
   let root: string;
   let prior: Record<string, string | undefined>;
   let priorCwd: string;
@@ -68,6 +70,31 @@ describe('M3D-A2 state-root call-site migration slice 1', () => {
     expect(budgets.resolveGoalBudgetDir()).toBe(
       resolve(root, 'state', 'goal-budgets'),
     );
+    expect(bundleRoot()).toBe(resolve(root, 'state', 'swarm-runs'));
+    expect(draftsRoot()).toBe(resolve(root, 'state', 'intake-drafts'));
+  });
+
+  it('preserves explicit swarm roots before required activation', () => {
+    process.env.ATLAS_STATE_ROOT = root;
+    const legacyBundleRoot = join(root, 'legacy-swarm-runs');
+    const legacyDraftsRoot = join(root, 'legacy-intake-drafts');
+
+    expect(bundleRoot({ rootDir: legacyBundleRoot })).toBe(resolve(legacyBundleRoot));
+    expect(draftsRoot({ rootDir: legacyDraftsRoot })).toBe(resolve(legacyDraftsRoot));
+  });
+
+  it('ignores an explicit swarm-run root after required activation', () => {
+    activateRoot();
+    const legacyBundleRoot = join(root, 'legacy-swarm-runs');
+
+    expect(bundleRoot({ rootDir: legacyBundleRoot })).toBe(resolve(root, 'swarm-runs'));
+  });
+
+  it('ignores an explicit intake-drafts root after required activation', () => {
+    activateRoot();
+    const legacyDraftsRoot = join(root, 'legacy-intake-drafts');
+
+    expect(draftsRoot({ rootDir: legacyDraftsRoot })).toBe(resolve(root, 'intake-drafts'));
   });
 
   it('routes exec-graph through the activated shared root', () => {

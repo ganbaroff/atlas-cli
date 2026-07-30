@@ -66,6 +66,7 @@
 
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { resolveMigratingStateDir } from '../atlas/state-root.js';
 import type { CompletionPolicy, CompletionVerdict } from './completion-policy.js';
 
 export type ProviderHealthState = 'healthy' | 'degraded' | 'cooldown' | 'auth-failed' | 'unavailable';
@@ -112,7 +113,9 @@ export interface WrittenBundle {
 }
 
 export interface WriteOpts {
-  rootDir?: string; // default 'state/swarm-runs' (cwd-relative) — override for tests
+  // Pre-activation legacy/test override. Required activation routes through
+  // ATLAS_STATE_ROOT and deliberately ignores this escape hatch.
+  rootDir?: string;
 }
 
 /** Fixed, ordered list of the 5 sub-artifact filenames every bundle carries. */
@@ -152,9 +155,12 @@ function toJson(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
 
-/** Resolved root directory all run bundles live under. */
+/** Migration-aware root directory all run bundles live under. */
 export function bundleRoot(opts?: WriteOpts): string {
-  return resolve(opts?.rootDir ?? 'state/swarm-runs');
+  return resolveMigratingStateDir(
+    'swarm-runs',
+    () => resolve(opts?.rootDir ?? 'state/swarm-runs'),
+  );
 }
 
 /**

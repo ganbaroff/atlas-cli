@@ -90,7 +90,7 @@ export interface RunSwarmForTaskOptions {
   runId?: string;
   /** Defaults to defaultSwarmPolicy(totalResponders). */
   policy?: CompletionPolicy;
-  /** Defaults to undefined -> writeRunBundle()'s own default ('state/swarm-runs'); tests pass a tmp dir. */
+  /** Pre-activation bundle-root override; required state-root activation ignores it. */
   bundleRootDir?: string;
   /** Defaults to runSwarmDetailed. Inject a stub in tests — never make a real LLM call from a test. */
   runSwarm?: (task: string, useCustom?: boolean) => Promise<SwarmRunDetail>;

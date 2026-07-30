@@ -35,6 +35,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { resolveMigratingStateDir } from '../atlas/state-root.js';
 import type { RiskClass } from '../exec-graph/contracts.js';
 import { createTask } from '../exec-graph/api.js';
 
@@ -56,7 +57,7 @@ export interface IntakeDraft {
 }
 
 export interface IntakeOpts {
-  /** default 'state/intake-drafts' (cwd-relative) — override for tests. */
+  /** Pre-activation legacy/test override; ignored under required activation. */
   rootDir?: string;
   /** Injectable draftId override — tests only; compileIntake() otherwise derives it deterministically. */
   draftId?: string;
@@ -149,9 +150,12 @@ export function compileIntake(freeform: string, opts?: IntakeOpts): IntakeDraft 
 
 // ── Persist ─────────────────────────────────────────────────────────────────
 
-/** Resolved root directory all intake drafts live under. */
+/** Migration-aware root directory all intake drafts live under. */
 export function draftsRoot(opts?: IntakeOpts): string {
-  return resolve(opts?.rootDir ?? 'state/intake-drafts');
+  return resolveMigratingStateDir(
+    'intake-drafts',
+    () => resolve(opts?.rootDir ?? 'state/intake-drafts'),
+  );
 }
 
 // Module-level counter for temp-file suffixes, combined with process.pid so
