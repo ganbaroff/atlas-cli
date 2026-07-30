@@ -1,5 +1,6 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import { constrainMigratingStatePath } from '../atlas/state-root.js';
 import {
   parseOperatorRunLedgerEntry,
   selectCanonicalRunLedgerEntry,
@@ -30,7 +31,10 @@ function proofTokensFromResult(result: OperatorResult): string[] {
 }
 
 function resultPath(result: OperatorResult): string {
-  return result.trace_path ?? resolve(operatorRunsDir(), `${result.task_id}.result.json`);
+  return constrainMigratingStatePath(
+    'operator-runs',
+    result.trace_path ?? resolve(operatorRunsDir(), `${result.task_id}.result.json`),
+  );
 }
 
 function expectedEvidenceMet(task: OperatorTask, result: OperatorResult): boolean {
@@ -51,9 +55,10 @@ export function operatorRunLedgerPath(): string {
 }
 
 export function readRunLedgerEntries(ledgerPath = operatorRunLedgerPath()): OperatorRunLedgerEntry[] {
-  if (!existsSync(ledgerPath)) return [];
+  const resolvedLedgerPath = constrainMigratingStatePath('operator-runs', ledgerPath);
+  if (!existsSync(resolvedLedgerPath)) return [];
 
-  return readFileSync(ledgerPath, 'utf-8')
+  return readFileSync(resolvedLedgerPath, 'utf-8')
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) => line.length > 0)
@@ -107,8 +112,9 @@ export function appendRunLedgerEntry(
   ledgerPath = operatorRunLedgerPath(),
 ): OperatorRunLedgerEntry {
   const parsed = parseOperatorRunLedgerEntry(entry);
-  mkdirSync(dirname(ledgerPath), { recursive: true });
-  appendFileSync(ledgerPath, `${JSON.stringify(parsed)}\n`, 'utf-8');
+  const resolvedLedgerPath = constrainMigratingStatePath('operator-runs', ledgerPath);
+  mkdirSync(dirname(resolvedLedgerPath), { recursive: true });
+  appendFileSync(resolvedLedgerPath, `${JSON.stringify(parsed)}\n`, 'utf-8');
   return parsed;
 }
 

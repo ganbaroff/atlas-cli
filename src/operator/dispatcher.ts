@@ -27,14 +27,20 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { dirname, isAbsolute, relative, resolve } from 'node:path';
+import { isAbsolute, relative, resolve } from 'node:path';
 import { withBrowserSessionTrace } from './browser-trace.js';
 import {
   controlAllowsModelCalls,
   describeControlBlock,
   operatorStatePath as controlStatePath,
   readOperatorState,
+  writeOperatorState,
+  type OperatorStateRecord,
 } from '../atlas/control-plane.js';
+import {
+  constrainMigratingStatePath,
+  resolveMigratingStateDir,
+} from '../atlas/state-root.js';
 import {
   type OperatorEvidence,
   type OperatorResult,
@@ -47,8 +53,6 @@ import { evaluateOperatorResultWithRetry } from './evaluator.js';
 import { decidePromotion } from './promotion.js';
 
 const REPO_ROOT = process.cwd();
-const STATE_PATH = resolve(REPO_ROOT, 'operator/state/operator-state.json');
-const RUNS_DIR = resolve(REPO_ROOT, 'operator/runs');
 
 export interface DispatchWriteOptions {
   tracePath?: string;
@@ -63,10 +67,11 @@ export function loadOperatorState(): unknown {
   // crash — mirrors control-plane's fallback shape so downstream readers
   // (writeOperatorTrace, dispatchManualEvaluationTask) see the same
   // 'active'-control default either way.
+  const statePath = operatorStatePath();
   try {
-    return JSON.parse(readFileSync(STATE_PATH, 'utf-8'));
+    return JSON.parse(readFileSync(statePath, 'utf-8'));
   } catch (err) {
-    console.error(`[dispatcher] failed to read/parse operator state at ${STATE_PATH} — using safe default: ${(err as Error)?.message ?? err}`);
+    console.error(`[dispatcher] failed to read/parse operator state at ${statePath} — using safe default: ${(err as Error)?.message ?? err}`);
     return { control: { mode: 'active' } };
   }
 }
@@ -77,13 +82,22 @@ export function loadOperatorTask(taskPath: string): OperatorTask {
 }
 
 export function loadOperatorResult(resultPath: string): OperatorResult {
-  const raw = JSON.parse(readFileSync(resolve(REPO_ROOT, resultPath), 'utf-8'));
+  const candidate = resolve(REPO_ROOT, resultPath);
+  const raw = JSON.parse(readFileSync(
+    constrainMigratingStatePath('operator-runs', candidate),
+    'utf-8',
+  ));
   return parseOperatorResult(raw);
 }
 
 export function writeOperatorTrace(result: OperatorResult, options: DispatchWriteOptions = {}): OperatorResult {
-  mkdirSync(RUNS_DIR, { recursive: true });
-  const tracePath = options.tracePath ?? result.trace_path ?? resolve(RUNS_DIR, `${result.task_id}.result.json`);
+  const tracePath = constrainMigratingStatePath(
+    'operator-runs',
+    options.tracePath
+      ?? result.trace_path
+      ?? resolve(operatorRunsDir(), `${result.task_id}.result.json`),
+  );
+  mkdirSync(operatorRunsDir(), { recursive: true });
   const withPath = { ...result, trace_path: tracePath };
   const withBrowserTrace = withBrowserSessionTrace(withPath);
   writeFileSync(tracePath, JSON.stringify(withBrowserTrace, null, 2) + '\n', 'utf-8');
@@ -123,13 +137,16 @@ export function writeOperatorTrace(result: OperatorResult, options: DispatchWrit
         promotion,
       },
     };
-    writeFileSync(STATE_PATH, JSON.stringify(nextState, null, 2) + '\n', 'utf-8');
+    writeOperatorState(nextState as OperatorStateRecord);
   }
   return withBrowserTrace;
 }
 
 function resultTracePath(task: OperatorTask, options: DispatchWriteOptions = {}): string {
-  return options.tracePath ?? resolve(RUNS_DIR, `${task.id}.result.json`);
+  return constrainMigratingStatePath(
+    'operator-runs',
+    options.tracePath ?? resolve(operatorRunsDir(), `${task.id}.result.json`),
+  );
 }
 
 function evidence(id: string, task: OperatorTask, type: OperatorEvidence['type'], source: string, summary: string): OperatorEvidence {
@@ -744,7 +761,7 @@ function dispatchManualEvaluationTask(
   }
 
   const targetTaskPath = resolve(REPO_ROOT, 'operator/tasks', `${targetTaskId}.json`);
-  const targetResultPath = resolve(RUNS_DIR, `${targetTaskId}.result.json`);
+  const targetResultPath = resolve(operatorRunsDir(), `${targetTaskId}.result.json`);
 
   const sourceTaskInput = task.inputs.source_task;
   let sourceTask: OperatorTask;
@@ -795,7 +812,7 @@ function dispatchManualEvaluationTask(
     ), options);
   }
 
-  const sourceResult = loadOperatorResult(`operator/runs/${targetTaskId}.result.json`);
+  const sourceResult = loadOperatorResult(targetResultPath);
   const verdictSource = targetResultPath;
   const evaluationBundle = evaluateOperatorResultWithRetry({
     task: sourceTask,
@@ -900,7 +917,7 @@ function dispatchManualPromotionTask(
     ), options);
   }
 
-  const targetResultPath = resolve(RUNS_DIR, `${targetTaskId}.result.json`);
+  const targetResultPath = resolve(operatorRunsDir(), `${targetTaskId}.result.json`);
   if (!existsSync(targetResultPath)) {
     return writeOperatorTrace(createBlockedResult(
       task,
@@ -911,7 +928,7 @@ function dispatchManualPromotionTask(
     ), options);
   }
 
-  const sourceResult = loadOperatorResult(`operator/runs/${targetTaskId}.result.json`);
+  const sourceResult = loadOperatorResult(targetResultPath);
   const promotion = decidePromotion({ result: sourceResult });
 
   foundEvidence.push(evidence(
@@ -1474,7 +1491,7 @@ export function dispatchOperatorTask(task: OperatorTask, options: DispatchWriteO
 
 export function ensureOperatorArtifacts(): string[] {
   return [
-    STATE_PATH,
+    operatorStatePath(),
     resolve(REPO_ROOT, 'operator/schemas/task.schema.json'),
     resolve(REPO_ROOT, 'operator/schemas/result.schema.json'),
     resolve(REPO_ROOT, 'operator/schemas/evidence.schema.json'),
@@ -1495,10 +1512,14 @@ export function ensureOperatorArtifacts(): string[] {
 }
 
 export function operatorStatePath(): string {
-  return STATE_PATH;
+  return controlStatePath();
 }
 
 export function operatorRunsDir(): string {
-  mkdirSync(dirname(resolve(RUNS_DIR, 'x')), { recursive: true });
-  return RUNS_DIR;
+  const runsDir = resolveMigratingStateDir(
+    'operator-runs',
+    () => resolve(REPO_ROOT, 'operator/runs'),
+  );
+  mkdirSync(runsDir, { recursive: true });
+  return runsDir;
 }

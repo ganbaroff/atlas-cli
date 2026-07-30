@@ -7,7 +7,19 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { resolveExecGraphDir } from '../exec-graph/ledger.js';
 import { resolveEvidenceDir } from '../evidence/ledger.js';
 import * as budgets from '../goal-runner/budgets.js';
+import {
+  operatorStatePath as controlOperatorStatePath,
+  writeOperatorState,
+} from '../atlas/control-plane.js';
 import { STATE_ROOT_ACTIVATION_FILE, STATE_STORES } from '../atlas/state-root.js';
+import {
+  dispatchOperatorTask,
+  operatorRunsDir,
+  operatorStatePath as dispatcherOperatorStatePath,
+  writeOperatorTrace,
+} from '../operator/dispatcher.js';
+import { appendRunLedgerEntry } from '../operator/run-ledger.js';
+import type { OperatorResult, OperatorTask } from '../operator/contracts.js';
 import { bundleRoot } from '../swarm-exec/run-bundle.js';
 import { draftsRoot } from '../swarm-exec/intake.js';
 
@@ -20,7 +32,7 @@ const MANAGED_ENV_KEYS = [
 ] as const;
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-describe('M3D-A2 state-root call-site migration slices 1-2', () => {
+describe('M3D-A2 state-root call-site migration slices 1-3', () => {
   let root: string;
   let prior: Record<string, string | undefined>;
   let priorCwd: string;
@@ -61,6 +73,39 @@ describe('M3D-A2 state-root call-site migration slices 1-2', () => {
     );
   }
 
+  function operatorResult(taskId: string): OperatorResult {
+    return {
+      task_id: taskId,
+      status: 'blocked',
+      executor: 'atlas',
+      started_at: '2026-07-30T00:00:00.000Z',
+      completed_at: '2026-07-30T00:00:01.000Z',
+      summary: 'state-root migration fixture',
+      evidence: [],
+      errors: ['fixture intentionally blocked'],
+    };
+  }
+
+  function promotionTask(sourceTaskId: string): OperatorTask {
+    return {
+      id: 'm3d-a2-activated-promotion',
+      title: 'Activated operator promotion readback',
+      created_at: '2026-07-30T00:00:02.000Z',
+      route: 'manual',
+      mode: 'read_only',
+      cwd: REPO_ROOT,
+      allowed_paths: [REPO_ROOT, resolve(root, 'operator-runs')],
+      objective: 'Read one migrated operator result without falling back to the legacy checkout path.',
+      inputs: { promotion_result_task_id: sourceTaskId },
+      expected_evidence: ['file_read'],
+      safety: {
+        sandbox_required: false,
+        network_allowed: false,
+        write_allowed: false,
+      },
+    };
+  }
+
   it('does not reroute any store when the shared root is only staged', () => {
     process.env.ATLAS_STATE_ROOT = root;
     process.chdir(root);
@@ -72,6 +117,13 @@ describe('M3D-A2 state-root call-site migration slices 1-2', () => {
     );
     expect(bundleRoot()).toBe(resolve(root, 'state', 'swarm-runs'));
     expect(draftsRoot()).toBe(resolve(root, 'state', 'intake-drafts'));
+    expect(controlOperatorStatePath()).toBe(
+      resolve(REPO_ROOT, 'operator', 'state', 'operator-state.json'),
+    );
+    expect(dispatcherOperatorStatePath()).toBe(
+      resolve(REPO_ROOT, 'operator', 'state', 'operator-state.json'),
+    );
+    expect(operatorRunsDir()).toBe(resolve(REPO_ROOT, 'operator', 'runs'));
   });
 
   it('preserves explicit swarm roots before required activation', () => {
@@ -95,6 +147,102 @@ describe('M3D-A2 state-root call-site migration slices 1-2', () => {
     const legacyDraftsRoot = join(root, 'legacy-intake-drafts');
 
     expect(draftsRoot({ rootDir: legacyDraftsRoot })).toBe(resolve(root, 'intake-drafts'));
+  });
+
+  it('routes control-plane operator state through the activated shared root', () => {
+    activateRoot();
+
+    expect(controlOperatorStatePath()).toBe(
+      resolve(root, 'operator-state', 'operator-state.json'),
+    );
+  });
+
+  it('routes dispatcher operator state through the activated shared root', () => {
+    activateRoot();
+
+    expect(dispatcherOperatorStatePath()).toBe(
+      resolve(root, 'operator-state', 'operator-state.json'),
+    );
+  });
+
+  it('routes operator runs through the activated shared root', () => {
+    activateRoot();
+
+    expect(operatorRunsDir()).toBe(resolve(root, 'operator-runs'));
+  });
+
+  it('writes operator state and default traces only under the activated root', () => {
+    activateRoot();
+    const expectedStatePath = resolve(root, 'operator-state', 'operator-state.json');
+    const expectedTracePath = resolve(root, 'operator-runs', 'm3d-a2-slice3.result.json');
+
+    writeOperatorState({ control: { mode: 'paused', next_lane: 'fixture' } });
+    const written = writeOperatorTrace(operatorResult('m3d-a2-slice3'), {
+      persistState: false,
+    });
+
+    expect(controlOperatorStatePath()).toBe(expectedStatePath);
+    expect(existsSync(expectedStatePath)).toBe(true);
+    expect(written.trace_path).toBe(expectedTracePath);
+    expect(existsSync(expectedTracePath)).toBe(true);
+  });
+
+  it('refuses an explicit trace path outside the activated operator-runs store', () => {
+    activateRoot();
+    const escapedTracePath = resolve(root, 'escaped-operator-trace.json');
+
+    expect(() => writeOperatorTrace(operatorResult('m3d-a2-trace-escape'), {
+      tracePath: escapedTracePath,
+      persistState: false,
+    })).toThrow(/store_outside_root/);
+    expect(existsSync(escapedTracePath)).toBe(false);
+    expect(existsSync(resolve(root, 'operator-runs'))).toBe(false);
+  });
+
+  it('accepts an explicit trace path inside the activated operator-runs store', () => {
+    activateRoot();
+    const containedTracePath = resolve(root, 'operator-runs', 'contained-trace.json');
+
+    const written = writeOperatorTrace(operatorResult('m3d-a2-contained-trace'), {
+      tracePath: containedTracePath,
+      persistState: false,
+    });
+
+    expect(written.trace_path).toBe(containedTracePath);
+    expect(existsSync(containedTracePath)).toBe(true);
+  });
+
+  it('manual promotion reads its source result from the activated operator-runs store', () => {
+    activateRoot();
+    const sourceTaskId = 'm3d-a2-promotion-source';
+    writeOperatorTrace(operatorResult(sourceTaskId), { persistState: false });
+
+    const promoted = dispatchOperatorTask(promotionTask(sourceTaskId), {
+      persistState: false,
+    });
+
+    expect(promoted.task_id).toBe('m3d-a2-activated-promotion');
+    expect(promoted.evidence.some((item) => item.source.includes(sourceTaskId))).toBe(true);
+  });
+
+  it('refuses an explicit ledger path outside the activated operator-runs store', () => {
+    activateRoot();
+    const escapedLedgerPath = resolve(root, 'escaped-run-ledger.jsonl');
+
+    expect(() => appendRunLedgerEntry({
+      run_id: 'm3d-a2-slice3.20260730t000001000z.000001',
+      task_id: 'm3d-a2-slice3',
+      executor: 'atlas',
+      started_at: '2026-07-30T00:00:00.000Z',
+      completed_at: '2026-07-30T00:00:01.000Z',
+      status: 'blocked',
+      verdict: 'blocked',
+      expected_evidence_met: false,
+      proof_tokens: [],
+      result_path: resolve(root, 'operator-runs', 'm3d-a2-slice3.result.json'),
+    }, escapedLedgerPath)).toThrow(/store_outside_root/);
+    expect(existsSync(escapedLedgerPath)).toBe(false);
+    expect(existsSync(resolve(root, 'operator-runs'))).toBe(false);
   });
 
   it('routes exec-graph through the activated shared root', () => {

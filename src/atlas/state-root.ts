@@ -183,6 +183,31 @@ function isStrictChildPath(root: string, candidate: string): boolean {
   return rel.length > 0 && firstSegment !== '..' && !isAbsolute(rel);
 }
 
+function assertPathContained(
+  root: string,
+  candidate: string,
+  subject: string,
+  parent: string,
+): void {
+  let contained = false;
+  try {
+    contained = isStrictChildPath(root, candidate);
+  } catch (error) {
+    throw new StateRootActivationError(
+      'store_outside_root',
+      `cannot prove ${subject} is contained by ${parent}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+  if (!contained) {
+    throw new StateRootActivationError(
+      'store_outside_root',
+      `${subject} resolves outside ${parent}`,
+    );
+  }
+}
+
 export function stateRootActivationPath(root = resolveStateRoot()): string {
   return join(root, STATE_ROOT_ACTIVATION_FILE);
 }
@@ -272,28 +297,27 @@ export function resolveStateDir(store: StateStore, legacyEnv?: string): string {
     const legacy = readAbsoluteOverride(envName);
     if (legacy) {
       if (activation) {
-        let contained = false;
-        try {
-          contained = isStrictChildPath(root, legacy);
-        } catch (error) {
-          throw new StateRootActivationError(
-            'store_outside_root',
-            `cannot prove ${envName} is contained by activated ATLAS_STATE_ROOT: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
-          );
-        }
-        if (!contained) {
-          throw new StateRootActivationError(
-            'store_outside_root',
-            `${envName} resolves outside activated ATLAS_STATE_ROOT`,
-          );
-        }
+        assertPathContained(
+          root,
+          legacy,
+          envName,
+          'activated ATLAS_STATE_ROOT',
+        );
       }
       return legacy;
     }
   }
-  return join(root, store);
+
+  const storeDir = join(root, store);
+  if (activation) {
+    assertPathContained(
+      root,
+      storeDir,
+      `store '${store}'`,
+      'activated ATLAS_STATE_ROOT',
+    );
+  }
+  return storeDir;
 }
 
 /**
@@ -321,4 +345,42 @@ export function resolveMigratingStateDir(
     legacyDefault(),
     `legacy default for ${store}`,
   );
+}
+
+/**
+ * Preserve a caller-supplied file path before cutover, but make it a strict
+ * child of its registered store after required activation. This closes
+ * file-level test/legacy escape hatches without changing pre-activation
+ * behavior.
+ */
+export function constrainMigratingStatePath(
+  store: StateStore,
+  candidate: string,
+): string {
+  if (!stateRootRequired()) return candidate;
+
+  let absoluteCandidate: string;
+  try {
+    absoluteCandidate = normalizeStableAbsolute(
+      candidate,
+      `path override for ${store}`,
+    );
+  } catch (error) {
+    throw new StateRootActivationError(
+      'store_outside_root',
+      `path override for '${store}' must be absolute under its activated store: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+
+  const storeDir = resolveStateDir(store);
+  assertPathContained(
+    storeDir,
+    absoluteCandidate,
+    `path override for '${store}'`,
+    `activated store '${store}'`,
+  );
+
+  return absoluteCandidate;
 }

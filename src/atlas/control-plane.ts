@@ -2,6 +2,10 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { dirname, resolve } from 'node:path';
 import type { OperatorEvaluation, OperatorLifecycle, OperatorPromotion } from '../operator/contracts.js';
 import { isPaused, pauseFilePath } from './spend-policy.js';
+import {
+  constrainMigratingStatePath,
+  resolveMigratingStateDir,
+} from './state-root.js';
 
 export type ControlMode = 'active' | 'paused' | 'stopped';
 export type ControlCommandName = 'pause' | 'stop' | 'resume' | 'reroute' | 'validate';
@@ -76,7 +80,6 @@ export interface ControlActionResult {
 }
 
 const REPO_ROOT = process.cwd();
-const STATE_PATH = resolve(REPO_ROOT, 'operator/state/operator-state.json');
 
 function now(): string {
   return new Date().toISOString();
@@ -87,27 +90,36 @@ function cloneState(state: OperatorStateRecord): OperatorStateRecord {
 }
 
 export function operatorStatePath(): string {
-  return STATE_PATH;
+  const stateDir = resolveMigratingStateDir(
+    'operator-state',
+    () => resolve(REPO_ROOT, 'operator/state'),
+  );
+  return constrainMigratingStatePath(
+    'operator-state',
+    resolve(stateDir, 'operator-state.json'),
+  );
 }
 
 export function readOperatorState(): OperatorStateRecord {
-  // Crash guard: STATE_PATH is cwd-relative and read on every brain-plan build. If the bot
+  const statePath = operatorStatePath();
+  // Crash guard: the legacy state path is cwd-relative and read on every brain-plan build. If the bot
   // is launched from a cwd without operator/state/operator-state.json (or the file is corrupt),
   // a bare readFileSync/JSON.parse throws at startup. Downstream readers (getControlState,
   // controlAllowsModelCalls) are all defensive, so an empty record yields a safe 'active' default.
   try {
-    return JSON.parse(readFileSync(STATE_PATH, 'utf-8')) as OperatorStateRecord;
+    return JSON.parse(readFileSync(statePath, 'utf-8')) as OperatorStateRecord;
   } catch {
     return { control: { mode: 'active' } } as OperatorStateRecord;
   }
 }
 
 export function writeOperatorState(state: OperatorStateRecord): OperatorStateRecord {
-  mkdirSync(dirname(STATE_PATH), { recursive: true });
+  const statePath = operatorStatePath();
+  mkdirSync(dirname(statePath), { recursive: true });
   const payload = `${JSON.stringify(state, null, 2)}\n`;
-  const tmpPath = `${STATE_PATH}.${Math.random().toString(16).slice(2, 10)}.tmp`;
+  const tmpPath = `${statePath}.${Math.random().toString(16).slice(2, 10)}.tmp`;
   writeFileSync(tmpPath, payload, 'utf-8');
-  renameSync(tmpPath, STATE_PATH);
+  renameSync(tmpPath, statePath);
   return state;
 }
 

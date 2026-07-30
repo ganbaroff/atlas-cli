@@ -5,6 +5,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node
 
 import {
   assertStateRootActivated,
+  constrainMigratingStatePath,
   resolveMigratingStateDir,
   resolveStateRoot,
   resolveStateDir,
@@ -196,6 +197,25 @@ describe('atlas/state-root', () => {
         rmSync(outsideRoot, { recursive: true, force: true });
       }
     });
+
+    it('refuses a registered default store whose junction resolves outside the root', () => {
+      writeActivationManifest();
+      const outsideRoot = mkdtempSync(join(tmpdir(), 'atlas-state-root-store-outside-'));
+      try {
+        const linkedStore = join(activationRoot, 'operator-runs');
+        symlinkSync(outsideRoot, linkedStore, process.platform === 'win32' ? 'junction' : 'dir');
+        expect(() => resolveStateDir('operator-runs')).toThrow('store_outside_root');
+      } finally {
+        rmSync(outsideRoot, { recursive: true, force: true });
+      }
+    });
+
+    it('refuses a relative file override after activation', () => {
+      writeActivationManifest();
+      expect(() =>
+        constrainMigratingStatePath('operator-runs', 'relative-result.json'),
+      ).toThrow('store_outside_root');
+    });
   });
 
   describe('resolveStateDir()', () => {
@@ -327,6 +347,11 @@ describe('atlas/state-root', () => {
         join(activationRoot, 'goal-budgets'),
       );
       expect(fallback).not.toHaveBeenCalled();
+    });
+
+    it('preserves a relative file override before activation', () => {
+      expect(constrainMigratingStatePath('operator-runs', 'relative-result.json'))
+        .toBe('relative-result.json');
     });
   });
 

@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { constrainMigratingStatePath } from '../atlas/state-root.js';
 import {
   dispatchOperatorTask,
   loadOperatorTask,
@@ -33,7 +34,10 @@ function shortTaskId(sourceId: string, suffix: string): string {
 }
 
 export function lifecycleResultPath(sourceTaskId: string): string {
-  return resolve(operatorRunsDir(), `${sourceTaskId}.lifecycle.result.json`);
+  return constrainMigratingStatePath(
+    'operator-runs',
+    resolve(operatorRunsDir(), `${sourceTaskId}.lifecycle.result.json`),
+  );
 }
 
 export function loadOperatorTaskRef(taskRef: string): OperatorTask {
@@ -46,7 +50,10 @@ export function loadOperatorTaskRef(taskRef: string): OperatorTask {
 }
 
 function resultPath(result: OperatorResult): string {
-  return result.trace_path ?? resolve(operatorRunsDir(), `${result.task_id}.result.json`);
+  return constrainMigratingStatePath(
+    'operator-runs',
+    result.trace_path ?? resolve(operatorRunsDir(), `${result.task_id}.result.json`),
+  );
 }
 
 function proofTokensFromResult(result?: OperatorResult): string[] {
@@ -93,7 +100,11 @@ function manualLifecycleTask(
     route: 'manual',
     mode: 'read_only',
     cwd: REPO_ROOT,
-    allowed_paths: [REPO_ROOT, 'operator/tasks', 'operator/runs'],
+    allowed_paths: [
+      REPO_ROOT,
+      resolve(REPO_ROOT, 'operator/tasks'),
+      operatorRunsDir(),
+    ],
     objective,
     inputs,
     expected_evidence: ['file_read', 'manual_note', 'log_trace'],
@@ -120,7 +131,10 @@ export function runOperatorLifecycle(
   const lifecycleTaskId = shortTaskId(sourceTask.id, 'lifecycle');
   const evaluationTaskId = shortTaskId(sourceTask.id, 'life-eval');
   const promotionTaskId = shortTaskId(sourceTask.id, 'life-prom');
-  const tracePath = options.tracePath ?? lifecycleResultPath(sourceTask.id);
+  const tracePath = constrainMigratingStatePath(
+    'operator-runs',
+    options.tracePath ?? lifecycleResultPath(sourceTask.id),
+  );
   const childResults: OperatorResult[] = [];
 
   const dispatchResult = dispatchTask(sourceTask, { persistState: false });
