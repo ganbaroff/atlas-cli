@@ -1,14 +1,29 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 
-import { resolveStateRoot, resolveStateDir, STATE_STORES } from '../atlas/state-root.js';
+import {
+  assertStateRootActivated,
+  resolveStateRoot,
+  resolveStateDir,
+  STATE_ROOT_ACTIVATION_FILE,
+  STATE_STORES,
+} from '../atlas/state-root.js';
 
 const MANAGED_ENV_KEYS = [
   'ATLAS_STATE_ROOT',
+  'ATLAS_STATE_ROOT_REQUIRED',
   'ATLAS_EXEC_GRAPH_DIR',
   'ATLAS_EVIDENCE_DIR',
   'ATLAS_GOAL_BUDGET_DIR',
+  'ATLAS_LEARNING_STATE_DIR',
+  'ATLAS_INSTANCE_LEASE_DIR',
+  'ATLAS_STATE_DIR',
+  'ATLAS_PROVIDER_HEALTH_DIR',
+  'ATLAS_SPEND_RECEIPT_DIR',
+  'ATLAS_BREADCRUMB_DIR',
+  'ATLAS_OPSBOARD_EXCHANGE_DIR',
 ] as const;
 
 const ABSOLUTE_STATE_ROOT = join(tmpdir(), 'atlas-state-root-test');
@@ -17,6 +32,7 @@ const ABSOLUTE_LEGACY_ROOT = join(tmpdir(), 'atlas-legacy-root-test');
 describe('atlas/state-root', () => {
   let prior: Record<string, string | undefined>;
   let priorCwd: string;
+  let activationRoot: string;
 
   beforeEach(() => {
     prior = {};
@@ -25,6 +41,7 @@ describe('atlas/state-root', () => {
       delete process.env[key];
     }
     priorCwd = process.cwd();
+    activationRoot = mkdtempSync(join(tmpdir(), 'atlas-state-root-activation-'));
   });
 
   afterEach(() => {
@@ -38,7 +55,26 @@ describe('atlas/state-root', () => {
     } catch {
       /* ignore — cwd may already be valid */
     }
+    rmSync(activationRoot, { recursive: true, force: true });
   });
+
+  function writeActivationManifest(overrides: Record<string, unknown> = {}): void {
+    mkdirSync(activationRoot, { recursive: true });
+    writeFileSync(
+      join(activationRoot, STATE_ROOT_ACTIVATION_FILE),
+      `${JSON.stringify({
+        schemaVersion: 1,
+        nodeRole: 'local',
+        activatedAt: '2026-07-30T00:00:00.000Z',
+        stores: Object.keys(STATE_STORES),
+        sourceReceipts: [
+          { kind: 'm3c-exec-graph', sha256: 'a'.repeat(64) },
+        ],
+        ...overrides,
+      }, null, 2)}\n`,
+      'utf8',
+    );
+  }
 
   describe('resolveStateRoot()', () => {
     it('respects ATLAS_STATE_ROOT when set and non-empty', () => {
@@ -88,6 +124,76 @@ describe('atlas/state-root', () => {
       const before = resolveStateRoot();
       process.chdir(tmpdir());
       expect(resolveStateRoot()).toBe(before);
+    });
+
+    it('requires an explicit root when production activation is enabled', () => {
+      process.env.ATLAS_STATE_ROOT_REQUIRED = '1';
+      expect(() => resolveStateRoot()).toThrow('explicit_root_required');
+    });
+
+    it('refuses an unknown activation-mode value instead of silently disabling it', () => {
+      process.env.ATLAS_STATE_ROOT = ABSOLUTE_STATE_ROOT;
+      process.env.ATLAS_STATE_ROOT_REQUIRED = 'yes';
+      expect(() => resolveStateRoot()).toThrow(
+        'ATLAS_STATE_ROOT_REQUIRED must be one of: 1, true, 0, false',
+      );
+    });
+  });
+
+  describe('activated root contract', () => {
+    beforeEach(() => {
+      process.env.ATLAS_STATE_ROOT = activationRoot;
+      process.env.ATLAS_STATE_ROOT_REQUIRED = '1';
+    });
+
+    it('refuses a missing activation manifest before resolving a store', () => {
+      expect(() => resolveStateDir('exec-graph')).toThrow('activation_manifest_missing');
+    });
+
+    it('accepts a strict manifest that activates the complete registry', () => {
+      writeActivationManifest();
+      expect(assertStateRootActivated().nodeRole).toBe('local');
+      expect(resolveStateDir('exec-graph')).toBe(join(activationRoot, 'exec-graph'));
+    });
+
+    it('refuses a store omitted from the activation manifest', () => {
+      writeActivationManifest({
+        stores: Object.keys(STATE_STORES).filter((store) => store !== 'exec-graph'),
+      });
+      expect(() => assertStateRootActivated()).toThrow('store_not_activated');
+    });
+
+    it('refuses an invalid activation receipt hash', () => {
+      writeActivationManifest({
+        sourceReceipts: [{ kind: 'm3c-exec-graph', sha256: 'not-a-sha256' }],
+      });
+      expect(() => assertStateRootActivated()).toThrow('activation_manifest_invalid');
+    });
+
+    it('refuses a legacy override that escapes the activated root', () => {
+      writeActivationManifest();
+      process.env.ATLAS_EXEC_GRAPH_DIR = ABSOLUTE_LEGACY_ROOT;
+      expect(() => resolveStateDir('exec-graph')).toThrow('store_outside_root');
+    });
+
+    it('allows a legacy override contained by the activated root', () => {
+      writeActivationManifest();
+      const contained = join(activationRoot, 'legacy-exec-graph');
+      process.env.ATLAS_EXEC_GRAPH_DIR = contained;
+      expect(resolveStateDir('exec-graph')).toBe(contained);
+    });
+
+    it('refuses a lexically-contained legacy path whose junction resolves outside the root', () => {
+      writeActivationManifest();
+      const outsideRoot = mkdtempSync(join(tmpdir(), 'atlas-state-root-outside-'));
+      try {
+        const linkedParent = join(activationRoot, 'linked-outside');
+        symlinkSync(outsideRoot, linkedParent, process.platform === 'win32' ? 'junction' : 'dir');
+        process.env.ATLAS_EXEC_GRAPH_DIR = join(linkedParent, 'exec-graph');
+        expect(() => resolveStateDir('exec-graph')).toThrow('store_outside_root');
+      } finally {
+        rmSync(outsideRoot, { recursive: true, force: true });
+      }
     });
   });
 
@@ -172,20 +278,32 @@ describe('atlas/state-root', () => {
       );
     });
 
-    it('names the nine stores in the current migration registry', () => {
-      expect(Object.keys(STATE_STORES).sort()).toEqual(
-        [
-          'exec-graph',
-          'evidence',
-          'goal-budgets',
-          'cost-router',
-          'swarm-runs',
-          'operator-state',
-          'operator-runs',
-          'intake-drafts',
-          'task-results',
-        ].sort()
-      );
+    it('covers every currently classified root-managed store', () => {
+      expect(Object.keys(STATE_STORES)).toEqual(expect.arrayContaining([
+        'exec-graph',
+        'evidence',
+        'goal-budgets',
+        'cost-router',
+        'swarm-runs',
+        'operator-state',
+        'operator-runs',
+        'intake-drafts',
+        'task-results',
+        'learning',
+        'instance-lease',
+        'queue-auth',
+        'provider-health',
+        'spend-receipts',
+        'notify-queue',
+        'alert-state',
+        'emotion-audit',
+        'repo-watch',
+        'breadcrumbs',
+        'shell-audit',
+        'opsboard-exchange',
+        'pause-control',
+        'runner-log',
+      ]));
     });
 
     it('maps the three stores that already have a documented legacy env var', () => {

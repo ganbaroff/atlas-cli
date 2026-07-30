@@ -19,15 +19,40 @@
  *   2. `<ATLAS_STATE_ROOT>/<store>`.
  * There is no third fallback and no cwd branch: the root itself defaults to
  * `~/.atlas/state`, which is checkout-independent by construction.
+ *
+ * ACTIVATION: pre-cutover callers keep the backward-compatible default above.
+ * Once `ATLAS_STATE_ROOT_REQUIRED=1|true`, the root must be explicit, a strict
+ * activation manifest must cover the complete registry, and legacy overrides
+ * may not escape the activated root. This turns a missing cutover binding into
+ * a named refusal instead of silently opening a second state home.
  */
 
 import { homedir } from 'node:os';
-import { isAbsolute, join, normalize, parse } from 'node:path';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, normalize, parse, relative, resolve } from 'node:path';
+import { z } from 'zod';
 
 export class StateRootConfigurationError extends Error {
-  constructor(envName: string) {
-    super(`${envName} must be a stable absolute path`);
+  constructor(envName: string, message = `${envName} must be a stable absolute path`) {
+    super(message);
     this.name = 'StateRootConfigurationError';
+  }
+}
+
+export type StateRootActivationErrorCode =
+  | 'explicit_root_required'
+  | 'activation_manifest_missing'
+  | 'activation_manifest_invalid'
+  | 'store_not_activated'
+  | 'store_outside_root';
+
+export class StateRootActivationError extends Error {
+  constructor(
+    readonly code: StateRootActivationErrorCode,
+    message: string,
+  ) {
+    super(`${code}: ${message}`);
+    this.name = 'StateRootActivationError';
   }
 }
 
@@ -48,7 +73,11 @@ function readAbsoluteOverride(envName: string): string | undefined {
   return normalize(value);
 }
 
-/** Managed state-store registry; not a claim of complete runtime-store inventory. */
+/**
+ * Classified root-managed stores. File-shaped legacy overrides stay undefined
+ * here and are handled by their call-site migration because resolveStateDir()
+ * returns directories, never files.
+ */
 export const STATE_STORES = {
   'exec-graph': 'ATLAS_EXEC_GRAPH_DIR',
   evidence: 'ATLAS_EVIDENCE_DIR',
@@ -59,9 +88,56 @@ export const STATE_STORES = {
   'intake-drafts': undefined,
   'task-results': undefined,
   'cost-router': undefined,
+  learning: 'ATLAS_LEARNING_STATE_DIR',
+  'instance-lease': 'ATLAS_INSTANCE_LEASE_DIR',
+  'queue-auth': 'ATLAS_STATE_DIR',
+  'provider-health': 'ATLAS_PROVIDER_HEALTH_DIR',
+  'spend-receipts': 'ATLAS_SPEND_RECEIPT_DIR',
+  'notify-queue': undefined,
+  'alert-state': undefined,
+  'emotion-audit': undefined,
+  'repo-watch': undefined,
+  breadcrumbs: 'ATLAS_BREADCRUMB_DIR',
+  'shell-audit': undefined,
+  'opsboard-exchange': 'ATLAS_OPSBOARD_EXCHANGE_DIR',
+  'pause-control': undefined,
+  'runner-log': undefined,
 } as const satisfies Readonly<Record<string, string | undefined>>;
 
 export type StateStore = keyof typeof STATE_STORES;
+
+export const STATE_ROOT_ACTIVATION_FILE = 'state-root-activation.json';
+
+const activationReceiptSchema = z.object({
+  kind: z.string().trim().min(1),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/i),
+}).strict();
+
+const stateRootActivationManifestSchema = z.object({
+  schemaVersion: z.literal(1),
+  nodeRole: z.enum(['local', 'railway']),
+  activatedAt: z.string().datetime(),
+  stores: z.array(z.string().trim().min(1)).min(1),
+  sourceReceipts: z.array(activationReceiptSchema).min(1),
+}).strict();
+
+export interface StateRootActivationManifest {
+  schemaVersion: 1;
+  nodeRole: 'local' | 'railway';
+  activatedAt: string;
+  stores: StateStore[];
+  sourceReceipts: Array<{ kind: string; sha256: string }>;
+}
+
+function stateRootRequired(): boolean {
+  const value = process.env.ATLAS_STATE_ROOT_REQUIRED?.trim().toLowerCase();
+  if (!value || value === '0' || value === 'false') return false;
+  if (value === '1' || value === 'true') return true;
+  throw new StateRootConfigurationError(
+    'ATLAS_STATE_ROOT_REQUIRED',
+    'ATLAS_STATE_ROOT_REQUIRED must be one of: 1, true, 0, false',
+  );
+}
 
 /**
  * Resolve the single root all Atlas runtime state lives under.
@@ -69,9 +145,97 @@ export type StateStore = keyof typeof STATE_STORES;
  * `~/.atlas/state`. Never cwd-relative or checkout-relative.
  */
 export function resolveStateRoot(): string {
+  const required = stateRootRequired();
   const override = readAbsoluteOverride('ATLAS_STATE_ROOT');
   if (override) return override;
+  if (required) {
+    throw new StateRootActivationError(
+      'explicit_root_required',
+      'ATLAS_STATE_ROOT_REQUIRED is enabled but ATLAS_STATE_ROOT is missing',
+    );
+  }
   return join(homedir(), '.atlas', 'state');
+}
+
+function canonicalizeExistingPrefix(path: string): string {
+  const missingTail: string[] = [];
+  let probe = path;
+  while (!existsSync(probe)) {
+    const parent = dirname(probe);
+    if (parent === probe) return normalize(path);
+    missingTail.unshift(basename(probe));
+    probe = parent;
+  }
+  return resolve(realpathSync(probe), ...missingTail);
+}
+
+function isStrictChildPath(root: string, candidate: string): boolean {
+  const canonicalRoot = canonicalizeExistingPrefix(root);
+  const canonicalCandidate = canonicalizeExistingPrefix(candidate);
+  const rel = relative(canonicalRoot, canonicalCandidate);
+  const firstSegment = rel.split(/[\\/]/, 1)[0];
+  return rel.length > 0 && firstSegment !== '..' && !isAbsolute(rel);
+}
+
+export function stateRootActivationPath(root = resolveStateRoot()): string {
+  return join(root, STATE_ROOT_ACTIVATION_FILE);
+}
+
+export function assertStateRootActivated(
+  root = resolveStateRoot(),
+): StateRootActivationManifest {
+  const path = stateRootActivationPath(root);
+  if (!existsSync(path)) {
+    throw new StateRootActivationError(
+      'activation_manifest_missing',
+      `state root activation manifest is missing: ${path}`,
+    );
+  }
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(readFileSync(path, 'utf8'));
+  } catch (error) {
+    throw new StateRootActivationError(
+      'activation_manifest_invalid',
+      `state root activation manifest is unreadable: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+
+  const parsed = stateRootActivationManifestSchema.safeParse(raw);
+  if (!parsed.success) {
+    throw new StateRootActivationError(
+      'activation_manifest_invalid',
+      `state root activation manifest failed validation: ${parsed.error.issues.map((issue) => issue.message).join('; ')}`,
+    );
+  }
+
+  const knownStores = new Set(Object.keys(STATE_STORES));
+  const duplicateStores = parsed.data.stores.filter(
+    (store, index, stores) => stores.indexOf(store) !== index,
+  );
+  const unknownStores = parsed.data.stores.filter((store) => !knownStores.has(store));
+  if (duplicateStores.length > 0 || unknownStores.length > 0) {
+    throw new StateRootActivationError(
+      'activation_manifest_invalid',
+      `activation manifest has duplicate or unknown stores: ${[
+        ...new Set([...duplicateStores, ...unknownStores]),
+      ].join(', ')}`,
+    );
+  }
+
+  const missingStores = [...knownStores].filter((store) => !parsed.data.stores.includes(store));
+  if (missingStores.length > 0) {
+    throw new StateRootActivationError(
+      'store_not_activated',
+      `activation manifest omits registered stores: ${missingStores.join(', ')}`,
+    );
+  }
+
+  return {
+    ...parsed.data,
+    stores: parsed.data.stores as StateStore[],
+  };
 }
 
 /**
@@ -82,10 +246,40 @@ export function resolveStateRoot(): string {
  * directory — callers that need it to exist create it themselves.
  */
 export function resolveStateDir(store: StateStore, legacyEnv?: string): string {
+  const root = resolveStateRoot();
+  const activation = stateRootRequired() ? assertStateRootActivated(root) : undefined;
+  if (activation && !activation.stores.includes(store)) {
+    throw new StateRootActivationError(
+      'store_not_activated',
+      `store '${store}' is absent from the activation manifest`,
+    );
+  }
+
   const envName = legacyEnv ?? STATE_STORES[store];
   if (envName) {
     const legacy = readAbsoluteOverride(envName);
-    if (legacy) return legacy;
+    if (legacy) {
+      if (activation) {
+        let contained = false;
+        try {
+          contained = isStrictChildPath(root, legacy);
+        } catch (error) {
+          throw new StateRootActivationError(
+            'store_outside_root',
+            `cannot prove ${envName} is contained by activated ATLAS_STATE_ROOT: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+        if (!contained) {
+          throw new StateRootActivationError(
+            'store_outside_root',
+            `${envName} resolves outside activated ATLAS_STATE_ROOT`,
+          );
+        }
+      }
+      return legacy;
+    }
   }
-  return join(resolveStateRoot(), store);
+  return join(root, store);
 }
