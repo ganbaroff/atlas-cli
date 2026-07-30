@@ -102,7 +102,9 @@ never-throw but write nothing anywhere (residue-free) on invalid activation,
 and shell-audit — shared by fs-guard and shell tooling — is resolved at call
 time rather than import time. This leaves only the external writers
 pause-control and runner-log classified for cutover, not call-site
-migration.
+migration. CWD/checkout invariance is now proven by tests `eae53a7`/
+`586393c` (registry-tiled coverage, checkout write-isolation, seeded
+repo-watch read probe).
 
 Before migration, classify every filesystem writer into exactly one category:
 

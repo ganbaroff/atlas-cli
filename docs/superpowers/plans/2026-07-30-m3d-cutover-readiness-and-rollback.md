@@ -68,7 +68,7 @@ recovery gates before any Atlas repository move or live binding change.
 - [x] Migrate remaining call sites in small store-family slices; keep explicit
       temporary roots in tests before activation. (complete as of slice 10;
       pause-control and runner-log are external writers handled at cutover)
-- [ ] Prove CWD/code-root invariance and no writes to checkout paths.
+- [x] Prove CWD/code-root invariance and no writes to checkout paths. (eae53a7 + 586393c)
 - [ ] Before any live activation, bind the manifest to an externally expected
       node role and verify allowlisted source-receipt artifacts/hashes; fields
       asserted by the manifest itself are not provenance proof.
@@ -182,6 +182,35 @@ the import-time `AUDIT_LOG_PATH` constant is gone. Independently re-run:
 122/122 tests across 4 files, clean typecheck. With slice 10, call-site
 migration is complete; only the external writers `pause-control` and
 `runner-log` remain, handled at cutover.
+
+Invariance proof checkpoint `eae53a7`+`586393c`: three properties are now
+proven — (1) pre-activation, checkout-resident legacy defaults for
+exec-graph, operator-state, and emotion-audit demonstrably resolve inside
+the checkout; (2) after activation every production resolver lands under
+the activated root from any cwd, identical across cwds; (3) an adversarial
+write exercise from inside the checkout leaves `state/` and `operator/`
+byte-for-byte untouched. RED receipt: removing activation fails the test.
+An independent adversarial review REFUTED the first cut on three findings —
+(a) blocker: the resolved-path map's key set was unpinned, a vacuous-pass
+risk; (b) moderate: repo-watch had no positive under-root assertion
+anywhere, with a comment falsely citing a slice-10 test; (c) low: external
+writers pause-control/runner-log were silently absent from coverage.
+`586393c` repairs all three: a literal 22-label sorted `toEqual` pins the
+resolved-path map, a full 23-store registry tiling (19 resolver + 2
+behavioral + 2 external via imported `EXTERNAL_STATE_WRITERS`) closes the
+coverage gap, and an airtight seeded-read repo-watch probe proves a wrong
+read yields the opposite notify decision. RED receipt: deleting one label
+fails the test. A second independent verifier confirmed CLOSED: 61/61
+across the migration and inventory test files, clean typecheck, and the
+repo-watch probe traced airtight through both branches of `decideNotify`.
+The slice-10 open item (double-run state-leak probe) is now CLOSED: the
+migration test file was run consecutively multiple times this session (2×
+by the writer, 3× by a verifier) with identical 57/57 pre-repair results.
+NEW OPEN residual risk (pre-existing design, not a regression):
+`EXTERNAL_STATE_WRITERS` reasons are format-checked prose only — no test
+verifies the claimed external writer (e.g. `scripts/start-runner.cmd`)
+actually writes the store; a plausible-but-false reclassification would
+pass both structural tests. Candidate falsifier for a future slice.
 
 ---
 

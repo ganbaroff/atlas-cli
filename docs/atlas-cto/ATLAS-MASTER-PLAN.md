@@ -30,6 +30,12 @@ migration.
 M1, fake-only M2, strict M3A,
 synthetic M3B, and one real retained-copy rehearsal are complete on a local
 branch. Physical consolidation is NO-GO. Live provider traffic has not started.
+The CWD/code-root invariance proof is now done at `eae53a7` (adversarially
+reviewed, three findings) and repaired/closed at `586393c` (registry-tiled
+coverage, checkout write-isolation, seeded repo-watch read probe). Next
+gate: manifest node-role binding and source-receipt verification before any
+live activation (CEO-gated), plus the two external-writer stores at
+cutover.
 
 ```mermaid
 flowchart LR

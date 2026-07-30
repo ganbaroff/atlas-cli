@@ -45,8 +45,12 @@ store, alert-state, emotion-audit, repo-watch, and shell-audit only after
 required manifest-bound activation. Call-site migration is now complete;
 only the external writers pause-control and runner-log remain, handled at
 activation/cutover, not by call-site migration.
-Active package: the CWD/code-root invariance proof plus the two
-external-writer stores at cutover; no physical cutover is authorized.
+Active package: the CWD/code-root invariance proof is done at `eae53a7`+
+`586393c` (registry-tiled coverage, checkout write-isolation, seeded
+repo-watch read probe; adversarially reviewed and repaired). Next: manifest
+node-role binding and source-receipt verification before any live
+activation, plus the two external-writer stores at cutover; no physical
+cutover is authorized.
 
 `M1 ✓  →  M2 ✓  →  M3A ✓  →  M3B ✓  →  M3C ✓  →  M3D PACKET ✓  →  A1 ✓  →  A2…D  →  CEO CUTOVER GATE`
 
@@ -227,8 +231,12 @@ Fable/Opus routing closure:
 10. **In progress:** M3D-A1 is done at `97a300e`; M3D-A2 slices 1-10 are done at
     `ca324fe`, `0c9723d`, `2cbc85f`, `4dca9fe`, `94e7426`, `af3f48a`,
     `c3923c9`, queue slice `746ccf7`, opsboard slice `c0d7f57`, and
-    alert/audit/watch/shell slice `5fd6b29`. **Next:**
-    the CWD/code-root invariance proof plus the two external-writer stores
+    alert/audit/watch/shell slice `5fd6b29`. The CWD/code-root invariance
+    proof is done at `eae53a7` (adversarially REFUTED on three findings) and
+    repaired/closed at `586393c` (registry-tiled coverage, checkout
+    write-isolation, seeded repo-watch read probe). **Next:**
+    the manifest node-role binding and source-receipt verification gate
+    before any live activation, plus the two external-writer stores
     (pause-control, runner-log) at cutover, then M3D-B mutation integrity,
     M3D-C effect durability, and M3D-D full-root recovery.
 11. **Live research broker:** one provider at a time, public synthetic prompts.
