@@ -8,6 +8,10 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { assertWritable, isAtlasReadonly } from '../atlas/readonly-guard.js';
+import {
+  constrainMigratingStatePath,
+  resolveMigratingStateDir,
+} from '../atlas/state-root.js';
 
 export type GoalRequestAction = 'run' | 'cancel';
 export type GoalReceiptStatus =
@@ -38,36 +42,88 @@ export interface GoalReceipt {
   report?: unknown;
 }
 
-export function resolveExchangeDir(): string {
-  const dir = process.env.ATLAS_OPSBOARD_EXCHANGE_DIR;
-  if (!dir) throw new Error('ATLAS_OPSBOARD_EXCHANGE_DIR not set');
-  mkdirSync(join(dir, 'requests'), { recursive: true });
-  mkdirSync(join(dir, 'receipts'), { recursive: true });
-  mkdirSync(join(dir, 'processed'), { recursive: true });
+function exchangePath(dir: string, ...segments: string[]): string {
+  return constrainMigratingStatePath(
+    'opsboard-exchange',
+    join(dir, ...segments),
+  );
+}
+
+export function resolveExchangeDir(explicitDir?: string): string {
+  const dir = resolveMigratingStateDir(
+    'opsboard-exchange',
+    () => {
+      const legacy = explicitDir ?? process.env.ATLAS_OPSBOARD_EXCHANGE_DIR;
+      if (!legacy) throw new Error('ATLAS_OPSBOARD_EXCHANGE_DIR not set');
+      return legacy;
+    },
+    explicitDir === undefined ? 'ATLAS_OPSBOARD_EXCHANGE_DIR' : null,
+  );
+  const childDirs = ['requests', 'receipts', 'processed'].map(
+    (name) => exchangePath(dir, name),
+  );
+  for (const childDir of childDirs) {
+    mkdirSync(childDir, { recursive: true });
+  }
   return dir;
 }
 
-function writeReceiptAtomic(dir: string, receipt: GoalReceipt): void {
-  mkdirSync(join(dir, 'receipts'), { recursive: true });
-  const path = join(dir, 'receipts', `${receipt.correlationId}.json`);
-  const tmp = `${path}.${process.pid}.tmp`;
-  writeFileSync(tmp, JSON.stringify(receipt, null, 2), 'utf8');
-  renameSync(tmp, path);
+interface ReceiptPaths {
+  readonly directory: string;
+  readonly final: string;
+  readonly temporary: string;
+}
+
+/**
+ * Validate the correlation id BEFORE any path is resolved or any directory is
+ * created. A traversal-shaped id must not be able to bring the exchange tree
+ * into existence as a side effect of being rejected.
+ */
+function assertValidCorrelationId(correlationId: string): void {
+  if (
+    !correlationId ||
+    correlationId === '.' ||
+    correlationId === '..' ||
+    /[\\/\0]/.test(correlationId)
+  ) {
+    throw new Error('invalid correlationId: must be one file-name segment');
+  }
+}
+
+function resolveReceiptPaths(dir: string, correlationId: string): ReceiptPaths {
+  assertValidCorrelationId(correlationId);
+  return {
+    directory: exchangePath(dir, 'receipts'),
+    final: exchangePath(dir, 'receipts', `${correlationId}.json`),
+    temporary: exchangePath(
+      dir,
+      'receipts',
+      `${correlationId}.json.${process.pid}.tmp`,
+    ),
+  };
+}
+
+function writeReceiptAtomic(paths: ReceiptPaths, receipt: GoalReceipt): void {
+  mkdirSync(paths.directory, { recursive: true });
+  writeFileSync(paths.temporary, JSON.stringify(receipt, null, 2), 'utf8');
+  renameSync(paths.temporary, paths.final);
 }
 
 export function readGoalRequest(path: string): GoalRequest {
-  const raw = JSON.parse(readFileSync(path, 'utf8')) as GoalRequest;
+  const safePath = constrainMigratingStatePath('opsboard-exchange', path);
+  const raw = JSON.parse(readFileSync(safePath, 'utf8')) as GoalRequest;
   if (!raw.correlationId || !raw.action || !raw.objective) {
     throw new Error('invalid GoalRequest shape');
   }
   return raw;
 }
 
-export function listPendingRequests(dir = resolveExchangeDir()): string[] {
-  const reqDir = join(dir, 'requests');
+export function listPendingRequests(explicitDir?: string): string[] {
+  const dir = resolveExchangeDir(explicitDir);
+  const reqDir = exchangePath(dir, 'requests');
   return readdirSync(reqDir)
     .filter((f) => f.endsWith('.json'))
-    .map((f) => join(reqDir, f));
+    .map((f) => exchangePath(dir, 'requests', f));
 }
 
 export type GoalRunnerFn = (input: {
@@ -84,7 +140,11 @@ export async function processGoalRequest(
   req: GoalRequest,
   opts?: { run?: GoalRunnerFn; exchangeDir?: string; now?: () => Date },
 ): Promise<GoalReceipt> {
-  const dir = opts?.exchangeDir ?? resolveExchangeDir();
+  // Refuse a malformed correlation id before `resolveExchangeDir` can create
+  // the exchange tree, so a rejected request leaves zero filesystem residue.
+  assertValidCorrelationId(req.correlationId);
+  const dir = resolveExchangeDir(opts?.exchangeDir);
+  const receiptPaths = resolveReceiptPaths(dir, req.correlationId);
   const now = () => (opts?.now ? opts.now() : new Date()).toISOString();
 
   if (isAtlasReadonly()) {
@@ -94,18 +154,21 @@ export async function processGoalRequest(
       updatedAt: now(),
       error: 'ATLAS_READONLY=1',
     };
-    writeReceiptAtomic(dir, receipt);
+    writeReceiptAtomic(receiptPaths, receipt);
     return receipt;
   }
 
-  if (seen.has(req.correlationId) || existsSync(join(dir, 'receipts', `${req.correlationId}.json`))) {
+  if (
+    seen.has(req.correlationId) ||
+    existsSync(receiptPaths.final)
+  ) {
     const receipt: GoalReceipt = {
       correlationId: req.correlationId,
       status: 'duplicate',
       updatedAt: now(),
       error: 'correlationId already processed',
     };
-    writeReceiptAtomic(dir, receipt);
+    writeReceiptAtomic(receiptPaths, receipt);
     return receipt;
   }
 
@@ -115,8 +178,8 @@ export async function processGoalRequest(
       status: 'cancelled',
       updatedAt: now(),
     };
+    writeReceiptAtomic(receiptPaths, receipt);
     seen.add(req.correlationId);
-    writeReceiptAtomic(dir, receipt);
     return receipt;
   }
 
@@ -130,7 +193,7 @@ export async function processGoalRequest(
       updatedAt: now(),
       error: 'no goal runner injected',
     };
-    writeReceiptAtomic(dir, receipt);
+    writeReceiptAtomic(receiptPaths, receipt);
     return receipt;
   }
 
@@ -157,8 +220,8 @@ export async function processGoalRequest(
       goalId: result.goalId,
       report: result.report ?? result,
     };
+    writeReceiptAtomic(receiptPaths, receipt);
     seen.add(req.correlationId);
-    writeReceiptAtomic(dir, receipt);
     return receipt;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -168,8 +231,8 @@ export async function processGoalRequest(
       updatedAt: now(),
       error: msg.slice(0, 500),
     };
+    writeReceiptAtomic(receiptPaths, receipt);
     seen.add(req.correlationId);
-    writeReceiptAtomic(dir, receipt);
     return receipt;
   }
 }

@@ -45,6 +45,7 @@ import * as breadcrumbs from '../atlas/write-back-hook.js';
 import * as notifyQueue from '../atlas/notify-queue.js';
 import * as queueAuth from '../atlas/queue-auth.js';
 import { defaultRunnerDeps } from '../atlas/atlas-runner.js';
+import * as opsboard from '../opsboard/goal-request-port.js';
 
 const MANAGED_ENV_KEYS = [
   'ATLAS_STATE_ROOT',
@@ -60,13 +61,14 @@ const MANAGED_ENV_KEYS = [
   'ATLAS_BREADCRUMB_DIR',
   'ATLAS_NOTIFY_QUEUE_PATH',
   'ATLAS_STATE_DIR',
+  'ATLAS_OPSBOARD_EXCHANGE_DIR',
   'ATLAS_READONLY',
   'SUPABASE_URL',
   'SUPABASE_SERVICE_ROLE_KEY',
 ] as const;
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-describe('M3D-A2 state-root call-site migration slices 1-8', () => {
+describe('M3D-A2 state-root call-site migration slices 1-9', () => {
   let root: string;
   let prior: Record<string, string | undefined>;
   let priorCwd: string;
@@ -588,6 +590,185 @@ describe('M3D-A2 state-root call-site migration slices 1-8', () => {
     } finally {
       rmSync(outside, { recursive: true, force: true });
     }
+  });
+
+  it('routes OPSBOARD exchange through its activated store while a staged root stays inert', () => {
+    const legacy = resolve(root, 'legacy-opsboard');
+    process.env.ATLAS_STATE_ROOT = root;
+    process.env.ATLAS_OPSBOARD_EXCHANGE_DIR = legacy;
+
+    expect(opsboard.resolveExchangeDir()).toBe(legacy);
+    expect(existsSync(resolve(legacy, 'requests'))).toBe(true);
+
+    rmSync(legacy, { recursive: true, force: true });
+    delete process.env.ATLAS_OPSBOARD_EXCHANGE_DIR;
+    activateRoot();
+    expect(opsboard.resolveExchangeDir()).toBe(resolve(root, 'opsboard-exchange'));
+    expect(existsSync(legacy)).toBe(false);
+    expect(existsSync(resolve(root, 'opsboard-exchange', 'receipts'))).toBe(true);
+  });
+
+  it('refuses invalid OPSBOARD activation before creating its legacy exchange', () => {
+    const legacy = resolve(tmpdir(), `${basename(root)}-legacy-opsboard`);
+    process.env.ATLAS_STATE_ROOT = root;
+    process.env.ATLAS_STATE_ROOT_REQUIRED = '1';
+    process.env.ATLAS_OPSBOARD_EXCHANGE_DIR = legacy;
+
+    try {
+      expect(() => opsboard.resolveExchangeDir()).toThrow(
+        /activation_manifest_missing/,
+      );
+      expect(existsSync(legacy)).toBe(false);
+      expect(existsSync(resolve(root, 'opsboard-exchange'))).toBe(false);
+    } finally {
+      rmSync(legacy, { recursive: true, force: true });
+    }
+  });
+
+  it('ignores a direct OPSBOARD exchange override after activation', async () => {
+    activateRoot();
+    const outside = resolve(tmpdir(), `${basename(root)}-direct-opsboard`);
+    opsboard.resetGoalRequestSeenForTests();
+
+    try {
+      const receipt = await opsboard.processGoalRequest({
+        correlationId: 'm3d-a2-slice-9-direct',
+        action: 'cancel',
+        objective: 'must stay under activated root',
+        issuedAt: '2026-07-30T00:00:00.000Z',
+        issuedBy: 'test',
+      }, {
+        exchangeDir: outside,
+        now: () => new Date('2026-07-30T00:00:01.000Z'),
+      });
+
+      expect(receipt.status).toBe('cancelled');
+      expect(existsSync(resolve(
+        root,
+        'opsboard-exchange',
+        'receipts',
+        'm3d-a2-slice-9-direct.json',
+      ))).toBe(true);
+      expect(existsSync(outside)).toBe(false);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses OPSBOARD child junctions and request leaf symlinks after activation', () => {
+    activateRoot();
+    const outside = mkdtempSync(join(tmpdir(), 'atlas-m3d-a2-slice-9-outside-'));
+    const outsideReceipts = resolve(outside, 'receipts');
+    const store = resolve(root, 'opsboard-exchange');
+    mkdirSync(outsideReceipts, { recursive: true });
+    mkdirSync(store, { recursive: true });
+    symlinkSync(
+      outsideReceipts,
+      resolve(store, 'receipts'),
+      process.platform === 'win32' ? 'junction' : 'dir',
+    );
+
+    try {
+      expect(() => opsboard.resolveExchangeDir()).toThrow(/store_outside_root/);
+      expect(existsSync(resolve(outsideReceipts, 'escaped.json'))).toBe(false);
+      expect(existsSync(resolve(store, 'requests'))).toBe(false);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses an OPSBOARD request file symlink before reading outside state', () => {
+    activateRoot();
+    const outside = mkdtempSync(join(tmpdir(), 'atlas-m3d-a2-slice-9-request-'));
+    const outsideRequest = resolve(outside, 'outside.json');
+    const store = resolve(root, 'opsboard-exchange');
+    mkdirSync(resolve(store, 'requests'), { recursive: true });
+    mkdirSync(resolve(store, 'receipts'), { recursive: true });
+    mkdirSync(resolve(store, 'processed'), { recursive: true });
+    writeFileSync(outsideRequest, JSON.stringify({
+      correlationId: 'outside',
+      action: 'cancel',
+      objective: 'outside state',
+    }), 'utf8');
+    symlinkSync(outsideRequest, resolve(store, 'requests', 'outside.json'), 'file');
+
+    try {
+      expect(() => opsboard.listPendingRequests()).toThrow(/store_outside_root/);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses an OPSBOARD temporary receipt symlink before file or seen-state mutation', async () => {
+    activateRoot();
+    opsboard.resolveExchangeDir();
+    opsboard.resetGoalRequestSeenForTests();
+    const outside = mkdtempSync(join(tmpdir(), 'atlas-m3d-a2-slice-9-temp-'));
+    const outsideReceipt = resolve(outside, 'outside.json');
+    const receiptsDir = resolve(root, 'opsboard-exchange', 'receipts');
+    const correlationId = 'm3d-a2-slice-9-temp';
+    const temporaryReceipt = resolve(
+      receiptsDir,
+      `${correlationId}.json.${process.pid}.tmp`,
+    );
+    let runCount = 0;
+    writeFileSync(outsideReceipt, 'outside-sentinel', 'utf8');
+    symlinkSync(outsideReceipt, temporaryReceipt, 'file');
+    const request = {
+      correlationId,
+      action: 'run' as const,
+      objective: 'must not cross receipt temp path',
+      issuedAt: '2026-07-30T00:00:00.000Z',
+      issuedBy: 'test',
+    };
+
+    try {
+      await expect(opsboard.processGoalRequest(request, {
+        now: () => new Date('2026-07-30T00:00:01.000Z'),
+        run: async () => {
+          runCount += 1;
+          return { status: 'completed' };
+        },
+      })).rejects.toThrow(/store_outside_root/);
+      expect(readFileSync(outsideReceipt, 'utf8')).toBe('outside-sentinel');
+      expect(runCount).toBe(0);
+
+      rmSync(temporaryReceipt, { force: true });
+      const retry = await opsboard.processGoalRequest(request, {
+        now: () => new Date('2026-07-30T00:00:02.000Z'),
+        run: async () => {
+          runCount += 1;
+          return { status: 'completed' };
+        },
+      });
+      expect(retry.status).toBe('completed');
+      expect(runCount).toBe(1);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses OPSBOARD correlation traversal before runner or cross-directory write', async () => {
+    activateRoot();
+    let runCount = 0;
+    const victim = resolve(root, 'opsboard-exchange', 'requests', 'victim.json');
+
+    await expect(opsboard.processGoalRequest({
+      correlationId: '../requests/victim',
+      action: 'run',
+      objective: 'must not escape receipts directory',
+      issuedAt: '2026-07-30T00:00:00.000Z',
+      issuedBy: 'test',
+    }, {
+      run: async () => {
+        runCount += 1;
+        return { status: 'completed' };
+      },
+    })).rejects.toThrow(/correlationId/);
+
+    expect(runCount).toBe(0);
+    expect(existsSync(victim)).toBe(false);
+    expect(existsSync(resolve(root, 'opsboard-exchange'))).toBe(false);
   });
 
   it('preserves each learning legacy resolver before required activation', () => {
