@@ -1,13 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 describe('spend tracker', () => {
+  let receiptDir: string;
+
   beforeEach(() => {
     vi.unstubAllEnvs();
+    receiptDir = mkdtempSync(join(tmpdir(), 'atlas-spend-tracker-'));
+    vi.stubEnv('ATLAS_SPEND_RECEIPT_DIR', receiptDir);
+    vi.stubEnv('ATLAS_STATE_ROOT_REQUIRED', '0');
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
+    rmSync(receiptDir, { recursive: true, force: true });
   });
 
   it('free providers cost zero', async () => {
@@ -89,6 +98,32 @@ describe('spend tracker', () => {
     ).not.toThrow();
     await new Promise((r) => setTimeout(r, 0));
     expect(errSpy).toHaveBeenCalled();
+  });
+
+  it('does not throw when the local receipt path has an ordinary IO failure', async () => {
+    const blockedPath = join(receiptDir, 'not-a-directory');
+    writeFileSync(blockedPath, 'fixture', 'utf8');
+    vi.stubEnv('ATLAS_SPEND_RECEIPT_DIR', blockedPath);
+    vi.stubEnv('SUPABASE_URL', '');
+    vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', '');
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { getDailySpend, recordSpend, resetDailySpend } =
+      await import('../atlas/spend-tracker.js');
+    resetDailySpend();
+
+    expect(() => recordSpend({
+      provider: 'nvidia',
+      model: 'llama',
+      tokensIn: 10,
+      tokensOut: 5,
+      caller: 'cli',
+      correlationId: 'ordinary-io-failure',
+    })).not.toThrow();
+    expect(getDailySpend().calls).toBe(1);
+    expect(errSpy).toHaveBeenCalledWith(
+      '[spend] local receipt path failed:',
+      expect.any(String),
+    );
   });
 
   it('recordSpendFromResult reads AI-SDK usage shapes', async () => {

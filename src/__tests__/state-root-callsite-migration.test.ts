@@ -30,6 +30,7 @@ import {
 } from '../learning/request-port.js';
 import { resolveLearningStateDir } from '../learning/state-dir.js';
 import type { LearningRequest } from '../learning/contracts.js';
+import * as spendTracker from '../atlas/spend-tracker.js';
 
 const MANAGED_ENV_KEYS = [
   'ATLAS_STATE_ROOT',
@@ -46,7 +47,7 @@ const MANAGED_ENV_KEYS = [
 ] as const;
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-describe('M3D-A2 state-root call-site migration slices 1-5', () => {
+describe('M3D-A2 state-root call-site migration slices 1-6', () => {
   let root: string;
   let prior: Record<string, string | undefined>;
   let priorCwd: string;
@@ -212,6 +213,100 @@ describe('M3D-A2 state-root call-site migration slices 1-5', () => {
     activateRoot();
 
     expect(resolveTaskResultsDir()).toBe(resolve(root, 'task-results'));
+  });
+
+  it('keeps spend receipts on the legacy path when the shared root is staged', () => {
+    process.env.ATLAS_STATE_ROOT = root;
+    const legacySpend = resolve(root, 'legacy-spend-receipts');
+    process.env.ATLAS_SPEND_RECEIPT_DIR = legacySpend;
+    const resolver = (
+      spendTracker as typeof spendTracker & {
+        resolveSpendReceiptDir?: () => string;
+      }
+    ).resolveSpendReceiptDir;
+
+    expect(resolver?.()).toBe(legacySpend);
+  });
+
+  it('routes the spend receipt store through the activated root', () => {
+    activateRoot();
+    const resolver = (
+      spendTracker as typeof spendTracker & {
+        resolveSpendReceiptDir?: () => string;
+      }
+    ).resolveSpendReceiptDir;
+
+    expect(resolver?.()).toBe(resolve(root, 'spend-receipts'));
+  });
+
+  it('refuses an escaped spend override before creating its directory', () => {
+    activateRoot();
+    const escapedSpend = resolve(tmpdir(), `${basename(root)}-escaped-spend`);
+    process.env.ATLAS_SPEND_RECEIPT_DIR = escapedSpend;
+    const resolver = (
+      spendTracker as typeof spendTracker & {
+        resolveSpendReceiptDir?: () => string;
+      }
+    ).resolveSpendReceiptDir;
+
+    try {
+      expect(() => resolver?.()).toThrow(/store_outside_root/);
+      expect(existsSync(escapedSpend)).toBe(false);
+    } finally {
+      rmSync(escapedSpend, { recursive: true, force: true });
+    }
+  });
+
+  it('does not swallow an activated spend-store invariant denial', () => {
+    activateRoot();
+    process.env.SUPABASE_URL = '';
+    process.env.SUPABASE_SERVICE_ROLE_KEY = '';
+    const escapedSpend = resolve(
+      tmpdir(),
+      `${basename(root)}-escaped-record-spend`,
+    );
+    process.env.ATLAS_SPEND_RECEIPT_DIR = escapedSpend;
+    spendTracker.resetDailySpend();
+
+    try {
+      expect(() => spendTracker.recordSpend({
+        provider: 'atlas-local',
+        model: 'state-root-fixture',
+        tokensIn: 0,
+        tokensOut: 0,
+        caller: 'm3d-a2',
+      })).toThrow(/store_outside_root/);
+      expect(existsSync(escapedSpend)).toBe(false);
+      expect(spendTracker.getDailySpend().calls).toBe(0);
+    } finally {
+      rmSync(escapedSpend, { recursive: true, force: true });
+    }
+  });
+
+  it('writes spend receipts only inside the activated store', () => {
+    activateRoot();
+    process.env.SUPABASE_URL = '';
+    process.env.SUPABASE_SERVICE_ROLE_KEY = '';
+    spendTracker.resetDailySpend();
+
+    expect(spendTracker.recordSpend({
+      provider: 'atlas-local',
+      model: 'state-root-fixture',
+      tokensIn: 7,
+      tokensOut: 3,
+      caller: 'm3d-a2',
+      correlationId: 'm3d-a2-spend-root-positive',
+    })).toBe(0);
+
+    const receiptFile = resolve(root, 'spend-receipts', 'spend-receipts.jsonl');
+    expect(existsSync(receiptFile)).toBe(true);
+    expect(spendTracker.readSpendReceipts()).toEqual([
+      expect.objectContaining({
+        correlationId: 'm3d-a2-spend-root-positive',
+        tokensIn: 7,
+        tokensOut: 3,
+      }),
+    ]);
   });
 
   it('preserves each learning legacy resolver before required activation', () => {

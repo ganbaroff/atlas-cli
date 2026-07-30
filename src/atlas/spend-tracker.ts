@@ -7,8 +7,9 @@
  * to Supabase `llm_spend`, and keeps an in-memory daily counter for the
  * morning briefing / heartbeat rollup.
  *
- * Contract (matches supabase-memory.ts): lazy env, NON-BLOCKING. A Supabase
- * failure is logged and swallowed — spend telemetry must never break a reply.
+ * Contract (matches supabase-memory.ts): lazy env, NON-BLOCKING for ordinary
+ * storage and Supabase failures. State-root configuration/activation denials
+ * propagate because bypassing an activated store is a policy violation.
  */
 
 import { isSupabaseConfigured } from './supabase-memory.js';
@@ -16,6 +17,11 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { randomUUID } from 'node:crypto';
+import {
+  resolveMigratingStateDir,
+  StateRootActivationError,
+  StateRootConfigurationError,
+} from './state-root.js';
 
 export type SpendProvider =
   | 'ollama'
@@ -91,6 +97,15 @@ let daily: DailyCounter = {
 
 let rehydrated = false;
 
+function rethrowStateRootPolicyError(error: unknown): void {
+  if (
+    error instanceof StateRootActivationError ||
+    error instanceof StateRootConfigurationError
+  ) {
+    throw error;
+  }
+}
+
 /** Rehydrate daily counter from persisted receipts for the current UTC day. */
 function rehydrateFromReceipts(): void {
   if (rehydrated) return;
@@ -108,6 +123,13 @@ function rehydrateFromReceipts(): void {
       }
     }
   } catch (err) {
+    if (
+      err instanceof StateRootActivationError ||
+      err instanceof StateRootConfigurationError
+    ) {
+      rehydrated = false;
+    }
+    rethrowStateRootPolicyError(err);
     console.error('[spend] rehydrate failed:', err instanceof Error ? err.message : err);
   }
 }
@@ -180,9 +202,17 @@ export interface SpendReceipt {
   caller: string;
 }
 
-function receiptPath(): string {
-  const dir = process.env.ATLAS_SPEND_RECEIPT_DIR ?? join(homedir(), '.atlas');
+export function resolveSpendReceiptDir(): string {
+  const dir = resolveMigratingStateDir(
+    'spend-receipts',
+    () => join(homedir(), '.atlas'),
+  );
   mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function receiptPath(): string {
+  const dir = resolveSpendReceiptDir();
   return join(dir, 'spend-receipts.jsonl');
 }
 
@@ -205,7 +235,8 @@ export function readSpendReceipts(): SpendReceipt[] {
  * Record one LLM call's spend. Estimates cost, bumps the in-memory daily
  * counter synchronously, writes a durable local receipt, and fires a Supabase
  * insert in the background when configured.
- * NEVER throws — telemetry failures are logged, not propagated.
+ * Ordinary telemetry failures are logged, not propagated. State-root
+ * configuration/activation denials fail closed before counter mutation.
  */
 export function recordSpend(input: RecordSpendInput): number {
   const tokensIn = Number.isFinite(input.tokensIn) ? Math.max(0, Math.trunc(input.tokensIn)) : 0;
@@ -213,8 +244,23 @@ export function recordSpend(input: RecordSpendInput): number {
   const estCost = estimateCostUsd(input.provider, tokensIn, tokensOut);
   const correlationId = input.correlationId ?? randomUUID();
 
-  if (input.correlationId && readSpendReceipts().some((r) => r.correlationId === input.correlationId)) {
-    return 0;
+  if (input.correlationId) {
+    try {
+      if (readSpendReceipts().some((r) => r.correlationId === input.correlationId)) {
+        return 0;
+      }
+    } catch (err) {
+      rethrowStateRootPolicyError(err);
+      console.error('[spend] local receipt read failed:', err instanceof Error ? err.message : err);
+    }
+  }
+
+  let localReceiptPath: string | undefined;
+  try {
+    localReceiptPath = receiptPath();
+  } catch (err) {
+    rethrowStateRootPolicyError(err);
+    console.error('[spend] local receipt path failed:', err instanceof Error ? err.message : err);
   }
 
   rollIfNewDay();
@@ -224,7 +270,7 @@ export function recordSpend(input: RecordSpendInput): number {
   daily.calls += 1;
 
   try {
-    appendSpendReceipt({
+    const receipt = {
       ts: new Date().toISOString(),
       correlationId,
       provider: String(input.provider),
@@ -233,8 +279,12 @@ export function recordSpend(input: RecordSpendInput): number {
       tokensOut,
       estCostUsd: estCost,
       caller: input.caller,
-    });
+    } satisfies SpendReceipt;
+    if (localReceiptPath) {
+      appendFileSync(localReceiptPath, `${JSON.stringify(receipt)}\n`, 'utf8');
+    }
   } catch (err) {
+    rethrowStateRootPolicyError(err);
     console.error('[spend] local receipt write failed:', err instanceof Error ? err.message : err);
   }
 
