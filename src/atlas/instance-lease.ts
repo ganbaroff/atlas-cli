@@ -9,6 +9,7 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { resolveMigratingStateDir } from './state-root.js';
 
 export type InstanceLeaseMode = 'writer' | 'readonly';
 
@@ -61,8 +62,15 @@ export function shouldAcquireInstanceLease(argv: readonly string[]): boolean {
   return !(argv[0] === 'runner' && argv[1] === 'status');
 }
 
+export function resolveInstanceLeaseDir(): string {
+  return resolveMigratingStateDir(
+    'instance-lease',
+    () => join(homedir(), '.atlas'),
+  );
+}
+
 function leasePath(): string {
-  const dir = process.env.ATLAS_INSTANCE_LEASE_DIR ?? join(homedir(), '.atlas');
+  const dir = resolveInstanceLeaseDir();
   mkdirSync(dir, { recursive: true });
   return join(dir, 'instance-lease.json');
 }

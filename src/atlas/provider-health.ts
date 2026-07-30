@@ -9,6 +9,7 @@ import {
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import type { ProviderName } from '../model-router.js';
+import { resolveMigratingStateDir } from './state-root.js';
 
 export type ProviderHealthState = 'healthy' | 'degraded' | 'dead';
 
@@ -31,16 +32,19 @@ const DEFAULT_DEAD_COOLDOWN_MS = 5 * 60 * 1000;
 const DEFAULT_DEGRADED_COOLDOWN_MS = 60 * 1000;
 const FAIL_THRESHOLD_DEAD = 2;
 
-function healthDir(): string {
-  return process.env.ATLAS_PROVIDER_HEALTH_DIR ?? join(homedir(), '.atlas');
+export function resolveProviderHealthDir(): string {
+  return resolveMigratingStateDir(
+    'provider-health',
+    () => join(homedir(), '.atlas'),
+  );
 }
 
 function healthPath(): string {
-  return join(healthDir(), 'provider-health.json');
+  return join(resolveProviderHealthDir(), 'provider-health.json');
 }
 
 function ensureHealthDir(): void {
-  mkdirSync(healthDir(), { recursive: true });
+  mkdirSync(resolveProviderHealthDir(), { recursive: true });
 }
 
 function writeAtomic(path: string, data: string): void {

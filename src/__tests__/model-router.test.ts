@@ -1,4 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { routeModel, listAvailableModels } from '../model-router.js';
 
 function clearProviderEnvs(): void {
@@ -16,9 +19,19 @@ function clearProviderEnvs(): void {
 }
 
 describe('Model Router', () => {
+  let healthDir: string;
+
   beforeEach(() => {
     vi.unstubAllEnvs();
     clearProviderEnvs();
+    healthDir = mkdtempSync(join(tmpdir(), 'atlas-model-router-health-'));
+    vi.stubEnv('ATLAS_PROVIDER_HEALTH_DIR', healthDir);
+    vi.stubEnv('ATLAS_STATE_ROOT_REQUIRED', '0');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    rmSync(healthDir, { recursive: true, force: true });
   });
 
   it('returns empty when no keys configured', () => {

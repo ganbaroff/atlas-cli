@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -31,6 +31,9 @@ import {
 import { resolveLearningStateDir } from '../learning/state-dir.js';
 import type { LearningRequest } from '../learning/contracts.js';
 import * as spendTracker from '../atlas/spend-tracker.js';
+import * as instanceLease from '../atlas/instance-lease.js';
+import * as providerHealth from '../atlas/provider-health.js';
+import * as breadcrumbs from '../atlas/write-back-hook.js';
 
 const MANAGED_ENV_KEYS = [
   'ATLAS_STATE_ROOT',
@@ -41,13 +44,16 @@ const MANAGED_ENV_KEYS = [
   'ATLAS_LEARNING_EXCHANGE_DIR',
   'ATLAS_LEARNING_STATE_DIR',
   'ATLAS_SPEND_RECEIPT_DIR',
+  'ATLAS_INSTANCE_LEASE_DIR',
+  'ATLAS_PROVIDER_HEALTH_DIR',
+  'ATLAS_BREADCRUMB_DIR',
   'ATLAS_READONLY',
   'SUPABASE_URL',
   'SUPABASE_SERVICE_ROLE_KEY',
 ] as const;
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
-describe('M3D-A2 state-root call-site migration slices 1-6', () => {
+describe('M3D-A2 state-root call-site migration slices 1-7', () => {
   let root: string;
   let prior: Record<string, string | undefined>;
   let priorCwd: string;
@@ -307,6 +313,130 @@ describe('M3D-A2 state-root call-site migration slices 1-6', () => {
         tokensOut: 3,
       }),
     ]);
+  });
+
+  it('keeps legacy home-directory stores in their explicit directories while root is staged', () => {
+    process.env.ATLAS_STATE_ROOT = root;
+    const legacyLease = resolve(root, 'legacy-instance-lease');
+    const legacyHealth = resolve(root, 'legacy-provider-health');
+    const legacyBreadcrumbs = resolve(root, 'legacy-breadcrumbs');
+    process.env.ATLAS_INSTANCE_LEASE_DIR = legacyLease;
+    process.env.ATLAS_PROVIDER_HEALTH_DIR = legacyHealth;
+    process.env.ATLAS_BREADCRUMB_DIR = legacyBreadcrumbs;
+
+    expect((instanceLease as typeof instanceLease & {
+      resolveInstanceLeaseDir?: () => string;
+    }).resolveInstanceLeaseDir?.()).toBe(legacyLease);
+    expect((providerHealth as typeof providerHealth & {
+      resolveProviderHealthDir?: () => string;
+    }).resolveProviderHealthDir?.()).toBe(legacyHealth);
+    expect((breadcrumbs as typeof breadcrumbs & {
+      resolveBreadcrumbDir?: () => string;
+    }).resolveBreadcrumbDir?.()).toBe(legacyBreadcrumbs);
+  });
+
+  it('keeps the shared legacy home default while root is only staged', () => {
+    process.env.ATLAS_STATE_ROOT = root;
+    const legacyHome = resolve(homedir(), '.atlas');
+
+    expect(instanceLease.resolveInstanceLeaseDir()).toBe(legacyHome);
+    expect(providerHealth.resolveProviderHealthDir()).toBe(legacyHome);
+    expect(breadcrumbs.resolveBreadcrumbDir()).toBe(legacyHome);
+  });
+
+  it('routes legacy home-directory stores through their activated stores', () => {
+    activateRoot();
+
+    expect((instanceLease as typeof instanceLease & {
+      resolveInstanceLeaseDir?: () => string;
+    }).resolveInstanceLeaseDir?.()).toBe(resolve(root, 'instance-lease'));
+    expect((providerHealth as typeof providerHealth & {
+      resolveProviderHealthDir?: () => string;
+    }).resolveProviderHealthDir?.()).toBe(resolve(root, 'provider-health'));
+    expect((breadcrumbs as typeof breadcrumbs & {
+      resolveBreadcrumbDir?: () => string;
+    }).resolveBreadcrumbDir?.()).toBe(resolve(root, 'breadcrumbs'));
+  });
+
+  it('refuses escaped legacy home-directory stores before creating them', () => {
+    activateRoot();
+    const cases = [
+      {
+        env: 'ATLAS_INSTANCE_LEASE_DIR',
+        path: resolve(tmpdir(), `${basename(root)}-escaped-lease`),
+        resolveDir: () => (instanceLease as typeof instanceLease & {
+          resolveInstanceLeaseDir?: () => string;
+        }).resolveInstanceLeaseDir?.(),
+      },
+      {
+        env: 'ATLAS_PROVIDER_HEALTH_DIR',
+        path: resolve(tmpdir(), `${basename(root)}-escaped-health`),
+        resolveDir: () => (providerHealth as typeof providerHealth & {
+          resolveProviderHealthDir?: () => string;
+        }).resolveProviderHealthDir?.(),
+      },
+      {
+        env: 'ATLAS_BREADCRUMB_DIR',
+        path: resolve(tmpdir(), `${basename(root)}-escaped-breadcrumbs`),
+        resolveDir: () => (breadcrumbs as typeof breadcrumbs & {
+          resolveBreadcrumbDir?: () => string;
+        }).resolveBreadcrumbDir?.(),
+      },
+    ] as const;
+
+    try {
+      for (const entry of cases) {
+        process.env[entry.env] = entry.path;
+        expect(entry.resolveDir).toThrow(/store_outside_root/);
+        expect(existsSync(entry.path)).toBe(false);
+        delete process.env[entry.env];
+      }
+    } finally {
+      for (const entry of cases) {
+        delete process.env[entry.env];
+        rmSync(entry.path, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('writes each legacy home-directory store only below the activated root', () => {
+    activateRoot();
+    breadcrumbs.resetBreadcrumbStateForTests();
+    const leaseId = 'm3d-a2-slice-7';
+
+    try {
+      expect(instanceLease.acquireInstanceLease({ instanceId: leaseId }).mode).toBe('writer');
+      providerHealth.markProviderHealthy('nvidia');
+      breadcrumbs.writeSessionBreadcrumb('m3d-a2-slice-7');
+
+      expect(existsSync(resolve(root, 'instance-lease', 'instance-lease.json'))).toBe(true);
+      expect(existsSync(resolve(root, 'provider-health', 'provider-health.json'))).toBe(true);
+      expect(existsSync(resolve(root, 'breadcrumbs', 'session-breadcrumb.jsonl'))).toBe(true);
+    } finally {
+      instanceLease.releaseInstanceLease(leaseId);
+      breadcrumbs.resetBreadcrumbStateForTests();
+    }
+  });
+
+  it('refuses all three home-directory writers before mutation when activation is invalid', () => {
+    process.env.ATLAS_STATE_ROOT = root;
+    process.env.ATLAS_STATE_ROOT_REQUIRED = '1';
+    breadcrumbs.resetBreadcrumbStateForTests();
+
+    expect(() => instanceLease.acquireInstanceLease({
+      instanceId: 'm3d-a2-invalid-slice-7',
+    })).toThrow(/activation_manifest_missing/);
+    expect(() => providerHealth.markProviderHealthy('nvidia')).toThrow(
+      /activation_manifest_missing/,
+    );
+    expect(() => breadcrumbs.writeSessionBreadcrumb('m3d-a2-invalid-slice-7')).toThrow(
+      /activation_manifest_missing/,
+    );
+
+    expect(existsSync(resolve(root, 'instance-lease'))).toBe(false);
+    expect(existsSync(resolve(root, 'provider-health'))).toBe(false);
+    expect(existsSync(resolve(root, 'breadcrumbs'))).toBe(false);
+    expect(breadcrumbs.hasSessionBreadcrumb()).toBe(false);
   });
 
   it('preserves each learning legacy resolver before required activation', () => {

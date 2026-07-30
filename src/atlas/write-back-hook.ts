@@ -5,11 +5,19 @@
 import { appendFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { resolveMigratingStateDir } from './state-root.js';
 
 let breadcrumbWrittenThisSession = false;
 
+export function resolveBreadcrumbDir(): string {
+  return resolveMigratingStateDir(
+    'breadcrumbs',
+    () => join(homedir(), '.atlas'),
+  );
+}
+
 function breadcrumbPath(): string {
-  const dir = process.env.ATLAS_BREADCRUMB_DIR ?? join(homedir(), '.atlas');
+  const dir = resolveBreadcrumbDir();
   mkdirSync(dir, { recursive: true });
   return join(dir, 'session-breadcrumb.jsonl');
 }
