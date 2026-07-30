@@ -21,17 +21,17 @@
 one Telegram poller, one local PC/browser executor, cost-aware research, and
 product systems as adapters rather than competing brains.
 
-**Current point:** M3 Shadow Consolidation, package M3C Task 6 verification and
-retained-copy gate. M1, fake-only M2, strict M3A, synthetic M3B, and M3C Tasks 1-5 are
-complete on a local branch. Physical
-consolidation is NO-GO. Live provider traffic has not started.
+**Current point:** M3 Shadow Consolidation, package M3C **VERIFIED**; M3D plan
+next. M1, fake-only M2, strict M3A, synthetic M3B, and one real retained-copy
+rehearsal are complete on a local branch. Physical consolidation is NO-GO.
+Live provider traffic has not started.
 
 ```mermaid
 flowchart LR
     M0["M0 Freeze and preserve<br/>DONE"]
     M1["M1 Durable foundation<br/>DONE"]
     M2["M2 Safe runtime and router<br/>DONE LOCAL"]
-    M3["M3 Shadow consolidation<br/>NOW · NO MOVE"]
+    M3["M3 Shadow consolidation<br/>M3C VERIFIED · M3D PLAN NEXT"]
     G{"Yusif cutover gate"}
     M4["M4 One Atlas cutover"]
     M5["M5 Live research broker"]
@@ -49,7 +49,7 @@ flowchart LR
 | M0 Freeze and preserve | **DONE** | runner recovery, legacy bundle/ZIP/patch, dirty worktree ref | recoverable checkpoints exist; no source destroyed |
 | M1 Durable foundation | **DONE LOCAL** | repaired state root; durable Cost Router record; restart/exact-once resume proof | 58/58 focused tests; typecheck; child-process restart |
 | M2 Safe runtime and router | **DONE LOCAL** | pure router, error buckets, provider-bound privacy, runner wrapper/liveness | 97/97 fake-only tests; typecheck; no live traffic or silent fallback |
-| M3 Shadow consolidation | **NOW** | copy/replay, outcome diff, legacy extraction, rollback rehearsal | parity and rollback receipts; no physical move |
+| M3 Shadow consolidation | **M3C VERIFIED / M3D PLAN NEXT** | copy/replay, outcome diff, legacy extraction, rollback rehearsal | parity and rollback receipts; no physical move |
 | M4 One Atlas cutover | **CEO GATE** | detach nested worktrees, select canon, update path bindings, one authority | clean restart, rollback, Telegram/runner authority proof |
 | M5 Live research broker | **OFF** | Perplexity quick research; Gemini/ChatGPT deep research | public synthetic tests; no secrets/files; no paid API |
 | M6 Research swarm | **OFF** | multi-provider research behind Cost Router | two source-bearing providers; `READY_FOR_RESEARCH` |
@@ -94,22 +94,26 @@ flowchart LR
    proof dependencies, prove event/goal/task/hash parity, then execute and
    verify rollback before receipt. Writer `462176c`; proof repair `44c84de`;
    durability/seam repair `c528ef0`; 216/216 regression tests.
-3. **M3C — NOW — preserved-state rehearsal implementation.** Direction A
+3. **M3C — VERIFIED — preserved-state rehearsal.** Direction A
    is approved: retain one outside-repository snapshot, rehearse only against
    that copy, and bind cleanup plus rollback evidence before receipt. Bounded
    Opus design review is locally closed. Written design:
    `docs/superpowers/specs/2026-07-30-m3c-preserved-state-rehearsal-design.md`.
    Detailed TDD plan:
    `docs/superpowers/plans/2026-07-30-m3c-preserved-state-rehearsal.md`.
-   Tasks 1-5/6 are complete through `0dd6d11`: bounded M3B seams, derived proof
+   Tasks 1-5 are complete through `0dd6d11`: bounded M3B seams, derived proof
    paths/timeouts, strict S0/S1/S2/P0 atomic preservation, preserved-copy-only
    rehearsal, cleanup-bound receipt, and independent verifier. Task 4 gate is
    80/80 focused tests plus clean typecheck. Task 5 adds the bounded explicit-
    path `run`/`verify` CLI, sanitized summaries, and a network-denied fixture
-   proof; its gate is 48/48 tests plus clean typecheck. Task 6 runs the full
-   local gate, one bounded diff review, and preflight before any real copy. No
-   real copy has occurred yet.
-4. **M3D — rollback and cutover packet.** Prove the old root remains readable,
+   proof; its gate is 48/48 tests plus clean typecheck. Task 6 passed 274/274,
+   clean typecheck/diff, and one bounded Opus `APPROVE`, then retained one exact
+   current-state artifact at
+   `C:\Projects\VOLAURA\memory\atlas\preservation\atlas-exec-graph-m3c-20260730T145320Z-b16264df`.
+   Manifest SHA-256 is `432984c34c373c13fce53ef21828aa7e88231180c343d03a21b5619a3b2b3d25`;
+   source/preserved hashes and 96/4/10 counts match, rollback/work cleanup verify,
+   and no live authority changed.
+4. **M3D — PLAN NEXT — rollback and cutover packet.** Prove the old root remains readable,
    record exact rollback commands and hashes, then present the physical
    cutover as a separate Yusif gate.
 

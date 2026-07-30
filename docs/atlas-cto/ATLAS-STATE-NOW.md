@@ -6,9 +6,10 @@ Updated: 2026-07-30 Baku
 
 ATLAS is preserved and recoverable, but physical consolidation and live
 multi-provider research remain **NO-GO**. Durable foundation M1 and fake-only
-Cost Router M2 are verified locally. Current work is M3 shadow consolidation:
-copy/replay/outcome-diff proof without physical move. No live provider traffic,
-push, merge, deployment, scheduler cutover, or live-state activation is active.
+Cost Router M2 and M3C retained-copy rehearsal are verified locally. M3D
+rollback/cutover packet planning is next; physical movement remains separately
+gated. No live provider traffic, push, merge, deployment, scheduler cutover, or
+live-state activation is active.
 
 ## CEO dashboard
 
@@ -20,7 +21,7 @@ push, merge, deployment, scheduler cutover, or live-state activation is active.
 | Cost Router design | **ACCEPTED** | two Opus reviews closed; roadmap and ceilings approved | implement package-by-package |
 | Cost Router implementation | **M2 VERIFIED LOCAL** | `23e8574`; 97/97 focused tests, typecheck, runtime refusal-receipt enforcement | keep live providers off |
 | Fable session router | **REPAIRED / LIVE RECEIPT PENDING** | hook registered; stale `/model` and thread-context regressions fixed; 32/32 tests | verify on next natural clean Fable prompt; contaminated threads stay Opus |
-| Shadow consolidation | **M3C TASK 5/6 DONE** | bounded explicit-path CLI `0dd6d11`; 48/48 tests, typecheck, network denied | Task 6: full gate, one review, preflight |
+| Shadow consolidation | **M3C VERIFIED** | 274/274 tests; Opus `APPROVE`; retained artifact `atlas-exec-graph-m3c-20260730T145320Z-b16264df`; manifest `432984c3…3d25` | M3D plan next; no cutover |
 | Physical consolidation | **NO-GO** | nested worktrees, unique legacy state, runtime bindings remain | completed shadow rehearsal plus CEO cutover gate |
 | Subscription research | **OFF** | Perplexity interactive access only; no durable adapter proof | public synthetic live gate |
 | Research swarm | **OFF** | `RESEARCH_ONLY_LIMITED` | two-provider `READY_FOR_RESEARCH` gate |
@@ -29,12 +30,12 @@ push, merge, deployment, scheduler cutover, or live-state activation is active.
 ## Exact current point
 
 We are at **Milestone M3 — Shadow Consolidation**. M1 durable foundation, M2
-safe router, M3A strict comparison, and M3B synthetic rehearsal are complete
-on the local `codex/atlas-cost-router-design` branch. Active package: M3C Task 6;
-Tasks 1-5 now include strict atomic preservation, copy-only rehearsal,
-independent verification, and bounded explicit-path CLI wiring.
+safe router, M3A strict comparison, M3B synthetic rehearsal, and M3C real
+retained-copy rehearsal are complete on local branch
+`codex/atlas-cost-router-design`. Active package: M3D planning only; no physical
+cutover is authorized.
 
-`M1 ✓  →  M2 ✓  →  M3A ✓  →  M3B ✓  →  M3C 5/6  →  CEO CUTOVER GATE`
+`M1 ✓  →  M2 ✓  →  M3A ✓  →  M3B ✓  →  M3C ✓  →  M3D PLAN  →  CEO CUTOVER GATE`
 
 1. **Done:** define a strict explicit-path shadow manifest and semantic
    comparator; reject empty authoritative input;
@@ -48,8 +49,10 @@ independent verification, and bounded explicit-path CLI wiring.
    flushed S0/S1/S2/P0 preservation artifact, rehearsed only the generated copy,
    removed work before receipt, and verified the bound artifact independently.
    **Done:** Task 5 adds only the explicit-path `run`/`verify` CLI, sanitized
-   JSON summaries, and network-denied child-process proof. **Now:** Task 6 runs
-   full local gates and one bounded diff review before real-copy preflight.
+   JSON summaries, and network-denied child-process proof. **Done:** Task 6
+   passed the full gate and one bounded review, then retained and independently
+   verified one exact current-state copy without switching any live authority.
+   **Now:** plan M3D rollback/cutover packet; execution remains CEO-gated.
    No live resolver switch, untracking, move, or cutover.
 
 ## External review closure
@@ -130,9 +133,30 @@ M3B local closure:
   receipt path; three regressions were observed RED then GREEN.
 - Independent command evidence at exact code tip: 12/12 files and 216/216
   tests passed; `npx tsc --noEmit` and diff checks exited 0.
-- **Still open:** `replay_spawn_failed` lacks a deterministic test; real-state
-  rehearsal, activation, untracking, and physical consolidation remain later
-  gates.
+- **Still open:** `replay_spawn_failed` lacks a deterministic test. M3C below
+  closes real-state rehearsal; activation, untracking, and physical
+  consolidation remain later gates.
+
+M3C local closure:
+
+- Code path: Task 4 rehearsal/verifier `40c7631`; Task 5 bounded CLI `0dd6d11`;
+  preflight-contract repair `5a4276a`.
+- Fresh exact gate: 17/17 files, 274/274 tests, clean typecheck and diff-check.
+- One nonpersistent Claude Opus review used 8/10 Read/Grep calls and returned
+  `APPROVE`; Codex locally closed every unread material surface.
+- Initial preflight correctly stopped on a false plan assumption that the
+  preservation parent was empty. All five existing legacy artifacts matched
+  their recorded SHA-256 values; the repaired contract pins that immutable
+  baseline and checks Git only for the exact new candidate.
+- Retained artifact:
+  `C:\Projects\VOLAURA\memory\atlas\preservation\atlas-exec-graph-m3c-20260730T145320Z-b16264df`.
+  Manifest SHA-256 is
+  `432984c34c373c13fce53ef21828aa7e88231180c343d03a21b5619a3b2b3d25`.
+- Source and preserved state both verify at 96 events, 4 goals, 10 tasks;
+  ledger, snapshot, and semantic SHA-256 values match exactly. Work and shadow
+  paths are absent; rollback receipt is valid; artifact is untracked/unstaged.
+- No resolver, runner, scheduler, ignore, untrack, move, push, merge,
+  deployment, or physical cutover action occurred.
 
 Fable/Opus routing closure:
 
@@ -163,11 +187,10 @@ Fable/Opus routing closure:
 7. **Done:** isolated synthetic copy/replay, durable pre-rename flush, fixed
    proof dependencies, strict parity, executed rollback, bound proof, and
    post-rollback receipt. No live-root activation.
-8. **In progress:** Task 5/6 is committed at `0dd6d11`; execute Task 6 local
-   gates, one bounded review, and read-only preflight. Still no real state copy,
-   resolver switch, untracking, or move.
-9. **CEO cutover gate:** only after preserved-copy proof and remaining state
-   integrity/effect-durability gates.
+8. **Done:** M3C full gate, one bounded review, exact preflight, one retained
+   current-state copy, fresh-process verification, and no-cutover proof.
+9. **Next:** write M3D rollback/cutover packet. Any physical change remains a
+   separate CEO gate after remaining state-integrity/effect-durability checks.
 10. **Live research broker:** one provider at a time, public synthetic prompts.
 11. **Research swarm:** only after `READY_FOR_RESEARCH`.
 

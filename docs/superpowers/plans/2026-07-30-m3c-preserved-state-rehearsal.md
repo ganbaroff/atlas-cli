@@ -874,7 +874,7 @@ diff-check exited 0. One nonpersistent Claude Opus review used 8/10 Read/Grep
 calls, returned `APPROVE`, and its unread seam/network surfaces were closed by
 local source inspection plus the same green gate. No second review loop.
 
-- [ ] **Step 3: Read-only real-drill preflight**
+- [x] **Step 3: Read-only real-drill preflight**
 
 Verify exact branch/HEAD, five-path dirty allowlist, `AtlasRunner` state, source
 inspection hashes/counts, absent final artifact, immutable five-file legacy
@@ -897,7 +897,7 @@ or legacy hashes differ, an unexpected parent entry exists, or candidate-
 specific artifact/tracking preflight fails: stop with named blocker. Do not stop
 the runner or change scheduler state.
 
-- [ ] **Step 4: Run exactly one real retained-copy rehearsal**
+- [x] **Step 4: Run exactly one real retained-copy rehearsal**
 
 Generate one strict UTC artifact name, then run:
 
@@ -908,7 +908,7 @@ npm run --silent atlas:m3c-rehearse -- run --source 'C:\Users\user\OneDrive\Docu
 Expected: exit 0 and sanitized accepted summary. Do not rerun on the same or a
 new artifact after any policy/invariant failure; inspect the named blocker.
 
-- [ ] **Step 5: Verify in a fresh process and recheck source/Git state**
+- [x] **Step 5: Verify in a fresh process and recheck source/Git state**
 
 ```powershell
 npm run --silent atlas:m3c-rehearse -- verify --artifact '<exact artifact path from Step 4>'
@@ -925,7 +925,7 @@ and candidate-specific status must show only `??` for the exact artifact. The
 five legacy files must retain their preflight hashes and no other parent entry
 may appear. Retain the artifact; do not delete or archive it.
 
-- [ ] **Step 6: Record evidence and commit roadmap closure**
+- [x] **Step 6: Record evidence and commit roadmap closure**
 
 Update both roadmap docs with exact commits, commands, counts, artifact path,
 manifest SHA-256, and `M3C VERIFIED / M3D PLAN NEXT`. Update CURRENT-COMPACT and
@@ -937,7 +937,7 @@ git diff --cached --check
 git commit -m "docs(atlas): Record M3C rehearsal evidence"
 ```
 
-- [ ] **Step 7: Final no-cutover proof**
+- [x] **Step 7: Final no-cutover proof**
 
 ```powershell
 git show --stat --oneline HEAD
@@ -947,6 +947,18 @@ Get-ScheduledTask -TaskName AtlasRunner | Select-Object TaskName,State
 
 Report M3C only. M3D/M4, untracking, move, scheduler/Railway updates, push, and
 merge remain separate Yusif gates.
+
+Completed against exact code/doc tip `5a4276a`. Preflight proved runner `Ready`,
+the five-path ANUS dirty allowlist, 96/4/10 source counts, three recorded source
+hashes, five immutable legacy artifact hashes, and exact candidate absence plus
+untracked/unstaged state. The one retained-copy run and one fresh-process verify
+both exited 0 for artifact
+`atlas-exec-graph-m3c-20260730T145320Z-b16264df`; manifest SHA-256 is
+`432984c34c373c13fce53ef21828aa7e88231180c343d03a21b5619a3b2b3d25`.
+Source and preserved ledger/snapshot/semantic hashes match; work/shadow paths
+are absent; four artifact files are untracked and unstaged; five legacy hashes
+remain unchanged. Final status still contains only the original five ANUS dirty
+paths and `AtlasRunner` remains `Ready`. M3D/M4 remain unexecuted.
 
 ---
 
