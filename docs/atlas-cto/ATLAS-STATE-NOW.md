@@ -219,9 +219,9 @@ Fable/Opus routing closure:
    current-state copy, fresh-process verification, and no-cutover proof.
 9. **Done:** M3D rollback/cutover packet, current physical inventory, NO-GO
    gates, rollback order, and implementation plan.
-10. **In progress:** M3D-A1 is done at `97a300e`; M3D-A2 slices 1-8 are done at
-    `ca324fe`, `0c9723d`, `2cbc85f`, `4dca9fe`, `94e7426`, `af3f48a`, and
-    `c3923c9`, plus queue slice `746ccf7`. **Next:**
+10. **In progress:** M3D-A1 is done at `97a300e`; M3D-A2 slices 1-9 are done at
+    `ca324fe`, `0c9723d`, `2cbc85f`, `4dca9fe`, `94e7426`, `af3f48a`,
+    `c3923c9`, queue slice `746ccf7`, and opsboard slice `c0d7f57`. **Next:**
     remaining bounded call-site families and activation
     provenance, then M3D-B mutation integrity, M3D-C effect durability, and
     M3D-D full-root recovery.
