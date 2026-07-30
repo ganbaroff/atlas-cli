@@ -13,7 +13,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const observations = vi.hoisted(
   () =>
     [] as Array<
-      | { readonly kind: 'write'; readonly path: string; readonly options: unknown }
+      | {
+          readonly kind: 'write';
+          readonly path: string;
+          readonly options: unknown;
+          readonly workEntriesAtWrite: readonly string[];
+        }
       | {
           readonly kind: 'promotion';
           readonly stagingPath: string;
@@ -30,6 +35,9 @@ const faults = vi.hoisted(() => ({
   realpathOverlap: false,
   swapArtifactBeforeRead: false,
   createArtifactDuringPromotion: false,
+  failM3cReceiptRename: false,
+  failM3cReceiptReadbackOnce: false,
+  tamperManifestAfterM3cReceiptPromotion: false,
   collisionPath: '',
   unsafeTarget: '',
   overlapSource: '',
@@ -108,6 +116,14 @@ vi.mock('node:fs', async (importOriginal) => {
     readFileSync: (...args: unknown[]) => {
       const path = args[0];
       if (
+        faults.failM3cReceiptReadbackOnce &&
+        typeof path === 'string' &&
+        basename(path) === 'rehearsal-receipt.json'
+      ) {
+        faults.failM3cReceiptReadbackOnce = false;
+        throw new Error('synthetic M3C receipt readback failure');
+      }
+      if (
         faults.swapArtifactBeforeRead &&
         typeof path === 'string' &&
         basename(path) === 'preservation-manifest.json' &&
@@ -129,7 +145,18 @@ vi.mock('node:fs', async (importOriginal) => {
     writeFileSync: (...args: unknown[]) => {
       const path = args[0];
       if (typeof path === 'string') {
-        observations.push({ kind: 'write', path, options: args[2] });
+        const workParent = dirname(dirname(path));
+        const workEntriesAtWrite = basename(path).startsWith('.m3c-receipt-')
+          ? actual
+              .readdirSync(workParent)
+              .filter((entry) => entry.startsWith('.m3c-work-'))
+          : [];
+        observations.push({
+          kind: 'write',
+          path,
+          options: args[2],
+          workEntriesAtWrite,
+        });
       }
       return Reflect.apply(actual.writeFileSync, actual, args);
     },
@@ -158,6 +185,13 @@ vi.mock('node:fs', async (importOriginal) => {
         throw new Error('synthetic promotion failure before unsafe cleanup');
       }
       if (
+        faults.failM3cReceiptRename &&
+        typeof source === 'string' &&
+        basename(source).startsWith('.m3c-receipt-')
+      ) {
+        throw new Error('synthetic M3C receipt rename failure');
+      }
+      if (
         faults.createArtifactDuringPromotion &&
         typeof source === 'string' &&
         typeof destination === 'string' &&
@@ -168,6 +202,18 @@ vi.mock('node:fs', async (importOriginal) => {
         faults.concurrentArtifactPath = destination;
       }
       const result = Reflect.apply(actual.renameSync, actual, args);
+      if (
+        faults.tamperManifestAfterM3cReceiptPromotion &&
+        typeof source === 'string' &&
+        typeof destination === 'string' &&
+        basename(source).startsWith('.m3c-receipt-')
+      ) {
+        actual.appendFileSync(
+          join(dirname(destination), 'preservation-manifest.json'),
+          '\n',
+          'utf8',
+        );
+      }
       if (
         faults.tamperAfterPromotion &&
         typeof source === 'string' &&
@@ -186,7 +232,10 @@ vi.mock('node:fs', async (importOriginal) => {
   };
 });
 
-import { preserveExecGraphSnapshot } from '../atlas/preserved-state-rehearsal.js';
+import {
+  preserveExecGraphSnapshot,
+  rehearsePreservedExecGraph,
+} from '../atlas/preserved-state-rehearsal.js';
 import { writeExecGraphFixture } from './fixtures/exec-graph-shadow-fixture.js';
 
 const ARTIFACT_NAME = 'atlas-exec-graph-m3c-20260730T174900Z-feedface';
@@ -202,6 +251,9 @@ describe('atlas/preserved-state preservation durability', () => {
     faults.realpathOverlap = false;
     faults.swapArtifactBeforeRead = false;
     faults.createArtifactDuringPromotion = false;
+    faults.failM3cReceiptRename = false;
+    faults.failM3cReceiptReadbackOnce = false;
+    faults.tamperManifestAfterM3cReceiptPromotion = false;
     faults.collisionPath = '';
     faults.unsafeTarget = '';
     faults.overlapSource = '';
@@ -355,4 +407,124 @@ describe('atlas/preserved-state preservation durability', () => {
     ).toBe('concurrent owner');
     expect(faults.recursiveRemovals).not.toContain(faults.concurrentArtifactPath);
   });
+
+  it(
+    'flushes the M3C receipt only after the generated work directory is absent',
+    () => {
+      const sourceDirectory = writeExecGraphFixture(sandboxDirectory, 'receipt-source');
+      const preservationParentDirectory = join(sandboxDirectory, 'receipt-parent');
+      mkdirSync(preservationParentDirectory);
+      const artifactDirectory = join(preservationParentDirectory, ARTIFACT_NAME);
+      preserveExecGraphSnapshot({
+        sourceDirectory,
+        preservationParentDirectory,
+        artifactName: ARTIFACT_NAME,
+      });
+      observations.length = 0;
+
+      rehearsePreservedExecGraph({ artifactDirectory });
+
+      const receiptWrites = observations.filter(
+        (item) => item.kind === 'write' && basename(item.path).startsWith('.m3c-receipt-'),
+      );
+      expect(receiptWrites).toEqual([
+        expect.objectContaining({
+          options: { encoding: 'utf8', flush: true },
+          workEntriesAtWrite: [],
+        }),
+      ]);
+      expect(existsSync(join(artifactDirectory, 'rehearsal-receipt.json'))).toBe(true);
+    },
+    20_000,
+  );
+
+  it(
+    'removes only the M3C temporary receipt when its rename fails',
+    () => {
+      const sourceDirectory = writeExecGraphFixture(sandboxDirectory, 'rename-source');
+      const preservationParentDirectory = join(sandboxDirectory, 'rename-parent');
+      mkdirSync(preservationParentDirectory);
+      const artifactDirectory = join(preservationParentDirectory, ARTIFACT_NAME);
+      preserveExecGraphSnapshot({
+        sourceDirectory,
+        preservationParentDirectory,
+        artifactName: ARTIFACT_NAME,
+      });
+      faults.failM3cReceiptRename = true;
+
+      expect(() => rehearsePreservedExecGraph({ artifactDirectory })).toThrow(
+        expect.objectContaining({ code: 'receipt_invalid' }),
+      );
+      expect(existsSync(join(artifactDirectory, 'rehearsal-receipt.json'))).toBe(false);
+      expect(
+        readdirSync(artifactDirectory).filter((entry) => entry.startsWith('.m3c-receipt-')),
+      ).toEqual([]);
+      expect(
+        readdirSync(preservationParentDirectory).filter((entry) =>
+          entry.startsWith('.m3c-work-'),
+        ),
+      ).toEqual([]);
+    },
+    20_000,
+  );
+
+  it(
+    'removes its owned M3C receipt when independent verification fails',
+    () => {
+      const sourceDirectory = writeExecGraphFixture(sandboxDirectory, 'verify-failure-source');
+      const preservationParentDirectory = join(sandboxDirectory, 'verify-failure-parent');
+      mkdirSync(preservationParentDirectory);
+      const artifactDirectory = join(preservationParentDirectory, ARTIFACT_NAME);
+      preserveExecGraphSnapshot({
+        sourceDirectory,
+        preservationParentDirectory,
+        artifactName: ARTIFACT_NAME,
+      });
+      faults.tamperManifestAfterM3cReceiptPromotion = true;
+
+      expect(() => rehearsePreservedExecGraph({ artifactDirectory })).toThrow(
+        expect.objectContaining({ code: 'manifest_tampered' }),
+      );
+      expect(existsSync(join(artifactDirectory, 'rehearsal-receipt.json'))).toBe(false);
+      expect(
+        readdirSync(artifactDirectory).filter((entry) => entry.startsWith('.m3c-receipt-')),
+      ).toEqual([]);
+      expect(
+        readdirSync(preservationParentDirectory).filter((entry) =>
+          entry.startsWith('.m3c-work-'),
+        ),
+      ).toEqual([]);
+    },
+    20_000,
+  );
+
+  it(
+    'removes its promoted M3C receipt when immediate readback fails',
+    () => {
+      const sourceDirectory = writeExecGraphFixture(sandboxDirectory, 'readback-source');
+      const preservationParentDirectory = join(sandboxDirectory, 'readback-parent');
+      mkdirSync(preservationParentDirectory);
+      const artifactDirectory = join(preservationParentDirectory, ARTIFACT_NAME);
+      preserveExecGraphSnapshot({
+        sourceDirectory,
+        preservationParentDirectory,
+        artifactName: ARTIFACT_NAME,
+      });
+      faults.failM3cReceiptReadbackOnce = true;
+
+      expect(() => rehearsePreservedExecGraph({ artifactDirectory })).toThrow(
+        expect.objectContaining({ code: 'receipt_invalid' }),
+      );
+      expect(existsSync(join(artifactDirectory, 'rehearsal-receipt.json'))).toBe(false);
+      expect(
+        readdirSync(artifactDirectory).filter((entry) => entry.startsWith('.m3c-receipt-')),
+      ).toEqual([]);
+      expect(
+        readdirSync(preservationParentDirectory).filter((entry) =>
+          entry.startsWith('.m3c-work-'),
+        ),
+      ).toEqual([]);
+    },
+    20_000,
+  );
 });

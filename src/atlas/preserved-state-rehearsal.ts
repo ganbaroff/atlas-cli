@@ -6,7 +6,7 @@
  * Source stability is observed across S0/S1/S2; the preserved candidate is P0.
  */
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   lstatSync,
   mkdirSync,
@@ -29,7 +29,10 @@ import {
 } from './shadow-state.js';
 import {
   copyExecGraphDirectoryAtomic,
+  rehearsalReceiptSchema,
+  runShadowRehearsal,
   ShadowRehearsalError,
+  type RehearsalReceipt,
 } from './shadow-rehearsal.js';
 
 const sha256Schema = z.string().regex(/^[a-f0-9]{64}$/);
@@ -37,6 +40,10 @@ const absolutePathSchema = z.string().min(1).refine(isAbsolute, 'path must be ab
 const ARTIFACT_NAME_RE = /^atlas-exec-graph-m3c-\d{8}T\d{6}Z-[a-f0-9]{8}$/;
 const MANIFEST_BASENAME = 'preservation-manifest.json';
 const PRESERVED_DIRECTORY_BASENAME = 'exec-graph';
+const M3B_RECEIPT_BASENAME = 'shadow-rehearsal-receipt.json';
+const M3C_RECEIPT_BASENAME = 'rehearsal-receipt.json';
+const DEFAULT_CHILD_TIMEOUT_MS = 15_000;
+const MAX_CHILD_TIMEOUT_MS = 30_000;
 
 const preservedInspectionSchema = z
   .object({
@@ -81,12 +88,53 @@ export type PreservedExecGraphManifest = z.infer<
   typeof preservedExecGraphManifestSchema
 >;
 
+export const preservedStateRehearsalReceiptSchema = z
+  .object({
+    schemaVersion: z.literal(1),
+    kind: z.literal('atlas.m3c-preserved-state-rehearsal'),
+    completedAt: z.string().datetime(),
+    artifactDirectory: absolutePathSchema,
+    preservedDirectory: absolutePathSchema,
+    workDirectory: absolutePathSchema,
+    workDirectoryAbsent: z.literal(true),
+    manifestSha256: sha256Schema,
+    preservedLedgerSha256: sha256Schema,
+    preservedSnapshotSha256: sha256Schema,
+    preservedSemanticSha256: sha256Schema,
+    eventCount: z.number().int().nonnegative(),
+    goalCount: z.number().int().nonnegative(),
+    taskCount: z.number().int().nonnegative(),
+    preservationAccepted: z.literal(true),
+    coldReplayAccepted: z.literal(true),
+    rollbackVerified: z.literal(true),
+    preservedStateUnchanged: z.literal(true),
+    m3bReceipt: rehearsalReceiptSchema,
+  })
+  .strict();
+
+export type PreservedStateRehearsalReceipt = z.infer<
+  typeof preservedStateRehearsalReceiptSchema
+>;
+
+export interface VerifiedPreservedStateRehearsal {
+  readonly verified: true;
+  readonly manifestSha256: string;
+  readonly manifest: PreservedExecGraphManifest;
+  readonly receipt: PreservedStateRehearsalReceipt;
+}
+
 export type PreservedStateRehearsalErrorCode =
   | 'path_invalid'
   | 'artifact_exists'
   | 'source_mutated'
   | 'preservation_mismatch'
   | 'manifest_invalid'
+  | 'manifest_tampered'
+  | 'preserved_state_tampered'
+  | 'receipt_invalid'
+  | 'receipt_exists'
+  | 'rehearsal_failed'
+  | 'timeout_invalid'
   | 'cleanup_unsafe'
   | 'cleanup_failed'
   | 'preservation_failed';
@@ -113,6 +161,35 @@ interface ValidatedPreservationPaths {
   readonly artifactDirectory: string;
   readonly preservedDirectory: string;
   readonly artifactName: string;
+}
+
+interface LoadedPreservationManifest {
+  readonly raw: string;
+  readonly sha256: string;
+  readonly manifest: PreservedExecGraphManifest;
+  readonly artifactDirectory: string;
+  readonly preservedDirectory: string;
+  readonly receiptPath: string;
+}
+
+export interface RehearsePreservedExecGraphOptions {
+  readonly artifactDirectory: string;
+  readonly childTimeoutMs?: number;
+}
+
+function sha256(value: Buffer | string): string {
+  return createHash('sha256').update(value).digest('hex');
+}
+
+function requireChildTimeout(value: number | undefined): number {
+  const timeout = value ?? DEFAULT_CHILD_TIMEOUT_MS;
+  if (!Number.isSafeInteger(timeout) || timeout < 1 || timeout > MAX_CHILD_TIMEOUT_MS) {
+    throw new PreservedStateRehearsalError(
+      'timeout_invalid',
+      `child timeout must be a safe integer from 1 through ${MAX_CHILD_TIMEOUT_MS}ms`,
+    );
+  }
+  return timeout;
 }
 
 interface DirectoryIdentity {
@@ -312,6 +389,78 @@ function readPersistedManifest(path: string): {
     );
   }
   return { raw, manifest: result.data };
+}
+
+function resolveArtifactDirectoryInput(artifactDirectoryInput: string): string {
+  if (typeof artifactDirectoryInput !== 'string' || !isAbsolute(artifactDirectoryInput)) {
+    throw new PreservedStateRehearsalError(
+      'path_invalid',
+      'artifact directory must be an explicit absolute path',
+    );
+  }
+  const artifactDirectory = resolve(artifactDirectoryInput);
+  if (!isNormalDirectory(artifactDirectory)) {
+    throw new PreservedStateRehearsalError(
+      'manifest_invalid',
+      `preserved artifact is missing or is not a normal directory: ${artifactDirectory}`,
+    );
+  }
+  return artifactDirectory;
+}
+
+function loadBoundManifest(artifactDirectoryInput: string): LoadedPreservationManifest {
+  const artifactDirectory = resolveArtifactDirectoryInput(artifactDirectoryInput);
+  const preservedDirectory = join(artifactDirectory, PRESERVED_DIRECTORY_BASENAME);
+  const manifestPath = join(artifactDirectory, MANIFEST_BASENAME);
+  const read = readPersistedManifest(manifestPath);
+  const manifest = read.manifest;
+  if (
+    manifest.artifactDirectory !== artifactDirectory ||
+    manifest.preservedDirectory !== preservedDirectory ||
+    manifest.sourceBefore.directory !== manifest.sourceDirectory ||
+    manifest.sourceAfterCopy.directory !== manifest.sourceDirectory ||
+    manifest.sourceDuringComparison.directory !== manifest.sourceDirectory ||
+    manifest.preserved.directory !== preservedDirectory ||
+    !inspectionsMatch(manifest.sourceBefore, manifest.sourceAfterCopy) ||
+    !inspectionsMatch(manifest.sourceBefore, manifest.sourceDuringComparison) ||
+    !inspectionsMatch(manifest.sourceBefore, manifest.preserved)
+  ) {
+    throw new PreservedStateRehearsalError(
+      'manifest_invalid',
+      `preservation manifest is internally inconsistent: ${manifestPath}`,
+    );
+  }
+  return {
+    raw: read.raw,
+    sha256: sha256(read.raw),
+    manifest,
+    artifactDirectory,
+    preservedDirectory,
+    receiptPath: join(artifactDirectory, M3C_RECEIPT_BASENAME),
+  };
+}
+
+function inspectBoundPreservedState(
+  loaded: LoadedPreservationManifest,
+): ExecGraphInspection {
+  let inspection: ExecGraphInspection;
+  try {
+    inspection = inspectExecGraphDirectory(loaded.preservedDirectory);
+  } catch (error) {
+    throw new PreservedStateRehearsalError(
+      'preserved_state_tampered',
+      `preserved exec graph failed strict inspection: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+  if (!inspectionsMatch(inspection, loaded.manifest.preserved)) {
+    throw new PreservedStateRehearsalError(
+      'preserved_state_tampered',
+      'preserved exec graph no longer matches its preservation manifest',
+    );
+  }
+  return inspection;
 }
 
 function cleanupUnsafe(target: string): PreservedStateRehearsalError {
@@ -578,6 +727,408 @@ export function preserveExecGraphSnapshot(
     throw new PreservedStateRehearsalError(
       'preservation_failed',
       `preserved snapshot failed: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+function readM3bReceipt(path: string): RehearsalReceipt {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(path, 'utf8'));
+  } catch (error) {
+    throw new PreservedStateRehearsalError(
+      'receipt_invalid',
+      `M3B receipt is missing or unreadable JSON: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+  const result = rehearsalReceiptSchema.safeParse(parsed);
+  if (!result.success) {
+    throw new PreservedStateRehearsalError(
+      'receipt_invalid',
+      `M3B receipt failed strict validation: ${path}`,
+    );
+  }
+  return result.data;
+}
+
+function assertM3bReceiptBindings(
+  receipt: RehearsalReceipt,
+  loaded: LoadedPreservationManifest,
+  workDirectory: string,
+): void {
+  const expectedReceiptPath = join(workDirectory, M3B_RECEIPT_BASENAME);
+  if (
+    receipt.receiptPath !== expectedReceiptPath ||
+    receipt.sourceDirectory !== loaded.preservedDirectory ||
+    receipt.sourceLedgerSha256 !== loaded.manifest.preserved.ledgerSha256 ||
+    receipt.sourceSnapshotSha256 !== loaded.manifest.preserved.snapshotSha256 ||
+    receipt.sourceSemanticSha256 !== loaded.manifest.preserved.semanticSha256 ||
+    receipt.childReplayEventCount !== loaded.manifest.preserved.eventCount ||
+    receipt.childReplayGoalCount !== loaded.manifest.preserved.goalCount ||
+    receipt.childReplayTaskCount !== loaded.manifest.preserved.taskCount ||
+    dirname(receipt.shadowRoot) !== workDirectory ||
+    !basename(receipt.shadowRoot).startsWith('shadow-') ||
+    pathEntryExists(receipt.shadowRoot)
+  ) {
+    throw new PreservedStateRehearsalError(
+      'receipt_invalid',
+      'M3B receipt is not bound to the exact preserved state and generated work directory',
+    );
+  }
+}
+
+function readM3cReceipt(path: string): {
+  readonly raw: string;
+  readonly receipt: PreservedStateRehearsalReceipt;
+} {
+  let raw: string;
+  try {
+    raw = readFileSync(path, 'utf8');
+  } catch (error) {
+    throw new PreservedStateRehearsalError(
+      'receipt_invalid',
+      `M3C receipt is missing or unreadable: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    throw new PreservedStateRehearsalError(
+      'receipt_invalid',
+      `M3C receipt is not valid JSON: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+  const result = preservedStateRehearsalReceiptSchema.safeParse(parsed);
+  if (!result.success) {
+    throw new PreservedStateRehearsalError(
+      'receipt_invalid',
+      `M3C receipt failed strict validation: ${path}`,
+    );
+  }
+  return { raw, receipt: result.data };
+}
+
+function persistM3cReceipt(
+  loaded: LoadedPreservationManifest,
+  prospectiveReceipt: PreservedStateRehearsalReceipt,
+): {
+  readonly raw: string;
+  readonly receipt: PreservedStateRehearsalReceipt;
+} {
+  if (pathEntryExists(loaded.receiptPath)) {
+    throw new PreservedStateRehearsalError(
+      'receipt_exists',
+      `refusing to overwrite an existing M3C receipt: ${loaded.receiptPath}`,
+    );
+  }
+  const temporaryPath = join(
+    loaded.artifactDirectory,
+    `.m3c-receipt-${randomUUID()}.tmp`,
+  );
+  const receipt = preservedStateRehearsalReceiptSchema.parse(prospectiveReceipt);
+  const serialized = `${JSON.stringify(receipt, null, 2)}\n`;
+  let promoted = false;
+  try {
+    writeFileSync(temporaryPath, serialized, { encoding: 'utf8', flush: true });
+    if (pathEntryExists(loaded.receiptPath)) {
+      throw new PreservedStateRehearsalError(
+        'receipt_exists',
+        `M3C receipt appeared before promotion: ${loaded.receiptPath}`,
+      );
+    }
+    renameSync(temporaryPath, loaded.receiptPath);
+    promoted = true;
+    const persisted = readM3cReceipt(loaded.receiptPath);
+    if (persisted.raw !== serialized) {
+      throw new PreservedStateRehearsalError(
+        'receipt_invalid',
+        'persisted M3C receipt bytes differ from the flushed temporary receipt',
+      );
+    }
+    return { raw: serialized, receipt: persisted.receipt };
+  } catch (error) {
+    try {
+      rmSync(temporaryPath, { force: true });
+    } catch {
+      // Exact generated non-directory temporary file is the sole cleanup target.
+    }
+    if (promoted) {
+      removeOwnedReceiptFile(
+        loaded.artifactDirectory,
+        loaded.receiptPath,
+        serialized,
+      );
+    }
+    if (error instanceof PreservedStateRehearsalError) throw error;
+    throw new PreservedStateRehearsalError(
+      'receipt_invalid',
+      `failed to persist M3C receipt: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+function removeOwnedReceiptFile(
+  artifactDirectory: string,
+  receiptPath: string,
+  expectedRaw: string,
+): void {
+  if (!pathEntryExists(receiptPath)) return;
+  const lexicalArtifact = resolve(artifactDirectory);
+  const lexicalReceipt = resolve(receiptPath);
+  if (
+    dirname(lexicalReceipt) !== lexicalArtifact ||
+    basename(lexicalReceipt) !== M3C_RECEIPT_BASENAME
+  ) {
+    throw cleanupUnsafe(receiptPath);
+  }
+  let stat: Stats;
+  let currentRaw: string;
+  try {
+    stat = lstatSync(lexicalReceipt);
+    currentRaw = readFileSync(lexicalReceipt, 'utf8');
+  } catch (error) {
+    throw new PreservedStateRehearsalError(
+      'cleanup_failed',
+      `failed to inspect owned M3C receipt before cleanup: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+  if (!stat.isFile() || stat.isSymbolicLink() || currentRaw !== expectedRaw) {
+    throw cleanupUnsafe(receiptPath);
+  }
+  const expectedIdentity = directoryIdentity(stat);
+  let finalStat: Stats;
+  try {
+    finalStat = lstatSync(lexicalReceipt);
+  } catch {
+    throw cleanupUnsafe(receiptPath);
+  }
+  if (
+    !finalStat.isFile() ||
+    finalStat.isSymbolicLink() ||
+    !identitiesMatch(directoryIdentity(finalStat), expectedIdentity) ||
+    readFileSync(lexicalReceipt, 'utf8') !== expectedRaw
+  ) {
+    throw cleanupUnsafe(receiptPath);
+  }
+  try {
+    rmSync(lexicalReceipt, { force: true });
+  } catch (error) {
+    throw new PreservedStateRehearsalError(
+      'cleanup_failed',
+      `failed to remove invalid M3C receipt: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+  if (pathEntryExists(lexicalReceipt)) {
+    throw new PreservedStateRehearsalError(
+      'cleanup_failed',
+      `invalid M3C receipt still exists after cleanup: ${lexicalReceipt}`,
+    );
+  }
+}
+
+function assertReceiptBindings(
+  loaded: LoadedPreservationManifest,
+  receipt: PreservedStateRehearsalReceipt,
+  currentPreserved: ExecGraphInspection,
+): void {
+  const workDirectory = resolve(receipt.workDirectory);
+  if (receipt.manifestSha256 !== loaded.sha256) {
+    throw new PreservedStateRehearsalError(
+      'manifest_tampered',
+      'current preservation manifest bytes do not match the receipt-bound SHA-256',
+    );
+  }
+  if (
+    receipt.artifactDirectory !== loaded.artifactDirectory ||
+    receipt.preservedDirectory !== loaded.preservedDirectory ||
+    receipt.workDirectory !== workDirectory ||
+    receipt.preservedLedgerSha256 !== loaded.manifest.preserved.ledgerSha256 ||
+    receipt.preservedSnapshotSha256 !== loaded.manifest.preserved.snapshotSha256 ||
+    receipt.preservedSemanticSha256 !== loaded.manifest.preserved.semanticSha256 ||
+    receipt.eventCount !== loaded.manifest.preserved.eventCount ||
+    receipt.goalCount !== loaded.manifest.preserved.goalCount ||
+    receipt.taskCount !== loaded.manifest.preserved.taskCount ||
+    !inspectionsMatch(currentPreserved, loaded.manifest.preserved) ||
+    dirname(workDirectory) !== dirname(loaded.artifactDirectory) ||
+    !basename(workDirectory).startsWith('.m3c-work-') ||
+    dirname(receipt.m3bReceipt.shadowRoot) !== workDirectory ||
+    !basename(receipt.m3bReceipt.shadowRoot).startsWith('shadow-') ||
+    receipt.m3bReceipt.receiptPath !== join(workDirectory, M3B_RECEIPT_BASENAME) ||
+    pathEntryExists(workDirectory) ||
+    pathEntryExists(receipt.m3bReceipt.shadowRoot) ||
+    pathEntryExists(receipt.m3bReceipt.receiptPath)
+  ) {
+    throw new PreservedStateRehearsalError(
+      'receipt_invalid',
+      'M3C receipt does not bind the exact manifest, preserved state, and absent work paths',
+    );
+  }
+  assertM3bReceiptBindings(receipt.m3bReceipt, loaded, workDirectory);
+}
+
+export function verifyPreservedStateRehearsal(
+  artifactDirectory: string,
+): VerifiedPreservedStateRehearsal {
+  const resolvedArtifact = resolveArtifactDirectoryInput(artifactDirectory);
+  const receiptRead = readM3cReceipt(join(resolvedArtifact, M3C_RECEIPT_BASENAME));
+  let currentManifestRaw: string;
+  try {
+    currentManifestRaw = readFileSync(join(resolvedArtifact, MANIFEST_BASENAME), 'utf8');
+  } catch (error) {
+    throw new PreservedStateRehearsalError(
+      'manifest_tampered',
+      `receipt-bound manifest is missing or unreadable: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
+  if (sha256(currentManifestRaw) !== receiptRead.receipt.manifestSha256) {
+    throw new PreservedStateRehearsalError(
+      'manifest_tampered',
+      'current preservation manifest bytes do not match the receipt-bound SHA-256',
+    );
+  }
+  const loaded = loadBoundManifest(resolvedArtifact);
+  const currentPreserved = inspectBoundPreservedState(loaded);
+  assertReceiptBindings(loaded, receiptRead.receipt, currentPreserved);
+  return {
+    verified: true,
+    manifestSha256: loaded.sha256,
+    manifest: loaded.manifest,
+    receipt: receiptRead.receipt,
+  };
+}
+
+export function rehearsePreservedExecGraph(
+  options: RehearsePreservedExecGraphOptions,
+): PreservedStateRehearsalReceipt {
+  if (
+    typeof options !== 'object' ||
+    options === null ||
+    typeof options.artifactDirectory !== 'string'
+  ) {
+    throw new PreservedStateRehearsalError(
+      'path_invalid',
+      'rehearsal options must contain one explicit absolute artifact directory',
+    );
+  }
+  const timeout = requireChildTimeout(options.childTimeoutMs);
+  const loaded = loadBoundManifest(options.artifactDirectory);
+  if (pathEntryExists(loaded.receiptPath)) {
+    throw new PreservedStateRehearsalError(
+      'receipt_exists',
+      `refusing to overwrite an existing M3C receipt: ${loaded.receiptPath}`,
+    );
+  }
+  const preservedBefore = inspectBoundPreservedState(loaded);
+  const workParent = dirname(loaded.artifactDirectory);
+  const workDirectory = join(workParent, `.m3c-work-${randomUUID()}`);
+  let workCreated = false;
+  let workIdentity: DirectoryIdentity | undefined;
+  let workCleanupAttempted = false;
+  let persistedM3cReceiptRaw: string | undefined;
+
+  try {
+    mkdirSync(workDirectory, { recursive: false });
+    workCreated = true;
+    workIdentity = captureOwnedDirectoryIdentity(workDirectory);
+
+    let m3bReceipt: RehearsalReceipt;
+    try {
+      m3bReceipt = runShadowRehearsal(loaded.preservedDirectory, {
+        workDirectory,
+        childTimeoutMs: timeout,
+      });
+    } catch (error) {
+      const nestedCode =
+        typeof error === 'object' && error !== null && 'code' in error
+          ? String(error.code)
+          : 'unknown';
+      throw new PreservedStateRehearsalError(
+        'rehearsal_failed',
+        `M3B preserved-copy rehearsal failed closed (${nestedCode})`,
+      );
+    }
+
+    const persistedM3bReceipt = readM3bReceipt(m3bReceipt.receiptPath);
+    if (JSON.stringify(persistedM3bReceipt) !== JSON.stringify(m3bReceipt)) {
+      throw new PreservedStateRehearsalError(
+        'receipt_invalid',
+        'returned M3B receipt differs from its persisted bytes',
+      );
+    }
+    assertM3bReceiptBindings(persistedM3bReceipt, loaded, workDirectory);
+    const preservedAfter = inspectBoundPreservedState(loaded);
+    if (!inspectionsMatch(preservedBefore, preservedAfter)) {
+      throw new PreservedStateRehearsalError(
+        'preserved_state_tampered',
+        'preserved exec graph changed during the M3C rehearsal',
+      );
+    }
+
+    const prospectiveReceipt = preservedStateRehearsalReceiptSchema.parse({
+      schemaVersion: 1,
+      kind: 'atlas.m3c-preserved-state-rehearsal',
+      completedAt: new Date().toISOString(),
+      artifactDirectory: loaded.artifactDirectory,
+      preservedDirectory: loaded.preservedDirectory,
+      workDirectory,
+      workDirectoryAbsent: true,
+      manifestSha256: loaded.sha256,
+      preservedLedgerSha256: preservedAfter.ledgerSha256,
+      preservedSnapshotSha256: preservedAfter.snapshotSha256,
+      preservedSemanticSha256: preservedAfter.semanticSha256,
+      eventCount: preservedAfter.eventCount,
+      goalCount: preservedAfter.goalCount,
+      taskCount: preservedAfter.taskCount,
+      preservationAccepted: true,
+      coldReplayAccepted: true,
+      rollbackVerified: true,
+      preservedStateUnchanged: true,
+      m3bReceipt: persistedM3bReceipt,
+    });
+
+    workCleanupAttempted = true;
+    removeGeneratedDirectory(workParent, workDirectory, '.m3c-work-', workIdentity);
+    workCreated = false;
+    const persisted = persistM3cReceipt(loaded, prospectiveReceipt);
+    const persistedReceipt = persisted.receipt;
+    persistedM3cReceiptRaw = persisted.raw;
+    const verified = verifyPreservedStateRehearsal(loaded.artifactDirectory);
+    if (JSON.stringify(verified.receipt) !== JSON.stringify(persistedReceipt)) {
+      throw new PreservedStateRehearsalError(
+        'receipt_invalid',
+        'independent verifier returned a different M3C receipt',
+      );
+    }
+    return verified.receipt;
+  } catch (error) {
+    if (persistedM3cReceiptRaw !== undefined) {
+      removeOwnedReceiptFile(
+        loaded.artifactDirectory,
+        loaded.receiptPath,
+        persistedM3cReceiptRaw,
+      );
+    }
+    if (workCreated && !workCleanupAttempted) {
+      if (!workIdentity) throw cleanupUnsafe(workDirectory);
+      removeGeneratedDirectory(workParent, workDirectory, '.m3c-work-', workIdentity);
+    }
+    if (error instanceof PreservedStateRehearsalError) throw error;
+    throw new PreservedStateRehearsalError(
+      'rehearsal_failed',
+      `preserved-copy rehearsal failed: ${error instanceof Error ? error.message : String(error)}`,
     );
   }
 }
