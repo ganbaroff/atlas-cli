@@ -41,8 +41,11 @@ recovery gates before any Atlas repository move or live binding change.
 - [x] Migrate slice 1 (`exec-graph`, `evidence`, `goal-budgets`) through a
       compatibility bridge that ignores a merely staged `ATLAS_STATE_ROOT` and
       switches only after required activation plus a valid manifest.
-- [ ] Migrate call sites in small store-family slices; keep explicit temporary
-      roots in tests.
+- [x] Migrate slice 2 (`swarm-runs`, `intake-drafts`) through the same bridge;
+      preserve explicit temporary roots before activation and make those
+      overrides unreachable after required activation.
+- [ ] Migrate remaining call sites in small store-family slices; keep explicit
+      temporary roots in tests before activation.
 - [ ] Prove CWD/code-root invariance and no writes to checkout paths.
 - [ ] Before any live activation, bind the manifest to an externally expected
       node role and verify allowlisted source-receipt artifacts/hashes; fields
@@ -67,6 +70,13 @@ RED then repaired. Evidence: 9 affected files, 146/146 tests, exact-tip 43/43,
 clean typecheck and diff-check. The same review correctly identified that
 manifest receipt provenance is still an assertion; that remains an explicit
 pre-live M3D-A gate, not permission to activate now.
+
+A2 slice-2 checkpoint `0c9723d`: swarm run bundles and intake drafts now use
+the migration bridge. RED proved both caller-supplied roots bypassed required
+activation; the centralized resolvers now retain those legacy/test overrides
+before activation and ignore them after valid required activation. Evidence:
+5 affected files, 39/39 exact-tip tests, clean typecheck and diff-check. No live
+root, manifest, checkout state, or provider was touched.
 
 ---
 
