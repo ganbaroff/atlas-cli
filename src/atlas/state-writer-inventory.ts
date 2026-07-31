@@ -76,6 +76,13 @@ export const STATE_WRITER_INVENTORY: Readonly<
   'src/atlas/cron.ts': [
     surface('configuration-content', 'external-memory-domain', 'health reports are VOLAURA memory'),
   ],
+  'src/atlas/cutover-packet.ts': [
+    surface(
+      'operational',
+      'explicit-proof-path',
+      'disposable sandbox-only physical cutover packet fixtures and gated execute',
+    ),
+  ],
   'src/atlas/effect-journal.ts': [
     authoritative(
       ['effect-journal'],
