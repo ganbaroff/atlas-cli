@@ -356,16 +356,27 @@ or deploy.
 
 ### Task 5: Run one retained current full-root rehearsal
 
-- [ ] Preflight exact branch/HEAD, five unrelated dirty paths, runner status,
+- [x] Preflight exact branch/HEAD, five unrelated dirty paths, runner status,
       source store manifests, preservation baseline, and candidate absence.
-- [ ] Stop if any preflight row differs; no retry without diagnosis.
-- [ ] Run exactly one retained-copy rehearsal to a new generated directory.
-- [ ] Freshly verify all manifests and store invariants.
-- [ ] Prove no resolver, live state, runner, scheduler, Railway, Git tracking,
+- [x] Stop if any preflight row differs; no retry without diagnosis.
+- [x] Run exactly one retained-copy rehearsal to a new generated directory.
+- [x] Freshly verify all manifests and store invariants.
+- [x] Prove no resolver, live state, runner, scheduler, Railway, Git tracking,
       worktree, junction, or code-root change occurred.
 
 Done bar: retained current-state full-root artifact has a valid rollback receipt
 and fresh independent verification.
+
+Checkpoint on `codex/m3d-effect-journal` (local, unpushed):
+`src/atlas/full-root-retain.ts` + `scripts/rehearse-full-root.mts`
+(`npm run atlas:m3d-rehearse`). One retained artifact:
+`C:\Projects\VOLAURA\memory\atlas\preservation\atlas-full-root-m3d-20260731T234811Z-bf74158c`
+(tree SHA-256 `e1ef5100f37dc741848882b85f8c4e95c40ca043d6e38ec6a1c3307682b60cf2`).
+Copied 11 live stores; empty-policy for 6
+(cost-router, goal-budgets, learning, operator-state, opsboard-exchange,
+pause-control). Independent verify accepted. Primary ANUS stayed clean at
+`d1f0ebf`. Suite 752+631 = 1383 pass / 0 fail / 2 skipped. No activation,
+push, deploy, scheduler, or Railway change.
 
 ---
 

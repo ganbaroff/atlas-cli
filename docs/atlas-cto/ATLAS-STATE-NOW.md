@@ -52,8 +52,10 @@ manifest node-role binding and source-receipt verification is done at
 `504ea45` (independently verified CONFIRMED, full suite 1344/0). M3D-B
 mutation transaction is done at `4051a68`. M3D-C durable effect journal
 (Task 3) is done on `codex/m3d-effect-journal`. M3D-D Task 4 fixture
-full-root rehearsal is done (suite 1376/0/2). Next: Task 5 one retained
-current-state full-root rehearsal, then CEO-approved LOCAL activation — CEO gave permission 2026-07-31
+full-root rehearsal is done. M3D-D Task 5 retained current-state full-root
+rehearsal is done (artifact `atlas-full-root-m3d-20260731T234811Z-bf74158c`;
+suite 1383/0/2). Next: Task 6-7 cutover packet + CEO GO, then conditional
+LOCAL activation — CEO gave permission 2026-07-31
 conditional on that rehearsal returning green; physical cutover of live
 state remains NO-GO until then, plus the two external-writer stores at
 cutover.
@@ -98,8 +100,8 @@ cutover.
    IDs, flush-before-effect, no auto-replay of `outcome_unknown`, queue and
    goal-runner share one ledger. **Done:** M3D-D / Task 4 fixture full-root
    rehearsal (atomic copy, network-denied cold child, rollback receipt).
-   **Next:** Task 5 retained current-state full-root rehearsal, then
-   Task 6-7 cutover packet + CEO gate. No live resolver switch, untracking,
+   **Done:** M3D-D / Task 5 one retained current full-root rehearsal.
+   **Next:** Task 6-7 cutover packet + CEO gate. No live resolver switch, untracking,
    move, or cutover.
 
 ## External review closure
@@ -256,8 +258,9 @@ Fable/Opus routing closure:
     `executeOnce`/`decideStaleClaim` wired through atlas-runner,
     queue-worker, and goal-runner; child-process crash matrix green;
     sharded suite 1363/0/2. M3D-D Task 4 fixture full-root rehearsal is
-    done (suite 1376/0/2). **Next:** Task 5 one retained current-state
-    full-root rehearsal, then Task 6-7 cutover packet + CEO gate. CEO-approved LOCAL activation
+    done. Task 5 retained current-state full-root rehearsal is done
+    (artifact `atlas-full-root-m3d-20260731T234811Z-bf74158c`;
+    suite 1383/0/2). **Next:** Task 6-7 cutover packet + CEO gate. CEO-approved LOCAL activation
     remains conditional on green rehearsal; physical cutover of live state
     stays NO-GO; external writers pause-control/runner-log remain at cutover.
 11. **Live research broker:** one provider at a time, public synthetic prompts.
