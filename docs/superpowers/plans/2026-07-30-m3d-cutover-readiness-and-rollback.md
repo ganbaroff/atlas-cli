@@ -333,16 +333,24 @@ mutation.
 - Add/modify: full-root copy, manifest, cold verifier, and tests
 - Reuse: M3A strict exec-graph comparison and M3C safe cleanup primitives
 
-- [ ] Build a fixture root containing every authoritative store.
-- [ ] Copy via staging + durable rename; derive all proof paths internally.
-- [ ] Launch a network-denied child with only candidate root and explicit code
+- [x] Build a fixture root containing every authoritative store.
+- [x] Copy via staging + durable rename; derive all proof paths internally.
+- [x] Launch a network-denied child with only candidate root and explicit code
       path.
-- [ ] Run native store checks; missing/empty/unknown input fails closed.
-- [ ] Execute rollback and issue receipt only after observed cleanup and source
+- [x] Run native store checks; missing/empty/unknown input fails closed.
+- [x] Execute rollback and issue receipt only after observed cleanup and source
       invariance.
-- [ ] Run focused suite, affected suite, typecheck, and diff check.
+- [x] Run focused suite, affected suite, typecheck, and diff check.
 
 Done bar: fixture full-root restore/replay is exact and checkout-independent.
+
+Checkpoint on `codex/m3d-effect-journal` (local, unpushed):
+`src/atlas/full-root-rehearsal.ts` + cold child. Seeds every authoritative
+store, atomic tree copy, network-denied cold inspect, M3A exec-graph parity,
+identity-bound rollback, bound receipt. Cast destinations ignored; CWD/env
+ignored. Evidence: focused 13/13; sharded full suite 745+631 = 1376 pass /
+0 fail / 2 skipped; `tsc --noEmit` clean. No live state, activation, push,
+or deploy.
 
 ---
 
