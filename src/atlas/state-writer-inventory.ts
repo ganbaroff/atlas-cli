@@ -92,6 +92,13 @@ export const STATE_WRITER_INVENTORY: Readonly<
       'caller-selected full-root fixture rehearsal artifact and rollback cleanup',
     ),
   ],
+  'src/atlas/full-root-retain.ts': [
+    surface(
+      'operational',
+      'explicit-proof-path',
+      'caller-selected retained full-root assemble/preserve artifact outside live roots',
+    ),
+  ],
   'src/atlas/instance-lease.ts': [
     authoritative(['instance-lease'], 'machine writer ownership and runner liveness'),
   ],
