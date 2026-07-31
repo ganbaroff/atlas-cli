@@ -92,7 +92,10 @@ Run in order. Never skip to a later rung by rewording.
    and surface it to the CEO as an open item. A parked item with an honest note is a result;
    a fourth attempt is not.
 
-The three-tries-then-switch-layer rule applies here as everywhere: rungs 1→5 are the layer switch.
+A permission, policy, seat, or capability denial stops after the first receipt:
+no retry, rephrasing, polling, or delegation. For ordinary transient failures,
+two identical attempts are the maximum before switching layer. Rungs 1→5 are
+different layers, not repeated attempts at the same blocked action.
 
 ---
 
@@ -161,18 +164,57 @@ deadline in the journal. "I have a token" without that line is not a token.
 
 | Body | Owns | Never |
 |---|---|---|
-| `fable-orchestrator` | mission sequence, stage tokens, fallback decisions, per-gate verification from its own seat, retro synthesis | writes code |
-| `terminal-atlas-executor` | executes one stage; sole writer of code in that stage. May be spawned headless via `claude -p` when no interactive session is open | issues tokens · self-certifies closure |
-| `codex-verifier` | independent audit; final-mission auditor and tie-breaker | co-builds the files it audits |
-| `atlas-cto-design` | design authority over ANUS architecture canon; advisory in missions | executes · returns verdicts (one verifier only, to avoid two-judge collisions) |
+| `fable-orchestrator` | mission sequence, work-class selection, stage tokens, receipt integration, fallback decisions, retro synthesis | edits · shell/build/test execution · self-certifies closure |
+| `terminal-atlas-executor` | one bounded Sonnet implementation/test task; sole writer inside its declared paths | delegates · expands scope · issues tokens · self-certifies closure |
+| `atlas-research` | one bounded read-only web/document task; local files only through Read/Grep/Glob-style tools | shell or external mutation · delegates · asserts unseen local facts |
+| `codex-verifier` | primary local implementation when declared writer; independent closure when not the writer; deterministic audit and tie-breaker | delegates core coding merely to switch models · calls its own authored slice independent |
+| `atlas-cto-design` | Opus/Antigravity architecture and adversarial analysis; advisory in missions | executes · mutates · independently closes implementation |
+| `perplexity-external-cto` | web-native research, cross-source synthesis, external challenge | treats local-repository claims as verified · executes · closes implementation |
+
+### Executor envelope
+
+Every `Agent` call made by `fable-orchestrator` receives
+`ATLAS_EXECUTOR_ENVELOPE_V1` mechanically from
+`~/.claude/hooks/fable-protocol-router.py`. Seat authority comes from this
+envelope, not from model name.
+
+| Work class | Purpose | Limits | Authority |
+|---|---|---|---|
+| `executor` (default) | bounded code, commands, tests, or local inspection | 25 tool calls · 20 minutes | declared task and write paths only |
+| `research` | long web/document analysis; a 30-minute investigation is normal | 60 tool calls · 45 minutes | read-only; URLs/citations required |
+
+Rules:
+
+1. One synchronous worker at a time. Background workers and grandchildren are
+   disabled; Fable cannot create a second writer while the first worker runs.
+2. The first action is one task-relevant capability/preflight check. A
+   permission, policy, seat, or capability block ends the worker immediately.
+3. Long productive research is allowed. Blocking polling is not: no sleep over
+   60 seconds and no repeated status probes. The worker either works or returns
+   a receipt.
+4. Research is read-only and shell-free. Local git/command inspection uses the
+   executor class; local files may still be inspected through read-only file
+   tools. Executor changes only declared scope and preserves unrelated dirty
+   files.
+5. Receipt format is `STATUS / EVIDENCE / BLOCKER / NEXT`, at most 120 lines.
+   Include commands and exit codes, exact SHA when relevant, and cited URLs for
+   web claims. Do not echo whole files or full diffs.
+6. Hitting a limit returns `BUDGET_EXHAUSTED` or `SPLIT_REQUIRED`; Fable splits
+   the work instead of silently extending the worker.
+7. The hook mechanically limits further tool calls and elapsed time at tool
+   boundaries. The embedded Agent interface exposes no hard token/spend kill,
+   so high-cost unattended work later moves to the brokered `claude -p
+   --max-budget-usd` path.
 
 **GOAL-MODE** (current amendment, established when the CEO ruled that courier hops be minimized:
 «минимизируя моё вмешательство… /goal функцию включить и всё»):
 
-- The planning seat performs per-gate deterministic verification itself — suite reruns, typecheck,
-  git identity, source audit, adversarial probes — instead of routing every gate through a courier.
-- Mechanical work is delegated to Sonnet executors; the planning seat's context is reserved for
-  verdicts and sequencing.
+- The planning seat commissions per-gate deterministic checks from one bounded
+  executor, then inspects and integrates the receipt. It never runs suites,
+  typecheck, git commands, or source mutation itself.
+- Mechanical work goes to the bounded Sonnet `executor` class. Long read-only
+  investigation goes to `research`. Fable context remains for decisions and
+  sequencing.
 - The independent verifier is demoted from per-round gate to **final-mission auditor**: one
   independent hop per mission rather than three per round. Independence is preserved because
   deterministic receipts are seat-independent.
@@ -223,15 +265,17 @@ You have ample context remaining. Do not stop, summarize, or suggest a new sessi
 context limits. Checkpoint state into files and git at every milestone so any interruption is cheap
 to resume.
 
-Delegate independent subtasks to subagents and keep working while they run; verify their findings
-with a fresh-context reviewer against the spec before trusting them.
+Delegate only through the executor envelope: one synchronous worker at a time,
+no grandchildren. Use `WORK_CLASS: research` for long read-only web/document
+analysis; use `executor` for bounded commands, edits, and tests. Verify every
+receipt before trusting it.
 
 Do the simplest thing that works well. No features, refactors or abstractions beyond the task.
 
-Stay clearly inside every limit you can see (token caps, spend caps, rate limits): batch work,
-checkpoint before a cap could fire, and say when one is near. If a request is declined, do not
-rephrase to get around it — state the legitimate purpose and authorization once; if still declined,
-take another safe route or park it with a note.
+Stay inside the envelope's tool/time limits and every visible token, spend, or
+rate cap. A permission/policy/seat/capability denial stops after the first
+receipt. An ordinary transient failure gets at most two identical attempts
+before switching layer.
 
 # REPORT
 Final message in Russian, short prose: outcome first, then what is proven with evidence, then the
@@ -256,7 +300,8 @@ Only the items with an operational consequence. Full notes:
 - **Never ask it to reproduce its internal reasoning** as response text. Ask for evidence — tool
   results, file paths, command output. Our "what is proven / what is not" report shape is safe
   precisely because it cites external receipts rather than reasoning.
-- **Long turns are normal.** Do not block on them; check asynchronously.
+- **Long research is normal.** A `research` worker may use up to 45 minutes.
+  Run it synchronously; do not poll it with sleeps or spawn another worker.
 - **Guard the ending.** The seat can close a turn on "I'll now run X" without running it. If the
   last paragraph is a plan, a question or a promise, do the work before ending.
 - **Context-limit reassurance.** Given a shrinking-context signal it may wrap up early. Counter

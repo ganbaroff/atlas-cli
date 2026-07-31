@@ -19,6 +19,26 @@
       },
       "status": "open",
       "createdAt": "2026-07-17T21:02:51.861Z"
+    },
+    {
+      "id": "gol_0de6eefeea028fa0",
+      "title": "NBA: sigmoid → VISUAL_EXPLANATION",
+      "source": {
+        "kind": "volaura-work-queue",
+        "ref": "idem_http_sigmoid_1"
+      },
+      "status": "open",
+      "createdAt": "2026-07-27T12:36:12.063Z"
+    },
+    {
+      "id": "gol_acbe331563b4c777",
+      "title": "NBA: sigmoid → VISUAL_EXPLANATION",
+      "source": {
+        "kind": "volaura-work-queue",
+        "ref": "idem_http_sigmoid_retry"
+      },
+      "status": "open",
+      "createdAt": "2026-07-27T12:36:12.150Z"
     }
   ],
   "tasks": [
