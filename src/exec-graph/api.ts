@@ -17,6 +17,14 @@
  * transition, so the same refs the caller is citing on the transition also
  * satisfy the task-level invariant. Evidence can still be added earlier/
  * separately via addEvidence() directly — this is additive, not the only path.
+ *
+ * TRANSACTION NOTE: every mutation below runs as a single
+ * withExecGraphMutation() call (ledger.ts) — one exclusive lock acquisition,
+ * one strict re-read, one set of events computed and persisted. moveTask()'s
+ * evidence-promotion therefore builds 'evidence-added' events inline instead
+ * of calling addEvidence() — the lock is not reentrant, so calling another
+ * withExecGraphMutation()-based function from inside a transaction would
+ * deadlock.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -29,11 +37,12 @@ import {
   type SourceRef,
   type RiskClass,
   type TaskStatus,
+  type NewLedgerEvent,
   goalSchema,
   taskSchema,
   TASK_STATUSES,
 } from './contracts.js';
-import { appendEvent, readGraph } from './ledger.js';
+import { readGraph, withExecGraphMutation } from './ledger.js';
 import { applyTransition, type ApplyTransitionOptions } from './transitions.js';
 
 function nowIso(): string {
@@ -80,20 +89,25 @@ export interface CreateGoalInput {
 
 export function createGoal(input: CreateGoalInput): Goal {
   assertWritable('exec-graph.createGoal');
-  if (input.id) {
-    const existing = readGraph().goals[input.id];
-    if (existing) return existing;
-  }
   const ts = input.ts ?? nowIso();
   const actor = input.actor ?? 'atlas';
-  const goal = goalSchema.parse({
-    id: input.id ?? newGoalId(),
-    title: input.title,
-    source: input.source ?? { kind: 'exec-graph', ref: 'cli' },
-    status: 'open',
-    createdAt: ts,
+
+  const { value: goal } = withExecGraphMutation((snapshot) => {
+    const goalId = input.id ?? newGoalId();
+    const existing = snapshot.goals[goalId];
+    if (existing) {
+      return { events: [], value: existing };
+    }
+    const goal = goalSchema.parse({
+      id: goalId,
+      title: input.title,
+      source: input.source ?? { kind: 'exec-graph', ref: 'cli' },
+      status: 'open',
+      createdAt: ts,
+    });
+    const events: NewLedgerEvent[] = [{ kind: 'goal-created', ts, actor, payload: { goal } }];
+    return { events, value: goal };
   });
-  appendEvent({ kind: 'goal-created', ts, actor, payload: { goal } });
   return goal;
 }
 
@@ -143,26 +157,28 @@ export function createTask(input: CreateTaskInput): CreateTaskResult {
   const source = input.source ?? { kind: 'exec-graph' as SourceKind, ref: 'cli' };
   const idempotencyKey = input.idempotencyKey ?? deriveIdempotencyKey(source);
 
-  const task = taskSchema.parse({
-    id: newTaskId(),
-    goalId: input.goalId,
-    title: input.title,
-    source,
-    owner,
-    status: 'proposed',
-    riskClass: input.riskClass ?? 'low',
-    idempotencyKey,
-    evidence: [],
-    createdAt: ts,
-    transitions: [{ from: null, to: 'proposed', ts, actor, note: 'created' }],
+  const { value: result } = withExecGraphMutation((snapshot) => {
+    const existing = Object.values(snapshot.tasks).find((t) => t.idempotencyKey === idempotencyKey);
+    if (existing) {
+      return { events: [], value: { task: existing, created: false } };
+    }
+    const task = taskSchema.parse({
+      id: newTaskId(),
+      goalId: input.goalId,
+      title: input.title,
+      source,
+      owner,
+      status: 'proposed',
+      riskClass: input.riskClass ?? 'low',
+      idempotencyKey,
+      evidence: [],
+      createdAt: ts,
+      transitions: [{ from: null, to: 'proposed', ts, actor, note: 'created' }],
+    });
+    const events: NewLedgerEvent[] = [{ kind: 'task-created', ts, actor, payload: { task } }];
+    return { events, value: { task, created: true } };
   });
-
-  const result = appendEvent({ kind: 'task-created', ts, actor, payload: { task } });
-  if (result.deduped) {
-    const existing = readGraph().tasks[result.taskId as string];
-    return { task: existing, created: false };
-  }
-  return { task, created: true };
+  return result;
 }
 
 export interface ImportTaskInput {
@@ -207,40 +223,49 @@ export interface MoveTaskInput extends Omit<ApplyTransitionOptions, 'ts'> {
 
 export function moveTask(input: MoveTaskInput): Task {
   assertWritable('exec-graph.moveTask');
-  const graph = readGraph();
-  let task = graph.tasks[input.taskId];
-  if (!task) {
-    throw new Error(`exec-graph: unknown task ${input.taskId}`);
-  }
 
-  if (input.to === 'verified' || input.to === 'rejected') {
-    throw new HandAuthorityError(
-      `exec-graph: task ${input.taskId} (owner=${task.owner}) — tasks reach `
-      + "'verified'/'rejected' only through the verifier path (exec-graph/verifier-port), not generic task move",
-    );
-  }
-
-  const ts = input.ts ?? nowIso();
-
-  // See module doc: evidenceRefs supplied on a move are also recorded as
-  // Evidence entries on the task itself, so a move straight into
-  // 'evidence-submitted'/'verified' can satisfy the task-level "must have
-  // >=1 evidence entry" invariant using the same refs already cited.
-  if (input.evidenceRefs && input.evidenceRefs.length > 0) {
-    for (const ref of input.evidenceRefs) {
-      task = addEvidence({ taskId: task.id, evidence: { ref, kind: 'other' }, actor: input.actor, ts });
+  const { value: nextTask } = withExecGraphMutation((snapshot) => {
+    let task = snapshot.tasks[input.taskId];
+    if (!task) {
+      throw new Error(`exec-graph: unknown task ${input.taskId}`);
     }
-  }
 
-  const nextTask = applyTransition(task, input.to, {
-    actor: input.actor,
-    ts,
-    evidenceRefs: input.evidenceRefs,
-    note: input.note,
+    if (input.to === 'verified' || input.to === 'rejected') {
+      throw new HandAuthorityError(
+        `exec-graph: task ${input.taskId} (owner=${task.owner}) — tasks reach `
+        + "'verified'/'rejected' only through the verifier path (exec-graph/verifier-port), not generic task move",
+      );
+    }
+
+    const ts = input.ts ?? nowIso();
+    const events: NewLedgerEvent[] = [];
+
+    // See module doc: evidenceRefs supplied on a move are also recorded as
+    // Evidence entries on the task itself, so a move straight into
+    // 'evidence-submitted'/'verified' can satisfy the task-level "must have
+    // >=1 evidence entry" invariant using the same refs already cited. Built
+    // inline (not via addEvidence()) because the lock is not reentrant.
+    if (input.evidenceRefs && input.evidenceRefs.length > 0) {
+      for (const ref of input.evidenceRefs) {
+        const evidence: Evidence = { ref, kind: 'other' };
+        events.push({ kind: 'evidence-added', ts, actor: input.actor, payload: { taskId: task.id, evidence } });
+        task = { ...task, evidence: [...task.evidence, evidence] };
+      }
+    }
+
+    const nextTask = applyTransition(task, input.to, {
+      actor: input.actor,
+      ts,
+      evidenceRefs: input.evidenceRefs,
+      note: input.note,
+    });
+
+    const newTransition = nextTask.transitions[nextTask.transitions.length - 1];
+    events.push({ kind: 'transition', ts, actor: input.actor, payload: { taskId: task.id, transition: newTransition } });
+
+    return { events, value: nextTask };
   });
 
-  const newTransition = nextTask.transitions[nextTask.transitions.length - 1];
-  appendEvent({ kind: 'transition', ts, actor: input.actor, payload: { taskId: task.id, transition: newTransition } });
   return nextTask;
 }
 
@@ -280,23 +305,22 @@ export function reassignOwner(taskId: string, newOwner: string, opts: ReassignOw
     );
   }
 
-  const graph = readGraph();
-  const task = graph.tasks[taskId];
-  if (!task) {
-    throw new ExecGraphOwnerReassignError(`exec-graph: unknown task ${taskId}`);
-  }
-
   const ts = opts.ts ?? nowIso();
-  const from = task.owner;
 
-  appendEvent({
-    kind: 'owner-reassigned',
-    ts,
-    actor,
-    payload: { taskId, from, to: newOwner, actor, reason, ts },
+  const { value: nextTask } = withExecGraphMutation((snapshot) => {
+    const task = snapshot.tasks[taskId];
+    if (!task) {
+      throw new ExecGraphOwnerReassignError(`exec-graph: unknown task ${taskId}`);
+    }
+    const from = task.owner;
+    const nextTask: Task = { ...task, owner: newOwner };
+    const events: NewLedgerEvent[] = [
+      { kind: 'owner-reassigned', ts, actor, payload: { taskId, from, to: newOwner, actor, reason, ts } },
+    ];
+    return { events, value: nextTask };
   });
 
-  return { ...task, owner: newOwner };
+  return nextTask;
 }
 
 export interface AddEvidenceInput {
@@ -307,15 +331,22 @@ export interface AddEvidenceInput {
 }
 
 export function addEvidence(input: AddEvidenceInput): Task {
-  const graph = readGraph();
-  const task = graph.tasks[input.taskId];
-  if (!task) {
-    throw new Error(`exec-graph: unknown task ${input.taskId}`);
-  }
   const ts = input.ts ?? nowIso();
   const actor = input.actor ?? 'atlas';
-  appendEvent({ kind: 'evidence-added', ts, actor, payload: { taskId: task.id, evidence: input.evidence } });
-  return { ...task, evidence: [...task.evidence, input.evidence] };
+
+  const { value: nextTask } = withExecGraphMutation((snapshot) => {
+    const task = snapshot.tasks[input.taskId];
+    if (!task) {
+      throw new Error(`exec-graph: unknown task ${input.taskId}`);
+    }
+    const nextTask: Task = { ...task, evidence: [...task.evidence, input.evidence] };
+    const events: NewLedgerEvent[] = [
+      { kind: 'evidence-added', ts, actor, payload: { taskId: task.id, evidence: input.evidence } },
+    ];
+    return { events, value: nextTask };
+  });
+
+  return nextTask;
 }
 
 // ── Reads ────────────────────────────────────────────────────────────────

@@ -9,12 +9,17 @@
  * IMPORT RESTRICTION: only src/hands/exec-graph-adapter.ts may import this
  * module. Goal-runner, CLI, and all other callers use api.ts's public surface.
  * Structural tests enforce this boundary (see goal-runner.test.ts).
+ *
+ * TRANSACTION NOTE: each function below is a single withExecGraphMutation()
+ * call (ledger.ts). Evidence-promotion events are built inline instead of
+ * calling api.ts's addEvidence() — the lock is not reentrant, so calling
+ * another withExecGraphMutation()-based function from inside a transaction
+ * would deadlock.
  */
 
-import { readGraph, appendEvent } from './ledger.js';
+import { withExecGraphMutation } from './ledger.js';
 import { applyTransition } from './transitions.js';
-import { addEvidence } from './api.js';
-import type { Task, TaskStatus } from './contracts.js';
+import type { Evidence, NewLedgerEvent, Task, TaskStatus } from './contracts.js';
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -39,31 +44,39 @@ export interface MoveTaskVerifierInput {
  * Logic is identical to api.ts's moveTask minus the authority guard.
  */
 export function moveTaskAsVerifier(input: MoveTaskVerifierInput): Task {
-  const graph = readGraph();
-  let task = graph.tasks[input.taskId];
-  if (!task) {
-    throw new Error(`exec-graph: unknown task ${input.taskId}`);
-  }
-
   const ts = input.ts ?? nowIso();
 
-  // Same evidence-promotion logic as api.ts's moveTask: evidenceRefs on
-  // the move become real Evidence entries, satisfying task-level invariants.
-  if (input.evidenceRefs && input.evidenceRefs.length > 0) {
-    for (const ref of input.evidenceRefs) {
-      task = addEvidence({ taskId: task.id, evidence: { ref, kind: 'other' }, actor: input.actor, ts });
+  const { value: nextTask } = withExecGraphMutation((snapshot) => {
+    let task = snapshot.tasks[input.taskId];
+    if (!task) {
+      throw new Error(`exec-graph: unknown task ${input.taskId}`);
     }
-  }
 
-  const nextTask = applyTransition(task, input.to, {
-    actor: input.actor,
-    ts,
-    evidenceRefs: input.evidenceRefs,
-    note: input.note,
+    const events: NewLedgerEvent[] = [];
+
+    // Same evidence-promotion logic as api.ts's moveTask: evidenceRefs on
+    // the move become real Evidence entries, satisfying task-level invariants.
+    if (input.evidenceRefs && input.evidenceRefs.length > 0) {
+      for (const ref of input.evidenceRefs) {
+        const evidence: Evidence = { ref, kind: 'other' };
+        events.push({ kind: 'evidence-added', ts, actor: input.actor, payload: { taskId: task.id, evidence } });
+        task = { ...task, evidence: [...task.evidence, evidence] };
+      }
+    }
+
+    const nextTask = applyTransition(task, input.to, {
+      actor: input.actor,
+      ts,
+      evidenceRefs: input.evidenceRefs,
+      note: input.note,
+    });
+
+    const newTransition = nextTask.transitions[nextTask.transitions.length - 1];
+    events.push({ kind: 'transition', ts, actor: input.actor, payload: { taskId: task.id, transition: newTransition } });
+
+    return { events, value: nextTask };
   });
 
-  const newTransition = nextTask.transitions[nextTask.transitions.length - 1];
-  appendEvent({ kind: 'transition', ts, actor: input.actor, payload: { taskId: task.id, transition: newTransition } });
   return nextTask;
 }
 
@@ -94,21 +107,20 @@ export function reassignOwnerAsVerifier(taskId: string, newOwner: string, opts: 
     throw new Error('reason is required and must be non-empty');
   }
 
-  const graph = readGraph();
-  const task = graph.tasks[taskId];
-  if (!task) {
-    throw new Error(`exec-graph: unknown task ${taskId}`);
-  }
-
   const ts = opts.ts ?? nowIso();
-  const from = task.owner;
 
-  appendEvent({
-    kind: 'owner-reassigned',
-    ts,
-    actor,
-    payload: { taskId, from, to: newOwner, actor, reason, ts },
+  const { value: nextTask } = withExecGraphMutation((snapshot) => {
+    const task = snapshot.tasks[taskId];
+    if (!task) {
+      throw new Error(`exec-graph: unknown task ${taskId}`);
+    }
+    const from = task.owner;
+    const nextTask: Task = { ...task, owner: newOwner };
+    const events: NewLedgerEvent[] = [
+      { kind: 'owner-reassigned', ts, actor, payload: { taskId, from, to: newOwner, actor, reason, ts } },
+    ];
+    return { events, value: nextTask };
   });
 
-  return { ...task, owner: newOwner };
+  return nextTask;
 }

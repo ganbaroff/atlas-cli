@@ -257,18 +257,22 @@ describe('exec-graph ledger + api (isolated temp dir per test)', () => {
     expect(rebuilt.tasks[task.id].evidence.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('malformed JSONL line is skipped (console.error called) and surrounding valid lines still parse', () => {
+  it('malformed JSONL line is skipped by the fail-safe reader (console.error called); the strict write transaction refuses to build on it', () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
       const goal = createGoal({ title: 'g', actor: 'atlas', ts: NOW });
       appendFileSync(ledgerPath(), 'this is not valid json at all\n', 'utf8');
-      const { task } = createTask({ goalId: goal.id, title: 'after-malformed', actor: 'atlas', ts: NOW });
 
+      // Fail-safe legacy reader (used by `atlas graph verify`) still skips the
+      // bad line and surfaces the rest, same as before the M3D cutover.
       const events = readLedgerEvents();
       expect(errSpy).toHaveBeenCalled();
-      expect(events).toHaveLength(2); // goal-created + task-created; malformed line excluded
+      expect(events).toHaveLength(1); // goal-created only; malformed line excluded
       expect(events.some((e) => e.kind === 'goal-created' && e.payload.goal.id === goal.id)).toBe(true);
-      expect(events.some((e) => e.kind === 'task-created' && e.payload.task.id === task.id)).toBe(true);
+
+      // But every WRITE now goes through the strict transaction — it must
+      // throw rather than silently append on top of a corrupt ledger.
+      expect(() => createTask({ goalId: goal.id, title: 'after-malformed', actor: 'atlas', ts: NOW })).toThrow();
     } finally {
       errSpy.mockRestore();
     }
@@ -317,19 +321,13 @@ describe('exec-graph ledger + api (isolated temp dir per test)', () => {
     }
   });
 
-  it('snapshot write failure (ATLAS_EXEC_GRAPH_DIR points under a FILE, not a dir) logs via console.error and does not throw', () => {
+  it('ledger append failure (ATLAS_EXEC_GRAPH_DIR points under a FILE, not a dir) throws — never a swallowed success', () => {
     const blockerFile = join(dir, 'blocker-file');
     writeFileSync(blockerFile, 'x');
     const impossibleDir = join(blockerFile, 'exec-graph'); // blockerFile is a file, not a directory
     process.env.ATLAS_EXEC_GRAPH_DIR = impossibleDir;
 
-    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    try {
-      expect(() => createGoal({ title: 'g', actor: 'atlas', ts: NOW })).not.toThrow();
-      expect(errSpy).toHaveBeenCalled();
-    } finally {
-      errSpy.mockRestore();
-    }
+    expect(() => createGoal({ title: 'g', actor: 'atlas', ts: NOW })).toThrow();
   });
 
   it('moveTask promotes --evidence refs into task.evidence, satisfying the verified/closed evidence invariant end-to-end', () => {

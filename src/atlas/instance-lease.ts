@@ -10,6 +10,7 @@ import {
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { resolveMigratingStateDir } from './state-root.js';
+import { withExclusiveFileLock } from '../exec-graph/ledger.js';
 
 export type InstanceLeaseMode = 'writer' | 'readonly';
 
@@ -108,37 +109,49 @@ function isLeaseFresh(lease: InstanceLease, ttlMs: number): boolean {
   return Number.isFinite(hb) && Date.now() - hb < ttlMs;
 }
 
-/** Acquire or observe instance lease. Second live writer → readonly. */
+/**
+ * Acquire or observe instance lease. Second live writer → readonly.
+ *
+ * The read-existing / decide / write-new sequence runs inside an exclusive
+ * cross-process file lock (withExclusiveFileLock, shared with exec-graph's
+ * ledger transaction in ../exec-graph/ledger.js) so two processes launched
+ * at the same instant can no longer both read "no live writer" and both
+ * write themselves in as writer.
+ */
 export function acquireInstanceLease(opts?: {
   instanceId?: string;
   ttlMs?: number;
 }): InstanceLeaseResult {
   const instanceId = opts?.instanceId ?? randomUUID();
   const ttlMs = opts?.ttlMs ?? DEFAULT_LEASE_TTL_MS;
-  const path = leasePath();
-  const existing = readLease();
+  const dir = resolveInstanceLeaseDir();
 
-  if (existing && existing.instanceId !== instanceId) {
-    const alive = isProcessAlive(existing.pid);
-    const fresh = isLeaseFresh(existing, ttlMs);
-    if (alive && fresh) {
-      return {
-        mode: 'readonly',
-        instanceId,
-        reason: `another Atlas instance holds the lease (pid=${existing.pid}, id=${existing.instanceId.slice(0, 8)})`,
-      };
+  return withExclusiveFileLock(dir, 'instance-lease.lock', (): InstanceLeaseResult => {
+    const path = leasePath();
+    const existing = readLease();
+
+    if (existing && existing.instanceId !== instanceId) {
+      const alive = isProcessAlive(existing.pid);
+      const fresh = isLeaseFresh(existing, ttlMs);
+      if (alive && fresh) {
+        return {
+          mode: 'readonly',
+          instanceId,
+          reason: `another Atlas instance holds the lease (pid=${existing.pid}, id=${existing.instanceId.slice(0, 8)})`,
+        };
+      }
     }
-  }
 
-  const now = new Date().toISOString();
-  const lease: InstanceLease = {
-    instanceId,
-    pid: process.pid,
-    startedAt: existing?.instanceId === instanceId ? existing.startedAt : now,
-    heartbeatAt: now,
-  };
-  writeAtomic(path, JSON.stringify(lease, null, 2));
-  return { mode: 'writer', instanceId };
+    const now = new Date().toISOString();
+    const lease: InstanceLease = {
+      instanceId,
+      pid: process.pid,
+      startedAt: existing?.instanceId === instanceId ? existing.startedAt : now,
+      heartbeatAt: now,
+    };
+    writeAtomic(path, JSON.stringify(lease, null, 2));
+    return { mode: 'writer', instanceId };
+  });
 }
 
 export function heartbeatInstanceLease(instanceId: string): boolean {

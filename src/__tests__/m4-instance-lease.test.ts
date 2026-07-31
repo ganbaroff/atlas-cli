@@ -175,6 +175,30 @@ describe('M4-C instance anti-fork lease', () => {
     const result = JSON.parse(takeover.stdout.trim()) as { mode: string };
     expect(result.mode).toBe('writer');
   }, 60_000);
+
+  it('spawn-two E2E: two processes racing acquireInstanceLease on a fresh dir — exactly one reports writer', async () => {
+    const scriptBody = `
+      import { acquireInstanceLease } from ${JSON.stringify(LEASE_MODULE)};
+      const r = acquireInstanceLease({ ttlMs: 120_000 });
+      process.stdout.write(JSON.stringify(r) + '\\n');
+      await new Promise((resolve) => setTimeout(resolve, 5_000));
+    `;
+    const scriptA = writeTempScript(scriptBody);
+    const scriptB = writeTempScript(scriptBody);
+    scripts.push(scriptA, scriptB);
+
+    const [a, b] = await Promise.all([
+      runLeaseScript(scriptA, leaseDir),
+      runLeaseScript(scriptB, leaseDir),
+    ]);
+
+    const modes = [
+      (JSON.parse(a.stdout.trim()) as { mode: string }).mode,
+      (JSON.parse(b.stdout.trim()) as { mode: string }).mode,
+    ];
+    const writers = modes.filter((m) => m === 'writer').length;
+    expect(writers).toBe(1);
+  }, 20_000);
 });
 
 describe('CLI instance-lease routing', () => {
