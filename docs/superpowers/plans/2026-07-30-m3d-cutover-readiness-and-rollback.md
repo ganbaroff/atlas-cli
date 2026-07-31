@@ -303,17 +303,26 @@ unverified; sharded vitest completed in about 60s; a stray backgrounded
 - Modify as required: queue claim/recovery adapter
 - Add: child-process crash fixtures and focused tests
 
-- [ ] Observe RED for crash-before-effect, crash-after-start, and
+- [x] Observe RED for crash-before-effect, crash-after-start, and
       crash-after-receipt windows.
-- [ ] Derive stable operation IDs from durable command/task identity.
-- [ ] Flush `started` before invoking effects and terminal receipt afterwards.
-- [ ] Refuse automatic replay of `outcome_unknown`.
-- [ ] Make stale queue claims consult the shared journal.
-- [ ] Resume from an existing terminal receipt without repeating the effect.
-- [ ] Run crash matrix, affected suites, typecheck, and diff check.
+- [x] Derive stable operation IDs from durable command/task identity.
+- [x] Flush `started` before invoking effects and terminal receipt afterwards.
+- [x] Refuse automatic replay of `outcome_unknown`.
+- [x] Make stale queue claims consult the shared journal.
+- [x] Resume from an existing terminal receipt without repeating the effect.
+- [x] Run crash matrix, affected suites, typecheck, and diff check.
 
 Done bar: no automatic duplicate across any injected crash window; ambiguous
 outcome is a named blocker.
+
+Checkpoint `codex/m3d-effect-journal` (worktree tip, unpushed): shared
+`src/atlas/effect-journal.ts` under new `effect-journal` state store;
+`atlas-runner`, `queue-worker`, and `goal-runner` share `executeOnce` /
+`decideStaleClaim`. Child-process crash fixtures cover all three windows.
+Evidence: focused 56/56 + state-root 107/107 + goal/integration 37/37;
+sharded full suite 745+618 = 1363 pass / 0 fail / 2 skipped; `tsc --noEmit`
+clean; `git diff --check` clean. No activation, push, deploy, or live-state
+mutation.
 
 ---
 

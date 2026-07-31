@@ -49,12 +49,14 @@ Active package: the CWD/code-root invariance proof is done at `eae53a7`+
 `586393c` (registry-tiled coverage, checkout write-isolation, seeded
 repo-watch read probe; adversarially reviewed and repaired). M3D-A3
 manifest node-role binding and source-receipt verification is done at
-`504ea45` (independently verified CONFIRMED, full suite 1344/0). Next:
-rehearsal of activation against a preserved copy of real state (M3C
-machinery), then CEO-approved LOCAL activation — CEO gave permission
-2026-07-31 conditional on that rehearsal returning green; physical cutover
-of live state remains NO-GO until then, plus the two external-writer
-stores at cutover.
+`504ea45` (independently verified CONFIRMED, full suite 1344/0). M3D-B
+mutation transaction is done at `4051a68`. M3D-C durable effect journal
+(Task 3) is done on `codex/m3d-effect-journal` (local, unpushed; suite
+1363/0/2). Next: Task 4-5 full-root rehearsal against a preserved copy,
+then CEO-approved LOCAL activation — CEO gave permission 2026-07-31
+conditional on that rehearsal returning green; physical cutover of live
+state remains NO-GO until then, plus the two external-writer stores at
+cutover.
 
 `M1 ✓  →  M2 ✓  →  M3A ✓  →  M3B ✓  →  M3C ✓  →  M3D PACKET ✓  →  A1 ✓  →  A2…D  →  CEO CUTOVER GATE`
 
@@ -92,9 +94,11 @@ stores at cutover.
    invalid or escaped activation refuses before their writer mutations.
    **Done:** slice 8 migrates queue-auth and notify-queue; invalid activation
    and existing or dangling leaf symlinks refuse before state I/O.
-   **Now:** migrate remaining store families and close
-   expected-role/source-receipt provenance before any live activation. No live
-   resolver switch, untracking, move, or cutover.
+   **Done:** M3D-C / Task 3 shared durable effect journal — stable operation
+   IDs, flush-before-effect, no auto-replay of `outcome_unknown`, queue and
+   goal-runner share one ledger. **Next:** Task 4-5 full-root rehearsal, then
+   Task 6-7 cutover packet + CEO gate. No live resolver switch, untracking,
+   move, or cutover.
 
 ## External review closure
 
@@ -244,14 +248,16 @@ Fable/Opus routing closure:
     integrity (implementation-plan Task 2: centralize exec-graph mutation
     transaction) is done at `4051a68` (adversarially verified no-bypass;
     full suite 1348/0/2 via a two-shard closer run); docs recorded at the
-    docs commit on top of `4051a68`. **Next:** rehearsal of activation
-    against a preserved copy of real state (M3C machinery), then
-    CEO-approved LOCAL activation — CEO gave permission 2026-07-31
-    conditional on that rehearsal returning green; physical cutover of
-    live state stays NO-GO until then, plus the two external-writer
-    stores (pause-control, runner-log) at cutover, then implementation-plan
-    Task 3 (M3D-C effect durability, shared durable effect journal), then
-    Task 4-5 full-root rehearsal, Task 6-7 cutover packet + CEO gate.
+    docs commit on top of `4051a68`. M3D-C shared durable effect journal
+    (implementation-plan Task 3) is done on branch `codex/m3d-effect-journal`
+    (local worktree, unpushed): `effect-journal` store + shared
+    `executeOnce`/`decideStaleClaim` wired through atlas-runner,
+    queue-worker, and goal-runner; child-process crash matrix green;
+    sharded suite 1363/0/2. **Next:** Task 4-5 full-root migration
+    rehearsal (isolated fixture, then one retained current-state copy),
+    then Task 6-7 cutover packet + CEO gate. CEO-approved LOCAL activation
+    remains conditional on green rehearsal; physical cutover of live state
+    stays NO-GO; external writers pause-control/runner-log remain at cutover.
 11. **Live research broker:** one provider at a time, public synthetic prompts.
 12. **Research swarm:** only after `READY_FOR_RESEARCH`.
 
