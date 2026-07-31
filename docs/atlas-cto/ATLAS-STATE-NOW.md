@@ -1,6 +1,6 @@
 # ATLAS — STATE NOW
 
-Updated: 2026-07-30 Baku
+Updated: 2026-08-01 Baku
 
 ## One sentence
 
@@ -25,7 +25,7 @@ merge, deployment, scheduler cutover, or live-state activation is active.
 | Cost Router implementation | **M2 VERIFIED LOCAL** | `23e8574`; 97/97 focused tests, typecheck, runtime refusal-receipt enforcement | keep live providers off |
 | Fable session router | **REPAIRED / LIVE RECEIPT PENDING** | hook registered; stale `/model` and thread-context regressions fixed; 32/32 tests | verify on next natural clean Fable prompt; contaminated threads stay Opus |
 | Shadow consolidation | **M3C VERIFIED / M3D-A2 SLICES 1-10 DONE** | root activation `97a300e`; first `ca324fe`; swarm `0c9723d`; operator `2cbc85f`; task-results `4dca9fe`; learning `94e7426`; spend `af3f48a`; home dirs `c3923c9`; queues `746ccf7`; opsboard `c0d7f57`; alert/audit/watch/shell `5fd6b29` | external writers pause-control/runner-log at cutover; no cutover |
-| Physical consolidation | **NO-GO** | nested worktrees, unique legacy state, runtime bindings remain | completed shadow rehearsal plus CEO cutover gate |
+| Physical consolidation | **NO-GO — PACKET READY** | disposable cutover packet + Task 5 retained rehearsal green; nested worktrees/bindings remain live | explicit CEO GO on physical packet only |
 | Subscription research | **OFF** | Perplexity interactive access only; no durable adapter proof | public synthetic live gate |
 | Research swarm | **OFF** | `RESEARCH_ONLY_LIMITED` | two-provider `READY_FOR_RESEARCH` gate |
 | Product/learning expansion | **PARKED** | not critical path | after stable One-Atlas foundation |
@@ -54,11 +54,11 @@ mutation transaction is done at `4051a68`. M3D-C durable effect journal
 (Task 3) is done on `codex/m3d-effect-journal`. M3D-D Task 4 fixture
 full-root rehearsal is done. M3D-D Task 5 retained current-state full-root
 rehearsal is done (artifact `atlas-full-root-m3d-20260731T234811Z-bf74158c`;
-suite 1383/0/2). Next: Task 6-7 cutover packet + CEO GO, then conditional
-LOCAL activation — CEO gave permission 2026-07-31
-conditional on that rehearsal returning green; physical cutover of live
-state remains NO-GO until then, plus the two external-writer stores at
-cutover.
+suite 1383/0/2). M3D-E Task 6 disposable physical cutover packet is done
+(fixture cutover+rollback e2e; suite 1390/0/2). **Task 7: STOP for Yusif —
+physical cutover is NO-GO until explicit CEO approval of this packet.**
+LOCAL activation remains separately conditional on green rehearsal (already
+have Task 5). External writers pause-control/runner-log remain at cutover.
 
 `M1 ✓  →  M2 ✓  →  M3A ✓  →  M3B ✓  →  M3C ✓  →  M3D PACKET ✓  →  A1 ✓  →  A2…D  →  CEO CUTOVER GATE`
 
@@ -101,8 +101,10 @@ cutover.
    goal-runner share one ledger. **Done:** M3D-D / Task 4 fixture full-root
    rehearsal (atomic copy, network-denied cold child, rollback receipt).
    **Done:** M3D-D / Task 5 one retained current full-root rehearsal.
-   **Next:** Task 6-7 cutover packet + CEO gate. No live resolver switch, untracking,
-   move, or cutover.
+   **Done:** M3D-E / Task 6 disposable physical cutover packet (token-gated,
+   sandbox-only execute; live roots refused).
+   **Next:** Task 7 CEO physical-cutover decision — **NO-GO until explicit GO**.
+   No live resolver switch, untracking, move, or cutover.
 
 ## External review closure
 
@@ -260,21 +262,29 @@ Fable/Opus routing closure:
     sharded suite 1363/0/2. M3D-D Task 4 fixture full-root rehearsal is
     done. Task 5 retained current-state full-root rehearsal is done
     (artifact `atlas-full-root-m3d-20260731T234811Z-bf74158c`;
-    suite 1383/0/2). **Next:** Task 6-7 cutover packet + CEO gate. CEO-approved LOCAL activation
-    remains conditional on green rehearsal; physical cutover of live state
-    stays NO-GO; external writers pause-control/runner-log remain at cutover.
+    suite 1383/0/2). M3D-E Task 6 disposable physical cutover packet is done
+    on `codex/m3d-effect-journal` (local, unpushed): token-gated
+    `executeCutoverPacket`, path/junction guards, live-root refusal,
+    fixture cutover+rollback e2e; suite 1390/0/2. **Task 7 STOP:** physical
+    cutover of live state stays **NO-GO** until Yusif explicitly approves
+    this packet; do not infer GO from Tasks 1-6. CEO-approved LOCAL
+    activation remains conditional on green rehearsal (Task 5 already green);
+    external writers pause-control/runner-log remain at cutover.
 11. **Live research broker:** one provider at a time, public synthetic prompts.
 12. **Research swarm:** only after `READY_FOR_RESEARCH`.
 
 ## CEO decisions
 
-No CEO action is needed now. Safe reversible working defaults are active:
+**Now:** decide physical cutover GO/NO-GO on the Task 6 packet. Default remains
+**NO-GO**. Approval of Tasks 1-6 / design is **not** cutover GO.
+
+Safe reversible working defaults are active:
 4 local slices, 2 external research jobs, 1 active premium owner,
 1 T3 escalation per task, and 0 metered API spend.
 
 Needed later:
 
-- physical cutover;
+- physical cutover (only after explicit packet GO);
 - login/MFA/CAPTCHA when a live provider gate requires it;
 - any paid API activation;
 - privacy exception to a weaker destination class;

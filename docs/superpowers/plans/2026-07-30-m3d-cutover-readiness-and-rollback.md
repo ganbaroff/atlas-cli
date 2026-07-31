@@ -382,23 +382,36 @@ push, deploy, scheduler, or Railway change.
 
 ### Task 6: Prepare non-executed physical cutover packet
 
-- [ ] Generate exact preflight/readback/rollback command file with destructive
+- [x] Generate exact preflight/readback/rollback command file with destructive
       commands disabled behind an explicit token.
-- [ ] Add path-containment and junction-realpath guards.
-- [ ] Add manifest schemas for bundles, patches, scheduler XML, Railway binding,
+- [x] Add path-containment and junction-realpath guards.
+- [x] Add manifest schemas for bundles, patches, scheduler XML, Railway binding,
       junctions, `.env` metadata, and old/new roots.
-- [ ] Test the packet only against disposable fixture repositories, worktrees,
+- [x] Test the packet only against disposable fixture repositories, worktrees,
       junctions, and scheduled-task substitutes.
-- [ ] Run one compact rollback-critical review; locally disposition every
+- [x] Run one compact rollback-critical review; locally disposition every
       finding.
 
 Done bar: disposable end-to-end cutover and rollback pass; live paths untouched.
+
+Checkpoint on `codex/m3d-effect-journal` (local, unpushed):
+`src/atlas/cutover-packet.ts` + `src/__tests__/cutover-packet.test.ts`.
+Disposable sandbox generator, schema packet, `ATLAS_PHYSICAL_CUTOVER_EXECUTE=1`
+gate, path-containment + junction-realpath guards, live-root sandbox refusal,
+rendered command file, inventory class `explicit-proof-path`. Fixture cutover +
+rollback e2e green. Compact review dispositions: (1) rollback validate after
+junction detach → `junctionPresence: 'planned'`; (2) scheduler/railway
+mutationPaths filled; (3) refuse live roots before validate; (4) env metadata
+hashes only, no secret values. Evidence: focused 7/7; inventory 3/3;
+sharded full suite 752+638 = 1390 pass / 0 fail / 2 skipped; `tsc --noEmit`
+clean. **No live path mutated. Physical cutover remains NO-GO.**
 
 ---
 
 ### Task 7: Stop for Yusif physical-cutover decision
 
-- [ ] Present current evidence, exact live mutations, rollback anchors, expected
+- [x] Present current evidence, exact live mutations, rollback anchors, expected
       downtime, and remaining unknowns.
-- [ ] Do not infer GO from approval of this design or Tasks 1-6.
+- [x] Do not infer GO from approval of this design or Tasks 1-6.
 - [ ] Execute no physical action until Yusif explicitly approves that packet.
+      *(standing — not executed; awaiting explicit CEO GO on this packet)*
