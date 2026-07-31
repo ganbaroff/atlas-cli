@@ -371,10 +371,16 @@ function fakeSignedCommand(command: string, id = 'cmd-s1', chatId = 123, payload
 
 describe('runnerTick — Wave D: authenticity gate (key set)', () => {
   let tempDir: string;
+  let authJournalRoot: string;
 
   beforeEach(() => {
     tempDir = mkdtempSync(join(tmpdir(), 'runner-auth-test-'));
+    authJournalRoot = mkdtempSync(join(tmpdir(), 'runner-auth-journal-'));
     _resetNoKeyWarning();
+  });
+  afterEach(() => {
+    rmSync(tempDir, { recursive: true, force: true });
+    rmSync(authJournalRoot, { recursive: true, force: true });
   });
 
   function makeAuthDeps(overrides: Partial<RunnerDeps> = {}): RunnerDeps {
@@ -387,6 +393,7 @@ describe('runnerTick — Wave D: authenticity gate (key set)', () => {
       workerId: 'test-worker-auth',
       getSigningKey: () => WAVE_D_TEST_KEY,
       nonceLedger: createNonceLedger(tempDir),
+      effectJournalRoot: authJournalRoot,
       ...overrides,
     };
   }

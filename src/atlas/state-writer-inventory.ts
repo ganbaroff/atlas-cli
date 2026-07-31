@@ -85,6 +85,13 @@ export const STATE_WRITER_INVENTORY: Readonly<
   'src/atlas/emotional-safety.ts': [
     operational(['emotion-audit'], 'tone-safety audit trail'),
   ],
+  'src/atlas/full-root-rehearsal.ts': [
+    surface(
+      'operational',
+      'explicit-proof-path',
+      'caller-selected full-root fixture rehearsal artifact and rollback cleanup',
+    ),
+  ],
   'src/atlas/instance-lease.ts': [
     authoritative(['instance-lease'], 'machine writer ownership and runner liveness'),
   ],
