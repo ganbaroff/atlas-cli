@@ -240,14 +240,18 @@ Fable/Opus routing closure:
     repaired/closed at `586393c` (registry-tiled coverage, checkout
     write-isolation, seeded repo-watch read probe). M3D-A3 manifest
     node-role binding and source-receipt verification is done at `504ea45`
-    (independently verified CONFIRMED; full suite 1344/0). **Next:**
-    rehearsal of activation against a preserved copy of real state (M3C
-    machinery), then CEO-approved LOCAL activation — CEO gave permission
-    2026-07-31 conditional on that rehearsal returning green; physical
-    cutover of live state stays NO-GO until then, plus the two
-    external-writer stores (pause-control, runner-log) at cutover, then
-    M3D-B mutation integrity, M3D-C effect durability, and M3D-D full-root
-    recovery.
+    (independently verified CONFIRMED; full suite 1344/0). M3D-B mutation
+    integrity (implementation-plan Task 2: centralize exec-graph mutation
+    transaction) is done at `4051a68` (adversarially verified no-bypass;
+    full suite 1348/0/2 via a two-shard closer run); docs recorded at the
+    docs commit on top of `4051a68`. **Next:** rehearsal of activation
+    against a preserved copy of real state (M3C machinery), then
+    CEO-approved LOCAL activation — CEO gave permission 2026-07-31
+    conditional on that rehearsal returning green; physical cutover of
+    live state stays NO-GO until then, plus the two external-writer
+    stores (pause-control, runner-log) at cutover, then implementation-plan
+    Task 3 (M3D-C effect durability, shared durable effect journal), then
+    Task 4-5 full-root rehearsal, Task 6-7 cutover packet + CEO gate.
 11. **Live research broker:** one provider at a time, public synthetic prompts.
 12. **Research swarm:** only after `READY_FOR_RESEARCH`.
 

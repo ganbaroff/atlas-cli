@@ -255,18 +255,41 @@ slice.
 - Modify: `src/atlas/instance-lease.ts`
 - Modify/Add: focused exec-graph and lease tests
 
-- [ ] Observe RED: every missing read-only guard, malformed-ledger mutation,
+- [x] Observe RED: every missing read-only guard, malformed-ledger mutation,
       swallowed append failure, concurrent transition, and concurrent lease.
-- [ ] Add one typed, exclusive, strict mutation transaction.
-- [ ] Move read/validate/append/flush into the held transaction.
-- [ ] Make persistence failure throw; snapshot remains a disposable cache.
-- [ ] Apply identical safety gates to verifier capability paths.
-- [ ] Make instance lease acquisition exclusive and root-routed.
-- [ ] Run focused concurrency in separate child processes, then affected suite,
+- [x] Add one typed, exclusive, strict mutation transaction.
+- [x] Move read/validate/append/flush into the held transaction.
+- [x] Make persistence failure throw; snapshot remains a disposable cache.
+- [x] Apply identical safety gates to verifier capability paths.
+- [x] Make instance lease acquisition exclusive and root-routed.
+- [x] Run focused concurrency in separate child processes, then affected suite,
       typecheck, and diff check.
 
 Done bar: one accepted concurrent mutation, one explicit conflict; damaged
 ledger is diagnostic-only; no unpersisted success result.
+
+Checkpoint evidence (2026-07-31): Task 2 done at commit `4051a68` (7 files,
++597/-196). RED-first observed 3 defect families before the fix: malformed-ledger
+mutation, swallowed append failure, cross-process race; the race test initially
+showed 0 winners due to an actor-argv wiring bug in the test script, fixed to a
+literal actor so it became a genuine exactly-one-winner falsifier. Implementation:
+`withExclusiveFileLock` (openSync 'wx', stale reclaim 30s, acquire timeout 5s) plus
+`withExecGraphMutation` strict transaction in `ledger.ts`; all mutation call sites in
+`api.ts` and `verifier-port.ts` route through one transaction each; instance-lease
+acquisition uses the same lock; old `persistEvent` removed. Verified: focused
+suites 83/0; independent adversarial verifier found no bypass, correct lock release
+on all paths via `finally`, reclaim threshold greater than acquire timeout, no
+reentrancy; a separate closer ran the full suite in two shards, 741+607 = 1348
+pass / 0 fail / 2 skipped, `tsc` clean, `git diff --check` clean, `git status`
+matched the five known dirty paths before and after. Residual risks left open,
+not fixed: (1) the race test asserts exactly one winner but does not assert the
+loser's error kind; (2) the append-specific `ExecGraphPersistError` catch
+(~ledger.ts:506-512) is not directly exercised by any test; (3) no mtime
+heartbeat while a transaction is held, so a transaction slower than 30s could
+theoretically be stale-reclaimed by a persistent retrier. Incident: a single
+`npm test` invocation stalled over 18 minutes with no output, twice (cause
+unverified; sharded vitest completed in about 60s; a stray backgrounded
+`npm test` may still have been running concurrently).
 
 ---
 
