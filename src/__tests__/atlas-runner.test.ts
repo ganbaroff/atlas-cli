@@ -5,25 +5,35 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createHmac } from 'node:crypto';
 import { runnerTick, runRunnerLoop, describeRunnerLiveness, _resetNoKeyWarning, type RunnerDeps, type RunnerTickResult } from '../atlas/atlas-runner.js';
 import { createNonceLedger } from '../atlas/queue-auth.js';
+import {
+  deriveQueueOperationId,
+  markStarted,
+  prepareOperation,
+  executeOnce,
+} from '../atlas/effect-journal.js';
 
 // ── Classifier kill-switch for runner tests ──────────────────────────
 // Runner tests test the runner, not the LLM classifier. Disable the
 // classifier via the documented kill-switch so no network calls are
 // attempted. The classifier has its own dedicated test file.
 let savedLLMEnv: string | undefined;
+let journalRoot: string | undefined;
 beforeEach(() => {
   savedLLMEnv = process.env['ATLAS_REDLINE_LLM'];
   process.env['ATLAS_REDLINE_LLM'] = '0';
+  journalRoot = mkdtempSync(join(tmpdir(), 'atlas-runner-journal-'));
 });
 afterEach(() => {
   if (savedLLMEnv === undefined) delete process.env['ATLAS_REDLINE_LLM'];
   else process.env['ATLAS_REDLINE_LLM'] = savedLLMEnv;
+  if (journalRoot) rmSync(journalRoot, { recursive: true, force: true });
+  journalRoot = undefined;
 });
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -36,6 +46,7 @@ function makeDeps(overrides: Partial<RunnerDeps> = {}): RunnerDeps {
     runLocal: vi.fn().mockResolvedValue({ output: 'ok', exitCode: 0 }),
     isPaused: vi.fn().mockReturnValue(false),
     workerId: 'test-worker-1',
+    effectJournalRoot: journalRoot,
     ...overrides,
   };
 }
@@ -511,5 +522,49 @@ describe('runnerTick — Wave D: no-key compat mode', () => {
     } finally {
       warnSpy.mockRestore();
     }
+  });
+});
+
+describe('runnerTick effect-journal gates', () => {
+  it('refuses automatic replay when a prior started row is outcome_unknown', async () => {
+    const opId = deriveQueueOperationId('cmd-ambiguous');
+    prepareOperation(opId, {
+      identity: { kind: 'queue-command', commandId: 'cmd-ambiguous' },
+      rootDir: journalRoot,
+    });
+    markStarted(opId, { rootDir: journalRoot });
+
+    const deps = makeDeps({
+      claim: vi.fn().mockResolvedValue(fakeCommand('check disk space', 'cmd-ambiguous')),
+    });
+    const result = await runnerTick(deps);
+
+    expect(result.status).toBe('refused');
+    expect((result as { reason: string }).reason).toContain('outcome_unknown');
+    expect(deps.runLocal).not.toHaveBeenCalled();
+    expect(deps.fail).toHaveBeenCalledWith(
+      'cmd-ambiguous',
+      expect.stringContaining('outcome_unknown'),
+    );
+  });
+
+  it('resumes a terminal receipt without repeating runLocal', async () => {
+    const opId = deriveQueueOperationId('cmd-resume');
+    await executeOnce(
+      opId,
+      { kind: 'queue-command', commandId: 'cmd-resume' },
+      async () => ({ output: 'already-ran', exitCode: 0 }),
+      { rootDir: journalRoot },
+    );
+
+    const deps = makeDeps({
+      claim: vi.fn().mockResolvedValue(fakeCommand('check disk space', 'cmd-resume')),
+    });
+    const result = await runnerTick(deps);
+
+    expect(result.status).toBe('completed');
+    expect((result as { output: string }).output).toBe('already-ran');
+    expect(deps.runLocal).not.toHaveBeenCalled();
+    expect(deps.complete).toHaveBeenCalledWith('cmd-resume', 'already-ran');
   });
 });

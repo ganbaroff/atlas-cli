@@ -99,6 +99,7 @@ export const STATE_STORES = {
   'intake-drafts': undefined,
   'task-results': undefined,
   'cost-router': undefined,
+  'effect-journal': 'ATLAS_EFFECT_JOURNAL_DIR',
   learning: 'ATLAS_LEARNING_STATE_DIR',
   'instance-lease': 'ATLAS_INSTANCE_LEASE_DIR',
   'queue-auth': 'ATLAS_STATE_DIR',

@@ -76,6 +76,12 @@ export const STATE_WRITER_INVENTORY: Readonly<
   'src/atlas/cron.ts': [
     surface('configuration-content', 'external-memory-domain', 'health reports are VOLAURA memory'),
   ],
+  'src/atlas/effect-journal.ts': [
+    authoritative(
+      ['effect-journal'],
+      'durable effect intent/start/receipt ledger for no-automatic-duplicate execution',
+    ),
+  ],
   'src/atlas/emotional-safety.ts': [
     operational(['emotion-audit'], 'tone-safety audit trail'),
   ],

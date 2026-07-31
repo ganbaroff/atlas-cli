@@ -44,13 +44,17 @@ beforeEach(() => {
   budgetDir = mkdtempSync(join(tmpdir(), 'goal-budget-test-'));
   process.env.ATLAS_EXEC_GRAPH_DIR = tmpDir;
   process.env.ATLAS_GOAL_BUDGET_DIR = budgetDir;
+  process.env.ATLAS_EFFECT_JOURNAL_DIR = mkdtempSync(join(tmpdir(), 'goal-effect-journal-'));
 });
 
 afterEach(() => {
+  const journalDir = process.env.ATLAS_EFFECT_JOURNAL_DIR;
   delete process.env.ATLAS_EXEC_GRAPH_DIR;
   delete process.env.ATLAS_GOAL_BUDGET_DIR;
+  delete process.env.ATLAS_EFFECT_JOURNAL_DIR;
   rmSync(tmpDir, { recursive: true, force: true });
   rmSync(budgetDir, { recursive: true, force: true });
+  if (journalDir) rmSync(journalDir, { recursive: true, force: true });
 });
 
 // ═══════════════════════════════════════════════════════════════════════

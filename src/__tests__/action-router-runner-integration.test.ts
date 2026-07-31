@@ -7,6 +7,9 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   routeFreeformAction,
   deriveEffectsFromText,
@@ -17,13 +20,17 @@ import { runnerTick, type RunnerDeps } from '../atlas/atlas-runner.js';
 // Disable the LLM classifier for runner integration tests — this file
 // tests the action-router→runner contract, not the classifier.
 let savedLLMEnv: string | undefined;
+let journalRoot: string | undefined;
 beforeEach(() => {
   savedLLMEnv = process.env['ATLAS_REDLINE_LLM'];
   process.env['ATLAS_REDLINE_LLM'] = '0';
+  journalRoot = mkdtempSync(join(tmpdir(), 'action-router-journal-'));
 });
 afterEach(() => {
   if (savedLLMEnv === undefined) delete process.env['ATLAS_REDLINE_LLM'];
   else process.env['ATLAS_REDLINE_LLM'] = savedLLMEnv;
+  if (journalRoot) rmSync(journalRoot, { recursive: true, force: true });
+  journalRoot = undefined;
 });
 
 describe('action-router → atlas-runner integration', () => {
@@ -85,6 +92,7 @@ describe('action-router → atlas-runner integration', () => {
       }),
       isPaused: vi.fn().mockReturnValue(false),
       workerId: 'integration-test-worker',
+      effectJournalRoot: journalRoot,
     };
 
     const tickResult = await runnerTick(runnerDeps);
@@ -132,6 +140,7 @@ describe('action-router → atlas-runner integration', () => {
       runLocal: vi.fn(),
       isPaused: vi.fn().mockReturnValue(false),
       workerId: 'integration-test-worker',
+      effectJournalRoot: journalRoot,
     };
 
     const tickResult = await runnerTick(runnerDeps);

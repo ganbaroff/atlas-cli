@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 /**
  * Full-cycle test of the in-repo queue worker against a MOCKED Supabase +
@@ -95,18 +98,22 @@ function installFetchMock(): void {
 }
 
 describe('in-repo queue worker (consumer)', () => {
+  let journalDir: string;
   beforeEach(() => {
     queue = [];
     idSeq = 0;
     staleTimeoutMs = 30 * 60 * 1000;
+    journalDir = mkdtempSync(join(tmpdir(), 'queue-worker-journal-'));
     vi.unstubAllEnvs();
     vi.stubEnv('SUPABASE_URL', 'https://example.supabase.co');
     vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'sb_secret_test');
+    vi.stubEnv('ATLAS_EFFECT_JOURNAL_DIR', journalDir);
     installFetchMock();
   });
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllEnvs();
+    rmSync(journalDir, { recursive: true, force: true });
   });
 
   it('full cycle: produce → claim → execute → complete with result + receipt', async () => {

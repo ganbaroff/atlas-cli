@@ -1308,6 +1308,8 @@ describe('M3D-A2 CWD and checkout invariance proof', () => {
       // cost-router-state.ts delegates its own store directly to
       // resolveStateDir('cost-router') — no separate call-site wrapper exists.
       costRouter: resolveStateDir('cost-router'),
+      // effect-journal.ts likewise resolves via resolveStateDir('effect-journal').
+      effectJournal: resolveStateDir('effect-journal'),
     };
   }
 
@@ -1342,6 +1344,7 @@ describe('M3D-A2 CWD and checkout invariance proof', () => {
     'emotionAudit',
     'shellAudit',
     'costRouter',
+    'effectJournal',
   ] as const;
 
   /**
@@ -1374,6 +1377,7 @@ describe('M3D-A2 CWD and checkout invariance proof', () => {
     'emotion-audit',
     'shell-audit',
     'cost-router',
+    'effect-journal',
   ];
   // Behavioral probes: alert-state is proven by resetAlertState() +
   // existsSync(...) below and in slice 10; repo-watch is proven by the

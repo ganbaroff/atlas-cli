@@ -464,6 +464,7 @@ describe('atlas/state-root', () => {
         'evidence',
         'goal-budgets',
         'cost-router',
+        'effect-journal',
         'swarm-runs',
         'operator-state',
         'operator-runs',

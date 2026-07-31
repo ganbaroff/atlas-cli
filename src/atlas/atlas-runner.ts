@@ -37,6 +37,13 @@ import {
   type NonceLedger,
   type VerifyResult,
 } from './queue-auth.js';
+import {
+  decideStaleClaim,
+  deriveQueueOperationId,
+  executeOnce,
+  EffectJournalError,
+  type EffectJournalOptions,
+} from './effect-journal.js';
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -51,6 +58,8 @@ export interface RunnerDeps {
   getSigningKey?: () => string | undefined;
   /** Nonce ledger for replay protection. Injectable for tests. */
   nonceLedger?: NonceLedger;
+  /** Absolute effect-journal store directory. Injectable so tests never touch ~/.atlas. */
+  effectJournalRoot?: string;
 }
 
 export type RunnerTickResult =
@@ -112,6 +121,29 @@ async function checkRedLine(commandText: string): Promise<{ blocked: boolean; re
   }
   // Layer 2: additive classifier vote (keyword floor + optional LLM, via red-line.ts)
   return checkRedLineWithClassifier(commandText);
+}
+
+function normalizeRunLocalReceipt(
+  receipt: unknown,
+): { output: string; exitCode: number | null } {
+  if (
+    typeof receipt === 'object' &&
+    receipt !== null &&
+    'output' in receipt
+  ) {
+    const record = receipt as { output: unknown; exitCode?: unknown };
+    const exitCode =
+      record.exitCode === null
+        ? null
+        : typeof record.exitCode === 'number'
+          ? record.exitCode
+          : 0;
+    return { output: String(record.output ?? ''), exitCode };
+  }
+  if (typeof receipt === 'string') {
+    return { output: receipt, exitCode: 0 };
+  }
+  return { output: JSON.stringify(receipt ?? null), exitCode: 0 };
 }
 
 // ── Single tick ────────────────────────────────────────────────────────
@@ -202,7 +234,12 @@ export async function runnerTick(deps: RunnerDeps): Promise<RunnerTickResult> {
     return { status: 'refused', commandId, reason };
   }
 
-  // Gate 4: execute
+  // Gate 4: journal consultation + execute.
+  //
+  // Exact-once = no automatic duplicate. A prior `started` without a terminal
+  // receipt is outcome_unknown and refuses re-execution. A terminal receipt is
+  // resumed into complete/fail without repeating runLocal. Fresh work flushes
+  // `started` before the effect and a terminal receipt before queue close.
   //
   // Only a genuine exitCode===0 counts as success. exitCode===null is NOT
   // treated as success: task-spawner's runTask() returns exitCode:null for
@@ -211,17 +248,66 @@ export async function runnerTick(deps: RunnerDeps): Promise<RunnerTickResult> {
   // conflating any of those with "done" would report false completion to
   // the operator for work that never actually ran. Evidence discipline:
   // no claim of done without a real, observed success signal.
+  const journalOpts: EffectJournalOptions | undefined = deps.effectJournalRoot
+    ? { rootDir: deps.effectJournalRoot }
+    : undefined;
+  const opId = deriveQueueOperationId(commandId);
+  const replay = decideStaleClaim(commandId, journalOpts);
+
+  if (replay.action === 'block') {
+    const reason = `outcome_unknown: ${replay.message}`;
+    try {
+      await deps.fail(commandId, reason);
+    } catch { /* best-effort */ }
+    return { status: 'refused', commandId, reason };
+  }
+
+  if (replay.action === 'resume') {
+    if (replay.status === 'succeeded') {
+      const result = normalizeRunLocalReceipt(replay.receipt);
+      if (result.exitCode === 0) {
+        await deps.complete(commandId, result.output);
+        return { status: 'completed', commandId, output: result.output };
+      }
+      const errorMsg = `exit ${result.exitCode}: ${result.output}`.slice(0, 2000);
+      try {
+        await deps.fail(commandId, errorMsg);
+      } catch { /* best-effort */ }
+      return { status: 'failed', commandId, error: errorMsg };
+    }
+    const errorMsg = (replay.error ?? 'prior effect failed').slice(0, 2000);
+    try {
+      await deps.fail(commandId, errorMsg);
+    } catch { /* best-effort */ }
+    return { status: 'failed', commandId, error: errorMsg };
+  }
+
   try {
-    const result = await deps.runLocal(commandText);
+    const journaled = await executeOnce(
+      opId,
+      { kind: 'queue-command', commandId },
+      async () => deps.runLocal(commandText),
+      journalOpts,
+    );
+    const result = journaled.result;
     if (result.exitCode === 0) {
       await deps.complete(commandId, result.output);
       return { status: 'completed', commandId, output: result.output };
     } else {
       const errorMsg = `exit ${result.exitCode}: ${result.output}`.slice(0, 2000);
+      // executeOnce already marked succeeded with the exit-bearing payload.
+      // Surface the non-zero exit to the queue as a failure for operator truth.
       await deps.fail(commandId, errorMsg);
       return { status: 'failed', commandId, error: errorMsg };
     }
   } catch (err) {
+    if (err instanceof EffectJournalError && err.code === 'outcome_unknown') {
+      const reason = `outcome_unknown: ${err.message}`;
+      try {
+        await deps.fail(commandId, reason);
+      } catch { /* best-effort */ }
+      return { status: 'refused', commandId, reason };
+    }
     // runLocal threw — fail the command, don't crash the loop.
     const msg = err instanceof Error ? err.message : String(err);
     try {

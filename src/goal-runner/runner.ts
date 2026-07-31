@@ -39,6 +39,11 @@ import {
 } from './budgets.js';
 import { notifyCeoResult, type NotifyOutcome } from '../atlas/notify.js';
 import { effectivelyPaused } from '../atlas/control-plane.js';
+import {
+  deriveTaskEffectOperationId,
+  executeOnce,
+  EffectJournalError,
+} from '../atlas/effect-journal.js';
 import { DEFAULT_GOAL_RUNNER_CONFIG, type GoalRunnerConfig, type GoalReport, type TaskReport, type TaskPlan } from './types.js';
 import type { BrowserAction } from '../hands/browser-actions.js';
 import { BrowserSession } from '../hands/browser-adapter.js';
@@ -309,7 +314,17 @@ export async function runGoal(input: GoalRunnerInput): Promise<GoalReport> {
           const session = new BrowserSession();
           try {
             await session.launch();
-            const results = await session.executeSequence(input.browserActions);
+            const effectKey = `browser-sequence:${createHash('sha256')
+              .update(JSON.stringify(input.browserActions))
+              .digest('hex')
+              .slice(0, 24)}`;
+            const opId = deriveTaskEffectOperationId(task.id, effectKey);
+            const journaled = await executeOnce(
+              opId,
+              { kind: 'task-effect', taskId: task.id, effectKey },
+              async () => session.executeSequence(input.browserActions!),
+            );
+            const results = journaled.result;
 
             submitReceipt(task.id, {
               taskId: task.id,
@@ -328,6 +343,20 @@ export async function runGoal(input: GoalRunnerInput): Promise<GoalReport> {
               attempts: 1,
               verifierReason: verdict.verdict.reason,
             });
+          } catch (err) {
+            if (err instanceof EffectJournalError && err.code === 'outcome_unknown') {
+              abortHandTask(task.id, {
+                actor: 'goal-runner',
+                reason: `outcome_unknown: ${err.message}`,
+              });
+              taskReports.push({
+                taskId: task.id, title: plan.taskTitle, handId: plan.handId,
+                finalStatus: 'blocked', attempts: 1,
+                verifierReason: `outcome_unknown: ${err.message}`,
+              });
+            } else {
+              throw err;
+            }
           } finally {
             await session.close();
           }

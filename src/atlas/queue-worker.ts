@@ -25,6 +25,13 @@ import {
 } from './supabase-memory.js';
 import { formatReceipt } from './receipt.js';
 import { isPaused, overDailyCap } from './spend-policy.js';
+import {
+  decideStaleClaim,
+  deriveQueueOperationId,
+  executeOnce,
+  EffectJournalError,
+  type EffectJournalOptions,
+} from './effect-journal.js';
 
 /** Shape returned by claimNextCommand. */
 export interface ClaimedCommand {
@@ -72,6 +79,8 @@ export interface WorkerDeps {
   paused?: () => boolean;
   overCap?: () => boolean;
   logger?: Pick<Console, 'log' | 'warn' | 'error'>;
+  /** Absolute effect-journal store directory. Injectable so tests never touch ~/.atlas. */
+  effectJournalRoot?: string;
 }
 
 export interface TickResult {
@@ -146,13 +155,70 @@ export async function runWorkerTick(deps: WorkerDeps = {}): Promise<TickResult> 
   }
 
   const cmd = claimed;
+  const journalOpts: EffectJournalOptions | undefined = deps.effectJournalRoot
+    ? { rootDir: deps.effectJournalRoot }
+    : undefined;
+  const opId = deriveQueueOperationId(cmd.id);
+  const replay = decideStaleClaim(cmd.id, journalOpts);
+
+  if (replay.action === 'block') {
+    const reason = `outcome_unknown: ${replay.message}`;
+    try {
+      await failCommand(cmd.id, reason);
+    } catch (fe: any) {
+      log.error('[queue-worker] failCommand failed:', fe?.message?.slice(0, 200));
+    }
+    log.warn(`[queue-worker] blocked outcome_unknown cmd=${cmd.id.slice(0, 8)}`);
+    return { claimed: true, executed: false, commandId: cmd.id };
+  }
+
+  if (replay.action === 'resume') {
+    if (replay.status === 'succeeded') {
+      const output =
+        typeof replay.receipt === 'string'
+          ? replay.receipt
+          : typeof replay.receipt === 'object' &&
+              replay.receipt !== null &&
+              'output' in (replay.receipt as Record<string, unknown>)
+            ? String((replay.receipt as { output: unknown }).output)
+            : JSON.stringify(replay.receipt ?? null);
+      const receipt = formatReceipt(cmd.command, output);
+      await completeCommand(cmd.id, { output, receipt, resumed: true });
+      log.log(`[queue-worker] resumed cmd=${cmd.id.slice(0, 8)} chat=${cmd.chat_id}`);
+      return { claimed: true, executed: true, commandId: cmd.id };
+    }
+    const errMsg = replay.error ?? 'prior effect failed';
+    const receipt = formatReceipt(cmd.command, `ERROR: ${errMsg}`);
+    try {
+      await failCommand(cmd.id, `${errMsg}\n${receipt}`);
+    } catch (fe: any) {
+      log.error('[queue-worker] failCommand failed:', fe?.message?.slice(0, 200));
+    }
+    return { claimed: true, executed: false, commandId: cmd.id };
+  }
+
   try {
-    const output = await executor(cmd);
+    const journaled = await executeOnce(
+      opId,
+      { kind: 'queue-command', commandId: cmd.id },
+      async () => executor(cmd),
+      journalOpts,
+    );
+    const output = journaled.result;
     const receipt = formatReceipt(cmd.command, output);
     await completeCommand(cmd.id, { output, receipt });
     log.log(`[queue-worker] done cmd=${cmd.id.slice(0, 8)} chat=${cmd.chat_id}`);
     return { claimed: true, executed: true, commandId: cmd.id };
   } catch (e: any) {
+    if (e instanceof EffectJournalError && e.code === 'outcome_unknown') {
+      const reason = `outcome_unknown: ${e.message}`;
+      try {
+        await failCommand(cmd.id, reason);
+      } catch (fe: any) {
+        log.error('[queue-worker] failCommand failed:', fe?.message?.slice(0, 200));
+      }
+      return { claimed: true, executed: false, commandId: cmd.id };
+    }
     const errMsg = e?.message ? String(e.message) : String(e);
     // Attach a receipt to the failure too, so failures are auditable.
     const receipt = formatReceipt(cmd.command, `ERROR: ${errMsg}`);
