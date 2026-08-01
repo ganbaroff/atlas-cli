@@ -26,6 +26,7 @@ merge, deployment, scheduler cutover, or live-state activation is active.
 | Fable session router | **REPAIRED / LIVE RECEIPT PENDING** | hook registered; stale `/model` and thread-context regressions fixed; 32/32 tests | verify on next natural clean Fable prompt; contaminated threads stay Opus |
 | Shadow consolidation | **M3C VERIFIED / M3D-A2 SLICES 1-10 DONE** | root activation `97a300e`; first `ca324fe`; swarm `0c9723d`; operator `2cbc85f`; task-results `4dca9fe`; learning `94e7426`; spend `af3f48a`; home dirs `c3923c9`; queues `746ccf7`; opsboard `c0d7f57`; alert/audit/watch/shell `5fd6b29` | external writers pause-control/runner-log at cutover; no cutover |
 | Physical consolidation | **NO-GO — PACKET READY** | disposable cutover packet + Task 5 retained rehearsal green; nested worktrees/bindings remain live | explicit CEO GO on physical packet only |
+| Local state-root activation (S4) | **PREPARED — BINDING ARMED** | root `local-20260801T001618Z`; `~/.atlas/local-activation.cmd` installed; verify-ok | live AtlasRunner still launches primary ANUS without wrapper; take effect after this tip is the runner code root + restart |
 | Subscription research | **OFF** | Perplexity interactive access only; no durable adapter proof | public synthetic live gate |
 | Research swarm | **OFF** | `RESEARCH_ONLY_LIMITED` | two-provider `READY_FOR_RESEARCH` gate |
 | Product/learning expansion | **PARKED** | not critical path | after stable One-Atlas foundation |
@@ -103,8 +104,13 @@ have Task 5). External writers pause-control/runner-log remain at cutover.
    **Done:** M3D-D / Task 5 one retained current full-root rehearsal.
    **Done:** M3D-E / Task 6 disposable physical cutover packet (token-gated,
    sandbox-only execute; live roots refused).
-   **Next:** Task 7 CEO physical-cutover decision — **NO-GO until explicit GO**.
-   No live resolver switch, untracking, move, or cutover.
+   **Done:** S4 LOCAL activation prepare — assembled root
+   `local-20260801T001618Z`, binding+rollback under `~/.atlas`,
+   `start-runner.cmd` optional include on this branch. Live AtlasRunner still
+   launches primary ANUS `node dist\cli.js` directly (no setx/scheduler change).
+   **Next:** point runner at this tip (or merge) then restart to take effect;
+   physical cutover remains **NO-GO** until explicit packet GO.
+   No live resolver switch via setx, untracking, move, or cutover.
 
 ## External review closure
 
@@ -275,8 +281,12 @@ Fable/Opus routing closure:
 
 ## CEO decisions
 
-**Now:** decide physical cutover GO/NO-GO on the Task 6 packet. Default remains
-**NO-GO**. Approval of Tasks 1-6 / design is **not** cutover GO.
+**Physical cutover:** still **NO-GO** until explicit packet GO.
+
+**LOCAL activation (S4):** prepare+binding done on CEO choice `2`. Takes effect
+only after runner code root includes this tip and restarts via
+`start-runner.cmd` (or equivalent env). Live scheduled task still bypasses
+wrapper — no scheduler edit without separate approval.
 
 Safe reversible working defaults are active:
 4 local slices, 2 external research jobs, 1 active premium owner,
@@ -284,6 +294,7 @@ Safe reversible working defaults are active:
 
 Needed later:
 
+- runner tip switch / restart to arm S4 binding;
 - physical cutover (only after explicit packet GO);
 - login/MFA/CAPTCHA when a live provider gate requires it;
 - any paid API activation;
