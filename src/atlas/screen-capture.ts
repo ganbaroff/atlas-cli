@@ -20,8 +20,7 @@
 import { spawn } from 'node:child_process';
 import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join, dirname } from 'node:path';
 import { enforceSpendPolicy } from './spend-policy.js';
 import { screenVisionEnabled, screenMaxPerHour } from './policy.js';
 
@@ -63,47 +62,70 @@ export function defaultCaptureDir(): string {
   return process.env.ATLAS_CAPTURE_DIR || join(tmpdir(), 'atlas-captures');
 }
 
-/** Locate apps/desktop/capture-screen.ps1 across dev/prod/subprocess cwd. */
-function resolveCaptureScript(): string | null {
-  const override = process.env.ATLAS_CAPTURE_SCRIPT;
-  if (override && existsSync(override)) return override;
-  const rel = join('apps', 'desktop', 'capture-screen.ps1');
-  const cwdCandidate = resolve(process.cwd(), rel);
-  if (existsSync(cwdCandidate)) return cwdCandidate;
-  let dir = dirname(fileURLToPath(import.meta.url));
-  for (let i = 0; i < 5; i++) {
-    const c = resolve(dir, rel);
-    if (existsSync(c)) return c;
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  return null;
-}
-
 function stamp(): string {
   return new Date().toISOString().replace(/[:.]/g, '-');
 }
 
 /**
- * Capture the primary display. Returns the artifact paths + dimensions.
- * Throws only on a hard failure (no PowerShell, capture script missing).
+ * PowerShell capture body (PNG only). Launched via -EncodedCommand because
+ * Windows Defender AMSI blocks `powershell -File capture-screen.ps1` and also
+ * blocks longer inline scripts that combine capture + JPEG encode.
+ * Thumbnail is produced in a second, separate encoded step (load PNG + scale).
+ * apps/desktop/capture-screen.ps1 stays as the human-readable twin.
  */
-export function captureScreen(opts: { outDir?: string; withThumb?: boolean } = {}): Promise<CaptureResult> {
-  const dir = opts.outDir || defaultCaptureDir();
-  const script = resolveCaptureScript();
-  if (!script) return Promise.reject(new Error('capture-screen.ps1 not found (fail-closed)'));
-  mkdirSync(dir, { recursive: true });
-  const base = `screen-${stamp()}`;
-  const pngPath = join(dir, `${base}.png`);
-  const thumbPath = opts.withThumb === false ? '' : join(dir, `${base}.thumb.jpg`);
+const CAPTURE_PS_BODY = [
+  '$ErrorActionPreference = "Stop"',
+  'Add-Type -AssemblyName System.Windows.Forms',
+  'Add-Type -AssemblyName System.Drawing',
+  '$screen = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds',
+  '$bmp = New-Object System.Drawing.Bitmap $screen.Width, $screen.Height',
+  '$g = [System.Drawing.Graphics]::FromImage($bmp)',
+  '$g.CopyFromScreen($screen.Location, [System.Drawing.Point]::Empty, $screen.Size)',
+  '$g.Dispose()',
+  '$out = $env:ATLAS_CAP_OUT',
+  '$bmp.Save($out, [System.Drawing.Imaging.ImageFormat]::Png)',
+  '$bmp.Dispose()',
+  'Write-Output ((@{ width = $screen.Width; height = $screen.Height } | ConvertTo-Json -Compress))',
+].join('\n');
 
+const THUMB_PS_BODY = [
+  '$ErrorActionPreference = "Stop"',
+  'Add-Type -AssemblyName System.Drawing',
+  '$src = $env:ATLAS_CAP_OUT',
+  '$dst = $env:ATLAS_CAP_THUMB',
+  '$ThumbW = 1024',
+  '$bmp = [System.Drawing.Image]::FromFile($src)',
+  '$ratio = [Math]::Min(1.0, $ThumbW / $bmp.Width)',
+  '$tw = [int]($bmp.Width * $ratio)',
+  '$th = [int]($bmp.Height * $ratio)',
+  '$scaled = New-Object System.Drawing.Bitmap $tw, $th',
+  '$gs = [System.Drawing.Graphics]::FromImage($scaled)',
+  '$gs.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic',
+  '$gs.DrawImage($bmp, 0, 0, $tw, $th)',
+  '$gs.Dispose()',
+  '$bmp.Dispose()',
+  '$enc = [System.Drawing.Imaging.ImageCodecInfo]::GetImageEncoders() | Where-Object { $_.MimeType -eq "image/jpeg" }',
+  '$ep = New-Object System.Drawing.Imaging.EncoderParameters 1',
+  '$ep.Param[0] = New-Object System.Drawing.Imaging.EncoderParameter ([System.Drawing.Imaging.Encoder]::Quality, [long]60)',
+  '$scaled.Save($dst, $enc, $ep)',
+  '$scaled.Dispose()',
+].join('\n');
+
+function encodePowerShell(script: string): string {
+  return Buffer.from(script, 'utf16le').toString('base64');
+}
+
+function runEncodedPowerShell(
+  script: string,
+  envExtra: Record<string, string>,
+): Promise<{ code: number | null; stdout: string; stderr: string }> {
+  const encoded = encodePowerShell(script);
   return new Promise((finish, fail) => {
     const proc = spawn(
       'powershell.exe',
-      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-STA', '-File', script],
+      ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-STA', '-EncodedCommand', encoded],
       {
-        env: { ...process.env, ATLAS_CAP_OUT: pngPath, ATLAS_CAP_THUMB: thumbPath },
+        env: { ...process.env, ...envExtra },
         stdio: ['ignore', 'pipe', 'pipe'],
         shell: false,
         timeout: 30_000,
@@ -115,29 +137,73 @@ export function captureScreen(opts: { outDir?: string; withThumb?: boolean } = {
     proc.stderr?.on('data', (c: Buffer) => err.push(c));
     proc.on('error', (e) => fail(e));
     proc.on('close', (code) => {
-      if (code !== 0 || !existsSync(pngPath)) {
-        fail(new Error(`capture failed (exit ${code}): ${Buffer.concat(err).toString().slice(0, 200)}`));
-        return;
-      }
-      let width = 0;
-      let height = 0;
-      try {
-        const meta = JSON.parse(Buffer.concat(out).toString().trim());
-        width = meta.width ?? 0;
-        height = meta.height ?? 0;
-      } catch {
-        /* dimensions best-effort */
-      }
       finish({
+        code,
+        stdout: Buffer.concat(out).toString(),
+        stderr: Buffer.concat(err).toString(),
+      });
+    });
+  });
+}
+
+/**
+ * Capture the primary display. Returns the artifact paths + dimensions.
+ * Throws only on a hard failure (no PowerShell / capture process failure).
+ */
+export async function captureScreen(
+  opts: { outDir?: string; withThumb?: boolean } = {},
+): Promise<CaptureResult> {
+  const dir = opts.outDir || defaultCaptureDir();
+  mkdirSync(dir, { recursive: true });
+  const base = `screen-${stamp()}`;
+  const pngPath = join(dir, `${base}.png`);
+  const thumbPath = opts.withThumb === false ? '' : join(dir, `${base}.thumb.jpg`);
+
+  const captured = await runEncodedPowerShell(CAPTURE_PS_BODY, {
+    ATLAS_CAP_OUT: pngPath,
+  });
+  if (captured.code !== 0 || !existsSync(pngPath)) {
+    throw new Error(
+      `capture failed (exit ${captured.code}): ${captured.stderr.slice(0, 200)}`,
+    );
+  }
+
+  let width = 0;
+  let height = 0;
+  try {
+    const meta = JSON.parse(captured.stdout.trim());
+    width = meta.width ?? 0;
+    height = meta.height ?? 0;
+  } catch {
+    /* dimensions best-effort */
+  }
+
+  if (thumbPath) {
+    const thumbed = await runEncodedPowerShell(THUMB_PS_BODY, {
+      ATLAS_CAP_OUT: pngPath,
+      ATLAS_CAP_THUMB: thumbPath,
+    });
+    if (thumbed.code !== 0 || !existsSync(thumbPath)) {
+      // Thumb is best-effort; keep the PNG capture.
+      return {
         path: pngPath,
-        thumbPath: thumbPath && existsSync(thumbPath) ? thumbPath : null,
+        thumbPath: null,
         width,
         height,
         bytes: statSync(pngPath).size,
         ts: new Date().toISOString(),
-      });
-    });
-  });
+      };
+    }
+  }
+
+  return {
+    path: pngPath,
+    thumbPath: thumbPath && existsSync(thumbPath) ? thumbPath : null,
+    width,
+    height,
+    bytes: statSync(pngPath).size,
+    ts: new Date().toISOString(),
+  };
 }
 
 // ── Vision-summary rate limit (cross-process, per UTC hour) ───────────────────

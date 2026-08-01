@@ -948,14 +948,17 @@ program
       console.error(describeControlBlock());
       process.exit(2);
     }
-    const { agent, route } = await createAtlasAgentWithRoute('FAST');
     try {
-      const res = await agent.generate('List all available skills. Use the list-skills tool. Output just the names, one per line.');
+      const { agent, route } = await createAtlasAgentWithRoute('FAST');
+      const res = await agent.generate(
+        'List all available skills. Use the list-skills tool. Output just the names, one per line.',
+      );
       recordAgentSpend(res, route, 'cli');
       console.log(res.text);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error(`Error: ${msg}`);
+      process.exitCode = 1;
     }
   });
 
