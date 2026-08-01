@@ -26,7 +26,7 @@ merge, deployment, scheduler cutover, or live-state activation is active.
 | Fable session router | **REPAIRED / LIVE RECEIPT PENDING** | hook registered; stale `/model` and thread-context regressions fixed; 32/32 tests | verify on next natural clean Fable prompt; contaminated threads stay Opus |
 | Shadow consolidation | **M3C VERIFIED / M3D-A2 SLICES 1-10 DONE** | root activation `97a300e`; first `ca324fe`; swarm `0c9723d`; operator `2cbc85f`; task-results `4dca9fe`; learning `94e7426`; spend `af3f48a`; home dirs `c3923c9`; queues `746ccf7`; opsboard `c0d7f57`; alert/audit/watch/shell `5fd6b29` | external writers pause-control/runner-log at cutover; no cutover |
 | Physical consolidation | **NO-GO — PACKET READY** | disposable cutover packet + Task 5 retained rehearsal green; nested worktrees/bindings remain live | explicit CEO GO on physical packet only |
-| Local state-root activation (S4) | **PREPARED — BINDING ARMED** | root `local-20260801T001618Z`; `~/.atlas/local-activation.cmd` installed; verify-ok | live AtlasRunner still launches primary ANUS without wrapper; take effect after this tip is the runner code root + restart |
+| Local state-root activation (S4) | **LIVE via AtlasRunnerS4** | root `local-20260801T001618Z`; log shows REQUIRED=1; worker `19956`; lease under activated root | **CEO:** run elevated `disable-legacy-atlasrunner-elevated.cmd` before next logon (legacy AtlasRunner still armed, access denied to edit) |
 | Subscription research | **OFF** | Perplexity interactive access only; no durable adapter proof | public synthetic live gate |
 | Research swarm | **OFF** | `RESEARCH_ONLY_LIMITED` | two-provider `READY_FOR_RESEARCH` gate |
 | Product/learning expansion | **PARKED** | not critical path | after stable One-Atlas foundation |
@@ -283,10 +283,9 @@ Fable/Opus routing closure:
 
 **Physical cutover:** still **NO-GO** until explicit packet GO.
 
-**LOCAL activation (S4):** prepare+binding done on CEO choice `2`. Takes effect
-only after runner code root includes this tip and restarts via
-`start-runner.cmd` (or equivalent env). Live scheduled task still bypasses
-wrapper — no scheduler edit without separate approval.
+**LOCAL activation (S4):** **LIVE** on user task `AtlasRunnerS4` (this tip +
+`start-runner.cmd` + binding). Legacy `AtlasRunner` unchanged (access denied);
+run elevated disable script before next logon to avoid two runners.
 
 Safe reversible working defaults are active:
 4 local slices, 2 external research jobs, 1 active premium owner,
