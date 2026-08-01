@@ -149,11 +149,20 @@ export interface StateRootActivationManifest {
  * carry, verified against real artifact bytes below
  * `<root>/activation-receipts/<kind>`. The manifest's own claim is never
  * proof by itself — see assertStateRootActivated().
+ *
+ * Local accepts either the M3D full-root rehearsal (CEO 2026-07-31 gate) or
+ * the older M3C preserved-state rehearsal. At least one allowlisted kind must
+ * be present; every claimed receipt is still byte-verified.
  */
-const REQUIRED_RECEIPT_KINDS: Record<'local' | 'railway', readonly string[]> = {
-  local: ['m3c-preserved-state-rehearsal'],
+export const REQUIRED_RECEIPT_KINDS: Record<
+  'local' | 'railway',
+  readonly string[]
+> = {
+  local: ['m3d-full-root-rehearsal', 'm3c-preserved-state-rehearsal'],
   railway: ['m3c-preserved-state-rehearsal'],
 };
+
+export const LOCAL_ACTIVATION_RECEIPT_KIND = 'm3d-full-root-rehearsal';
 
 function readNodeRoleEnv(): 'local' | 'railway' | undefined {
   const value = process.env.ATLAS_NODE_ROLE?.trim();
@@ -328,14 +337,16 @@ export function assertStateRootActivated(
   }
 
   const requiredReceiptKinds = REQUIRED_RECEIPT_KINDS[parsed.data.nodeRole];
-  const presentReceiptKinds = new Set(parsed.data.sourceReceipts.map((receipt) => receipt.kind));
-  const missingRequiredKinds = requiredReceiptKinds.filter(
-    (kind) => !presentReceiptKinds.has(kind),
+  const presentReceiptKinds = new Set(
+    parsed.data.sourceReceipts.map((receipt) => receipt.kind),
   );
-  if (missingRequiredKinds.length > 0) {
+  const hasAllowlistedReceipt = requiredReceiptKinds.some((kind) =>
+    presentReceiptKinds.has(kind),
+  );
+  if (!hasAllowlistedReceipt) {
     throw new StateRootActivationError(
       'source_receipt_missing',
-      `activation manifest omits required source receipt kind(s): ${missingRequiredKinds.join(', ')}`,
+      `activation manifest must include at least one of: ${requiredReceiptKinds.join(', ')}`,
     );
   }
 

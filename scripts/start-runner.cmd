@@ -25,6 +25,11 @@ REM ---------------------------------------------------------------------
 
 cd /d "%~dp0.."
 
+REM S4 LOCAL activation binding (optional; absent file = legacy paths)
+if exist "%USERPROFILE%\.atlas\local-activation.cmd" (
+  call "%USERPROFILE%\.atlas\local-activation.cmd"
+)
+
 set "ATLAS_RUNNER_LOG=%USERPROFILE%\.atlas\runner-autostart.log"
 if not exist "%USERPROFILE%\.atlas" mkdir "%USERPROFILE%\.atlas"
 
@@ -34,6 +39,8 @@ if "%ATLAS_RUNNER_ARGS%"=="" set "ATLAS_RUNNER_ARGS=--interval 20"
 echo. >> "%ATLAS_RUNNER_LOG%"
 echo ==== AtlasRunner autostart %DATE% %TIME% ==== >> "%ATLAS_RUNNER_LOG%"
 echo [wrapper] cwd=%CD% >> "%ATLAS_RUNNER_LOG%"
+echo [wrapper] ATLAS_STATE_ROOT_REQUIRED=%ATLAS_STATE_ROOT_REQUIRED% >> "%ATLAS_RUNNER_LOG%"
+echo [wrapper] ATLAS_STATE_ROOT=%ATLAS_STATE_ROOT% >> "%ATLAS_RUNNER_LOG%"
 
 echo [wrapper] rebuilding dist/ before start... >> "%ATLAS_RUNNER_LOG%"
 call npm run build >> "%ATLAS_RUNNER_LOG%" 2>&1

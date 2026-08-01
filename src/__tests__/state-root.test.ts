@@ -274,6 +274,30 @@ describe('atlas/state-root', () => {
       expect(existsSync(join(activationRoot, 'exec-graph'))).toBe(false);
     });
 
+    it('accepts the M3D full-root rehearsal receipt kind for local activation', () => {
+      const receiptsDir = join(activationRoot, 'activation-receipts');
+      mkdirSync(receiptsDir, { recursive: true });
+      process.env.ATLAS_NODE_ROLE = 'local';
+      const receiptContent = 'm3d-full-root-rehearsal-fixture';
+      writeFileSync(join(receiptsDir, 'm3d-full-root-rehearsal'), receiptContent, 'utf8');
+      const receiptSha256 = createHash('sha256').update(receiptContent).digest('hex');
+      writeFileSync(
+        join(activationRoot, STATE_ROOT_ACTIVATION_FILE),
+        `${JSON.stringify({
+          schemaVersion: 1,
+          nodeRole: 'local',
+          activatedAt: '2026-07-30T00:00:00.000Z',
+          stores: Object.keys(STATE_STORES),
+          sourceReceipts: [
+            { kind: 'm3d-full-root-rehearsal', sha256: receiptSha256 },
+          ],
+        }, null, 2)}\n`,
+        'utf8',
+      );
+      expect(assertStateRootActivated().nodeRole).toBe('local');
+      expect(resolveStateDir('exec-graph')).toBe(join(activationRoot, 'exec-graph'));
+    });
+
     it('refuses a traversal-shaped receipt kind without touching paths outside activation-receipts', () => {
       writeActivationManifest({
         sourceReceipts: [{ kind: '../evil', sha256: 'a'.repeat(64) }],

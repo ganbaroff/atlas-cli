@@ -41,6 +41,7 @@
     "start:learning-api": "node dist/learning-api.js",
     "atlas:m3c-rehearse": "tsx scripts/rehearse-preserved-exec-graph.mts",
     "atlas:m3d-rehearse": "tsx scripts/rehearse-full-root.mts",
+    "atlas:s4-activate-local": "tsx scripts/activate-local-state-root.mts",
     "test": "vitest",
     "typecheck": "tsc --noEmit"
   },

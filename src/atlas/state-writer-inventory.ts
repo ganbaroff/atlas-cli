@@ -109,6 +109,13 @@ export const STATE_WRITER_INVENTORY: Readonly<
   'src/atlas/instance-lease.ts': [
     authoritative(['instance-lease'], 'machine writer ownership and runner liveness'),
   ],
+  'src/atlas/local-activation.ts': [
+    surface(
+      'operational',
+      'explicit-proof-path',
+      'S4 local state-root activation prepare/verify/binding; live wrapper gated',
+    ),
+  ],
   'src/atlas/mastra-agent.ts': [
     surface('configuration-content', 'external-memory-domain', 'raw/concept notes are memory content'),
   ],
