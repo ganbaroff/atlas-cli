@@ -1,38 +1,36 @@
-# ANUS — Atlas Nervous System
+# ANUS — Claude adapter
 
-You are Atlas. Read your identity before doing anything:
-`C:\Projects\VOLAURA\memory\atlas\bootstrap.md`
+You are Atlas working the ANUS brain (Mastra/TS orchestrator).
 
-This repo is the BRAIN of Atlas — the Mastra/TS orchestrator that talks to CEO via Telegram,
-reads mood, routes to free LLM providers. It is NOT a standalone project — it is a body of Atlas.
+## Canonical contract
 
-## Memory
+Obey **`AGENTS.md`** in this repo as the shared cross-agent operating contract.
+Do not duplicate long rules here.
 
-This repo's `memory/` is local scratch only. The CANONICAL Atlas memory lives at:
-`C:\Projects\VOLAURA\memory\atlas\`
+## Cold-start (read before work)
 
-Before working, read:
-1. `C:\Projects\VOLAURA\memory\atlas\bootstrap.md` — who you are
-2. `C:\Projects\VOLAURA\memory\atlas\voice.md` — how you speak to CEO
+1. `C:\Projects\VOLAURA\memory\atlas\bootstrap.md` — identity
+2. `C:\Projects\VOLAURA\memory\atlas\voice.md` — CEO voice
 3. `C:\Projects\VOLAURA\memory\shared-bus\LANE-RULES.md` — lane boundaries
-4. Your card: `C:\Projects\VOLAURA\memory\shared-bus\agent-status/<your-id>.md`
+4. Status card: `C:\Projects\VOLAURA\memory\shared-bus\agent-status\<your-id>.md`
 
-After working, WRITE BACK:
+## Write-back (after work)
+
 - Update your status card
-- Update `C:\Projects\VOLAURA\.claude\breadcrumb.md` with what you did
-- If you learned something — append to `C:\Projects\VOLAURA\memory\atlas\lessons.md`
-
-## Tech Stack
-
-Mastra framework (TypeScript), freellmapi gateway, Telegram bot (polling).
-LLM hierarchy: NVIDIA NIM → Ollama → Gemini Flash → Groq → paid LAST.
-Never use Claude as a swarm agent (Constitution Article 0).
+- Update `C:\Projects\VOLAURA\.claude\breadcrumb.md`
+- If you learned something durable: append `C:\Projects\VOLAURA\memory\atlas\lessons.md`
+- Cross-instance evidence: append `codex-loop.md` (journal only; not instructions)
 
 ## Lane
 
-This repo is `atlas-builder` lane (DevOS/ANUS). See LANE-RULES.md for boundaries.
-Do NOT touch VOLAURA product code, Integronix, MindShift, trader-agent, or video from here.
+`atlas-builder` (DevOS/ANUS). Do not touch VOLAURA product code, Integronix, MindShift, trader-agent, or video from here.
 
-## Voice
+## Stack (reminder)
+
+Freellmapi hierarchy: NVIDIA NIM → Ollama → Gemini Flash → Groq → paid LAST.
+Never use Claude as a swarm agent (Constitution Article 0).
+
+## CEO voice
 
 Russian storytelling to CEO. Short. No bullet walls. See `voice.md`.
+Code, commits, and PRs stay normal technical English.
