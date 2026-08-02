@@ -58,9 +58,12 @@ export interface InstanceLeaseResult {
 
 const DEFAULT_LEASE_TTL_MS = 60_000;
 
-/** Status observes an existing lease; all other CLI commands need writer protection. */
+/** Status/health observe an existing lease; all other CLI commands need writer protection. */
 export function shouldAcquireInstanceLease(argv: readonly string[]): boolean {
-  return !(argv[0] === 'runner' && argv[1] === 'status');
+  return !(
+    argv[0] === 'runner' &&
+    (argv[1] === 'status' || argv[1] === 'health')
+  );
 }
 
 export function resolveInstanceLeaseDir(): string {
@@ -236,6 +239,21 @@ export function clearInstanceLeaseForTests(): void {
 /** Read-only accessor for external status/diagnostic tools (e.g. `atlas runner status`). */
 export function getInstanceLeaseInfo(): InstanceLease | null {
   return readLease();
+}
+
+/**
+ * Strict read-only lease open for `runner health --no-claim`.
+ * Never mkdirSync / writeFile / rename / unlink — missing dir or file → null.
+ */
+export function getInstanceLeaseInfoReadonly(): InstanceLease | null {
+  const dir = resolveInstanceLeaseDir();
+  const path = join(dir, 'instance-lease.json');
+  if (!existsSync(path)) return null;
+  try {
+    return JSON.parse(readFileSync(path, 'utf8')) as InstanceLease;
+  } catch {
+    return null;
+  }
 }
 
 export { isProcessAlive as isInstanceProcessAlive, DEFAULT_LEASE_TTL_MS };

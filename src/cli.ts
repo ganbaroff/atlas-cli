@@ -1401,6 +1401,25 @@ runnerCmd
   });
 
 runnerCmd
+  .command('health')
+  .description('No-claim runner diagnostic (activation + tip/dist + lease; local reads only)')
+  // Commander 12: `--no-claim` is a negate flag → property `claim` (default true;
+  // `--no-claim` sets claim=false). Do NOT read opts.noClaim — it is never set.
+  .option('--no-claim', 'Required: refuse queue claim; diagnostic only')
+  .action(async (opts: { claim?: boolean }) => {
+    try {
+      const { runRunnerHealth } = await import('./atlas/runner-health.js');
+      const noClaim = opts.claim === false;
+      const report = runRunnerHealth(noClaim);
+      console.log(JSON.stringify(report, null, 2));
+      process.exitCode = report.exitCode;
+    } catch (err) {
+      console.error(`runner health error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
+  });
+
+runnerCmd
   .command('peek')
   .description('Read-only: show the most recent atlas_command_queue rows (any status)')
   .option('-n, --limit <n>', 'How many rows', '10')
