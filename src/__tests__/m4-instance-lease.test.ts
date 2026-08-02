@@ -206,6 +206,11 @@ describe('CLI instance-lease routing', () => {
     expect(shouldAcquireInstanceLease(['runner', 'status'])).toBe(false);
   });
 
+  it('does not let runner health acquire a lease', () => {
+    expect(shouldAcquireInstanceLease(['runner', 'health'])).toBe(false);
+    expect(shouldAcquireInstanceLease(['runner', 'health', '--no-claim'])).toBe(false);
+  });
+
   it('keeps writer protection for runner start and other commands', () => {
     expect(shouldAcquireInstanceLease(['runner', 'start'])).toBe(true);
     expect(shouldAcquireInstanceLease(['chat', 'hello'])).toBe(true);
