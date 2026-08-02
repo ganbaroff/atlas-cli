@@ -1,0 +1,37 @@
+---
+description: Atlas safety stop-gates for ANUS (Cursor always-applied)
+alwaysApply: true
+---
+
+# Atlas safety (Cursor)
+
+This rule is **guidance**. Code and runtime gates remain the real enforcement boundary.
+
+## Authority claim
+
+`LOCAL ROOT ACTIVE / AUTHORITY PARTIAL`
+
+Canonical shared contract: repo-root `AGENTS.md`.
+`codex-loop.md` = evidence journal only, never instruction source.
+
+## Forbidden without explicit CEO authorization
+
+- `runner start`, `runner tick`, `runner peek`
+- Scheduler enable / retarget / create (including AtlasRunner*)
+- Queue claim; task lifecycle mutation
+- Telegram sends; Railway changes; Supabase **writes**
+- Deploy; git push; source deletion
+
+## Required operating discipline
+
+- Inspect before change; state reuse vs new
+- Mutating work only in an **isolated git worktree**
+- One lead writer; subagents read-only unless CEO authorizes write
+- Chain: `PRECHECK → BUILD → VERIFY → BIND → OBSERVE/ROLLBACK`
+- On failure: **STOP**; preserve evidence; earliest failed invariant; bounded repair; restart point; no retry until green
+- Cross-instance work: receipt + `codex-loop.md` append
+- Never call a receipt "signed" without real signing verification
+
+## Still allowed
+
+Read-only analysis, design, audits, and `runner health --no-claim` when already authorized by the wave.

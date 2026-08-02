@@ -57,7 +57,10 @@ packages/vscode-ide-companion/*.vsix
 # ai editors
 .augment/
 .claude/
-.cursor/
+# Ignore Cursor local state; keep project rules trackable (Wave 2B).
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**
 .local/
 .npmrc
 
