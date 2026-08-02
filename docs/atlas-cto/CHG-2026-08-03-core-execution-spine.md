@@ -1,16 +1,18 @@
 # CHG-2026-08-03 — Core Execution Spine
 
 **Change ID:** `chg_2026_08_03_core_spine`  
-**Branch:** `codex/atlas-core-execution-spine`  
-**Parent tip:** `073f1e5b8947bea50af9d27d51730e6cec2fea74`  
+**Feature branch:** `codex/atlas-core-execution-spine` @ `5f9c41528288f5f17b7c4df5344698a05d3f1a2e`  
+**Parent tip (pre-merge):** `073f1e5b8947bea50af9d27d51730e6cec2fea74`  
+**Merge commit:** `de12b19c73e35a848b9ead1439204d30c9ad6a52`  
+**Canonical branch:** `codex/atlas-cost-router-design`  
 **Decision link:** `C:\Projects\VOLAURA\memory\atlas\decisions\ATLAS-CORE-AND-HANDS-DECISION-2026-08-03.md`  
-**Status:** locally verified (focused tests)
+**Status:** **CLOSED — MERGED AND VERIFIED** (CEO ACCEPT+MERGE 2026-08-03)
 
 ## Why this wave exists
 
 Future hands (Hermes, OpenManus, Cursor, Claude Code, Codex) must plug into Atlas as **replaceable adapters** under one fail-closed evidence + lifecycle contract. Without a Core Spine, each integration invents a second authority.
 
-## Exact files changed (ANUS worktree)
+## Exact files merged
 
 | Path | Role |
 |---|---|
@@ -21,64 +23,33 @@ Future hands (Hermes, OpenManus, Cursor, Claude Code, Codex) must plug into Atla
 | `src/core-spine/spine-verifier.ts` | Fail-closed verification invariants |
 | `src/core-spine/index.ts` | Public exports |
 | `src/core-spine/README.md` | Module index |
-| `src/__tests__/core-spine.test.ts` | Focused tests (20) |
+| `src/__tests__/core-spine.test.ts` | Focused tests (25) |
 | `docs/atlas-cto/CHG-2026-08-03-core-execution-spine.md` | This change record |
 
-## VOLAURA memory write-back (authorized)
+## Post-merge verification
 
-| Path | Role |
+| Gate | Result |
 |---|---|
-| `memory/atlas/decisions/ATLAS-CORE-AND-HANDS-DECISION-2026-08-03.md` | Permanent compact-safe decision |
-| `memory/atlas/CURRENT-COMPACT.md` | Pointer section added |
-
-## Affected components
-
-- **Reuses:** exec-graph `TaskStatus` / `taskIdSchema` (no new task engine)
-- **Does not touch:** runners, schedulers, Telegram, model-router runtime, Hermes, OpenManus
-
-## Tests run
-
-```text
-npx vitest run src/__tests__/core-spine.test.ts
-→ 20 passed (2026-08-03)
-```
-
-Default CI / skipped QA harness **not** enabled or modified.
-
-## Risks
-
-| Risk | Mitigation |
-|---|---|
-| Contracts unused until first proof | Next wave is supervised human-Cursor proof only |
-| Mapping rolled_back→rejected loses nuance | Documented; repair loop uses existing rejected→proposed edge |
-| Zod-only schemas without JSON Schema files | Markdown + zod matches architecture; JSON Schema optional later |
-
-## Deviations
-
-- No JSON Schema files created (zod is the mechanical validator already used by exec-graph/hands).
-- Independent review #1 **REJECT** (fail-open without project; commandsRun unchecked; personal paths in allowedWrites). Repaired in-wave; review #2 expected after re-test.
-- `verifyEvidencePack` now **requires** `project` (fail-closed allowlist).
+| Focused `core-spine.test.ts` | **25 passed**, exit 0 |
+| Full `npx vitest run` | **144 files passed**, **1379 passed / 2 skipped**, exit 0 |
+| Conflicts | none |
+| Tip before merge | `073f1e5` confirmed |
+| Feature commit unchanged | `5f9c415` confirmed |
 
 ## Independent review evidence
 
-1. First review: REJECT — H1/H2/H3 (documented in session).  
-2. Repair: project required; commandsRun exit/skip/hash checks; personal memory paths banned in `allowedWrites`; independent verifier id pattern; paid spend gate; extra tests.  
-3. Focused tests after repair: **25 passed**.
+1. First review: REJECT — H1/H2/H3.  
+2. Repair in feature branch.  
+3. Second review: PASS (LOW debt only).  
+4. LOW debt filed: `docs/atlas-cto/DEBT-2026-08-03-core-spine-low.md` (DEBT-CS-001..003).
 
-## Rollback procedure
+## Rollback procedure (post-merge)
 
-1. Discard/delete worktree branch `codex/atlas-core-execution-spine` (or revert its commit).  
-2. Optionally remove the Permanent architecture pointer section from `CURRENT-COMPACT.md` (decision file may remain as historical ACCEPTED record).  
-3. Tip `073f1e5` unchanged until explicit merge authorization.
+1. On canonical tip: `git revert -m 1 de12b19` (creates new revert commit; do not rewrite history).  
+2. Or CEO-authorized hard reset only if never pushed (currently **not pushed**).  
+3. Decision/CURRENT-COMPACT pointers remain unless CEO reverts those files separately.
 
-## Technical debt introduced
+## Closed
 
-- No CLI wiring for spine contracts yet (intentional).  
-- No adapter registry persistence yet.  
-- `rolled_back` shares `rejected` status — may need note field convention in a later wave.  
-- LOW (post-PASS review): effect↔command linkage still weak; personal-path guard is regex-only; fragile RegExp on effect tokens.
-
-## Next restart point
-
-**Supervised proof (NOT executed here):**  
-`CEO goal → Atlas plan → isolated worktree → human-operated Cursor executor → diff → tests → independent verification → CEO receipt`
+CEO receipt: `docs/atlas-cto/RECEIPT-2026-08-03-core-spine-merge.md`  
+Next restart: supervised human-Cursor developer-agent proof (not started).
