@@ -41,6 +41,8 @@
     "start:learning-api": "node dist/learning-api.js",
     "atlas:m3c-rehearse": "tsx scripts/rehearse-preserved-exec-graph.mts",
     "test": "vitest",
+    "test:qa": "vitest run --config vitest.qa.config.ts",
+    "eval:critical": "node qa/evals/runner.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
