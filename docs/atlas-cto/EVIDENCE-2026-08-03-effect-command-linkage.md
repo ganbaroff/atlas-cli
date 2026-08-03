@@ -24,8 +24,10 @@
 | Worktree | `C:\Users\user\OneDrive\Documents\GitHub\ANUS\.worktrees\atlas-proof-effect-command-linkage` |
 | Branch | `codex/atlas-proof-effect-command-linkage` |
 | Base SHA | `7a43a49d432f00115b00012fad2b038f8fee316e` |
-| Feature commit | `9b163114b66a1434860d79ec97b23682488e7401` |
-| Diff hash (SHA-256 of `git diff 7a43a49..HEAD`) | `04ed81f11769f981195212b75270f3c50747a0c11a154238a4f45714dcfac7da` |
+| Feature commit (code) | `9b163114b66a1434860d79ec97b23682488e7401` |
+| Evidence docs commit | `e6c38c9ff684f9b04e6de91bd62dfaab5fe9cbbb` |
+| Plan checkpoint (auto) | `a7e6600` — PLAN md only (Cursor worktree checkpoint; no product code) |
+| Diff hash (SHA-256 of `git diff 7a43a49..9b16311`) | `04ed81f11769f981195212b75270f3c50747a0c11a154238a4f45714dcfac7da` |
 
 ## Executor
 
