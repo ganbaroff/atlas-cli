@@ -1,10 +1,11 @@
 # CHG-2026-08-04 — Atlas Project Resolution v0
 
-**Status:** OPEN — awaiting CEO receipt  
+**Status:** COMPLETE — awaiting CEO receipt (merge HOLD)  
 **Capability:** `ATLAS PROJECT RESOLUTION v0`  
 **Branch:** `atlas/project-resolution-v0-2026-08-04`  
+**Commits:** `f3cfe2b` (feat) → `81b8367` (repair)  
 **Base tip:** `6106029` (`codex/atlas-cost-router-design`)  
-**Courier:** Loop v0 (ChatGPT via Comet; `MALFORMED_REVIEW` required for invalid reviewer schema)
+**Courier:** Loop v0 (ChatGPT via Comet; `MALFORMED_REVIEW` recorded when schema/transport invalid)
 
 ## Change (≤5 production files)
 
