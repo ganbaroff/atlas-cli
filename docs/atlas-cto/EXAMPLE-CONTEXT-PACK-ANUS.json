@@ -1,0 +1,116 @@
+{
+  "goal": {
+    "originalCeoMessage": "Сделай read-only обзор ANUS / Atlas brain и open debt, ничего не меняй",
+    "interpretedObjective": "Сделай read-only обзор ANUS / Atlas brain и open debt, ничего не меняй"
+  },
+  "resolutionStatus": "READY",
+  "pack": {
+    "goalId": "goal-intake:dfc7ef9336f7",
+    "projectId": "prj_anus_atlas",
+    "verifiedProjectPath": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS",
+    "externalTarget": null,
+    "readOnlyTargetReady": true,
+    "projectExecutionReady": true,
+    "selectedSources": [
+      {
+        "id": "goal-contract",
+        "authority": "goal-contract",
+        "pathOrUrl": "goal-contract:prj_anus_atlas",
+        "contentHash": "2f0cdc36f0a918a6",
+        "bytesLoaded": 271
+      },
+      {
+        "id": "project-resolution",
+        "authority": "project-resolution",
+        "pathOrUrl": "project-resolution:prj_anus_atlas",
+        "contentHash": "7021cdecb73ca8a4",
+        "bytesLoaded": 130
+      },
+      {
+        "id": "decision-core-hands",
+        "authority": "canonical-decision",
+        "pathOrUrl": "C:\\Projects\\VOLAURA\\memory\\atlas\\decisions\\ATLAS-CORE-AND-HANDS-DECISION-2026-08-03.md",
+        "contentHash": "0fd78b8f7d7a9767",
+        "bytesLoaded": 5184
+      },
+      {
+        "id": "current-compact",
+        "authority": "current-compact",
+        "pathOrUrl": "C:\\Projects\\VOLAURA\\memory\\atlas\\CURRENT-COMPACT.md",
+        "contentHash": "3baa56db0752a480",
+        "bytesLoaded": 57911
+      }
+    ],
+    "facts": [
+      {
+        "text": "CEO intent preserved: Сделай read-only обзор ANUS / Atlas brain и open debt, ничего не меняй",
+        "kind": "fact",
+        "citation": "goal-contract"
+      },
+      {
+        "text": "Project resolution status=READY; pathType=git-repository; canonicalPath=C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS",
+        "kind": "fact",
+        "citation": "project-resolution"
+      },
+      {
+        "text": "Status: ACCEPTED + MERGED TO TIP (CEO ACCEPT+MERGE 2026-08-03)",
+        "kind": "fact",
+        "citation": "C:\\Projects\\VOLAURA\\memory\\atlas\\decisions\\ATLAS-CORE-AND-HANDS-DECISION-2026-08-03.md"
+      },
+      {
+        "text": "Status: ACCEPTED (CEO decision this session)",
+        "kind": "fact",
+        "citation": "C:\\Projects\\VOLAURA\\memory\\atlas\\decisions\\ATLAS-CORE-AND-HANDS-DECISION-2026-08-03.md"
+      },
+      {
+        "text": "Wave: Core Spine MERGED; first supervised linkage MERGED; Codex CLI named first programmatic hand candidate (2026-08-03).",
+        "kind": "fact",
+        "citation": "C:\\Projects\\VOLAURA\\memory\\atlas\\decisions\\ATLAS-CORE-AND-HANDS-DECISION-2026-08-03.md"
+      },
+      {
+        "text": "Courier Loop v0: MERGED @ `370f920` (feat `1da2f97`). CHG/receipt in `docs/atlas-cto/`. Proof: `ceo-feed/ATLAS-COURIER-REPLACEMENT-PROOF-COMPLETE-2026-08-03.md`. Evidence under `~\\.atlas\\quarantine\\evidence\\courier-proof-2026-08-03\\`.",
+        "kind": "fact",
+        "citation": "C:\\Projects\\VOLAURA\\memory\\atlas\\CURRENT-COMPACT.md"
+      },
+      {
+        "text": "Goal Intake v0: MERGED @ `3e1d8d3`.",
+        "kind": "fact",
+        "citation": "C:\\Projects\\VOLAURA\\memory\\atlas\\CURRENT-COMPACT.md"
+      }
+    ],
+    "decisions": [
+      "# ATLAS-CORE-AND-HANDS-DECISION-2026-08-03",
+      "Status: ACCEPTED (CEO decision this session)",
+      "| `ATLAS-ARCHITECTURE.md` L2 “runner live” claims | Conflict noted — runtime runners Disabled; architecture text does not override this decision or scheduler truth |",
+      "| Platform pack `~\\.atlas\\packs\\ATLAS-PLATFORM-ARCHITECTURE-EOS-WAVE-2026-08-03.md` | Aligns; this decision is the compact-safe permanent extract |",
+      "Binding decision: `memory/atlas/decisions/ATLAS-CORE-AND-HANDS-DECISION-2026-08-03.md`",
+      "Executor decision (2026-08-03): Human Cursor = temporary setup/review surface. Codex CLI = first programmatic hand candidate (replaceable only). See amendment in `decisions/ATLAS-CORE-AND-HANDS-DECISION-2026-08-03.md`. Codex state ≠ Atlas m",
+      "Courier loop decision (2026-08-03): `memory/atlas/decisions/ATLAS-AUTONOMOUS-COURIER-LOOP-DECISION-2026-08-03.md` � Atlas replaces Yusif as courier; max repair 1; dedicated ChatGPT reviewer only; no general desktop autonomy."
+    ],
+    "constraints": [
+      "Allowed: memory-read, web-observe-readonly, report-write-quarantine, screenshot-readonly; Forbidden: push, deploy, runner-enable, daemon-enable, credential-export, invent-project-facts",
+      "forbidden:push",
+      "forbidden:deploy",
+      "forbidden:runner-enable",
+      "forbidden:daemon-enable",
+      "forbidden:credential-export"
+    ],
+    "knownBlockers": [
+      "`Codex quarantined read-only executor proof` — stop if active Codex process, isolation fail, elevated required, or auth/credentials exposure. After green RO proof: CEO decides write-enabled supervised proof. Parallel residual: DEBT-CS-004/0",
+      "Core Spine status: MERGED (contracts `de12b19` + effect↔command linkage `5a9eafb`). Tip `codex/atlas-cost-router-design`. DEBT-CS-001 CLOSED. Receipts: `RECEIPT-2026-08-03-core-spine-merge.md`, `RECEIPT-2026-08-03-first-supervised-proof.md`",
+      "Project Resolution v0: MERGED @ `225e461` (feature tip `9164d5e`). Path resolve READY/NEEDS_APPROVAL/BLOCKED; never invent paths. Receipt: `docs/atlas-cto/RECEIPT-2026-08-04-project-resolution-v0-merge.md`.",
+      "Physical migration remains NO-GO. The orphaned ANUS runner slice was"
+    ],
+    "unresolvedContradictions": [],
+    "staleInformation": [],
+    "assumptions": [
+      "Source mix: 1 personal-memory + 1 project/repo sources (personal memory not fully crawled)"
+    ],
+    "missingEvidence": [],
+    "contextConfidence": "high",
+    "contextBudgetBytes": 64000,
+    "contextBytesUsed": 63496,
+    "planningStatus": "READY_TO_PLAN",
+    "conciseCeoSummary": "prj_anus_atlas: plan=READY_TO_PLAN; execReady=true; readOnlyTarget=true; bytes=63496/64000"
+  }
+}

@@ -1,0 +1,127 @@
+{
+  "goal": {
+    "originalCeoMessage": "Проведи полный анализ integronix.az. Ничего не меняй.",
+    "interpretedObjective": "Read-only audit of integronix.az: identify site gaps (photos, trust, copy, mobile, conversion) without changing anything"
+  },
+  "resolutionStatus": "BLOCKED",
+  "pack": {
+    "goalId": "goal-intake:686ecdc6c4a7",
+    "projectId": "prj_integronix",
+    "verifiedProjectPath": null,
+    "externalTarget": "https://integronix.az/",
+    "readOnlyTargetReady": true,
+    "projectExecutionReady": false,
+    "selectedSources": [
+      {
+        "id": "goal-contract",
+        "authority": "goal-contract",
+        "pathOrUrl": "goal-contract:prj_integronix",
+        "contentHash": "7c8e6f2f8e8d7f59",
+        "bytesLoaded": 286
+      },
+      {
+        "id": "project-resolution",
+        "authority": "project-resolution",
+        "pathOrUrl": "project-resolution:prj_integronix",
+        "contentHash": "e91aad262f8785ca",
+        "bytesLoaded": 289
+      },
+      {
+        "id": "current-compact",
+        "authority": "current-compact",
+        "pathOrUrl": "C:\\Projects\\VOLAURA\\memory\\atlas\\CURRENT-COMPACT.md",
+        "contentHash": "3baa56db0752a480",
+        "bytesLoaded": 57911
+      },
+      {
+        "id": "ceo-project-map",
+        "authority": "project-canon",
+        "pathOrUrl": "C:\\Projects\\VOLAURA\\memory\\atlas\\CEO-PROJECT-MAP.md",
+        "contentHash": "89691b6bf8215ef9",
+        "bytesLoaded": 5097
+      },
+      {
+        "id": "external-integronix-site",
+        "authority": "external-readonly-target",
+        "pathOrUrl": "https://integronix.az/",
+        "contentHash": "df3fa7dc30062761",
+        "bytesLoaded": 47
+      }
+    ],
+    "facts": [
+      {
+        "text": "CEO intent preserved: Read-only audit of integronix.az: identify site gaps (photos, trust, copy, mobile, conversion) without changing anything",
+        "kind": "fact",
+        "citation": "goal-contract"
+      },
+      {
+        "text": "Project resolution status=BLOCKED; pathType=archive; canonicalPath=null",
+        "kind": "fact",
+        "citation": "project-resolution"
+      },
+      {
+        "text": "Courier Loop v0: MERGED @ `370f920` (feat `1da2f97`). CHG/receipt in `docs/atlas-cto/`. Proof: `ceo-feed/ATLAS-COURIER-REPLACEMENT-PROOF-COMPLETE-2026-08-03.md`. Evidence under `~\\.atlas\\quarantine\\evidence\\courier-proof-2026-08-03\\`.",
+        "kind": "fact",
+        "citation": "C:\\Projects\\VOLAURA\\memory\\atlas\\CURRENT-COMPACT.md"
+      },
+      {
+        "text": "Goal Intake v0: MERGED @ `3e1d8d3`.",
+        "kind": "fact",
+        "citation": "C:\\Projects\\VOLAURA\\memory\\atlas\\CURRENT-COMPACT.md"
+      },
+      {
+        "text": "share-ready, while a newer external audit says PRE-PREMIERE with 20 P0s.",
+        "kind": "fact",
+        "citation": "C:\\Projects\\VOLAURA\\memory\\atlas\\CEO-PROJECT-MAP.md"
+      },
+      {
+        "text": "External read-only audit target declared: https://integronix.az/",
+        "kind": "fact",
+        "citation": "https://integronix.az/"
+      }
+    ],
+    "decisions": [
+      "Binding decision: `memory/atlas/decisions/ATLAS-CORE-AND-HANDS-DECISION-2026-08-03.md`",
+      "Executor decision (2026-08-03): Human Cursor = temporary setup/review surface. Codex CLI = first programmatic hand candidate (replaceable only). See amendment in `decisions/ATLAS-CORE-AND-HANDS-DECISION-2026-08-03.md`. Codex state ≠ Atlas m",
+      "Courier loop decision (2026-08-03): `memory/atlas/decisions/ATLAS-AUTONOMOUS-COURIER-LOOP-DECISION-2026-08-03.md` � Atlas replaces Yusif as courier; max repair 1; dedicated ChatGPT reviewer only; no general desktop autonomy."
+    ],
+    "constraints": [
+      "Allowed: memory-read, web-observe-readonly, report-write-quarantine, screenshot-readonly; Forbidden: production-write, deploy, dns-change, credential-access, payment, delete-data",
+      "Integronix marked UNVERIFIED / maintenance in project map — do not invent live repo path",
+      "READ-ONLY TARGET READY ≠ PROJECT EXECUTION READY",
+      "forbidden:production-write",
+      "forbidden:deploy",
+      "forbidden:dns-change",
+      "forbidden:credential-access",
+      "forbidden:payment"
+    ],
+    "knownBlockers": [
+      "No verified active canonical repository — archive/stale evidence insufficient for READY",
+      "PROJECT EXECUTION NOT READY — repository unresolved",
+      "Core Spine status: MERGED (contracts `de12b19` + effect↔command linkage `5a9eafb`). Tip `codex/atlas-cost-router-design`. DEBT-CS-001 CLOSED. Receipts: `RECEIPT-2026-08-03-core-spine-merge.md`, `RECEIPT-2026-08-03-first-supervised-proof.md`",
+      "Project Resolution v0: MERGED @ `225e461` (feature tip `9164d5e`). Path resolve READY/NEEDS_APPROVAL/BLOCKED; never invent paths. Receipt: `docs/atlas-cto/RECEIPT-2026-08-04-project-resolution-v0-merge.md`.",
+      "Physical migration remains NO-GO. The orphaned ANUS runner slice was",
+      "- BLOCKED: outside action or missing proof prevents the next step.",
+      "- UNVERIFIED: an old report exists, but current reality was not reproduced.",
+      "the technical critical path. Physical consolidation is still NO-GO."
+    ],
+    "unresolvedContradictions": [
+      "No verified active canonical repository — archive/stale evidence insufficient for READY",
+      "Historical domain-alarm notes conflict with current UNVERIFIED status — do not treat alarms as live production truth"
+    ],
+    "staleInformation": [],
+    "assumptions": [
+      "READ-ONLY TARGET READY for audit planning; PROJECT EXECUTION remains blocked until repository authority resolves",
+      "Source mix: 2 personal-memory + 0 project/repo sources (personal memory not fully crawled)",
+      "Live site observation required before claiming page content facts"
+    ],
+    "missingEvidence": [
+      "missing-source:C:\\Projects\\VOLAURA\\memory\\atlas\\historical\\integronix-domain-alarm-STALE.md"
+    ],
+    "contextConfidence": "medium",
+    "contextBudgetBytes": 64000,
+    "contextBytesUsed": 63630,
+    "planningStatus": "READY_TO_PLAN",
+    "conciseCeoSummary": "prj_integronix: plan=READY_TO_PLAN; execReady=false; readOnlyTarget=true; bytes=63630/64000"
+  }
+}
