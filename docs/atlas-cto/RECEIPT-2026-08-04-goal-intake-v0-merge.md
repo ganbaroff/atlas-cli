@@ -6,7 +6,7 @@
 **Approved branch tip:** `628b9b2944cc3ce1808452af60cfa5ecf0ffe015`  
 **Base before merge:** `0b75dae91b977d1b8db11fc0d20cae7d0dc60f6b`  
 **Merge commit:** `3e1d8d39d4c8479b56cc21a789e2d18fbf48fd43`  
-**Canonical tip:** `codex/atlas-cost-router-design` @ `a74b35280681d8266eb4e66b5d1849d7f3048164`  
+**Canonical tip:** `codex/atlas-cost-router-design` (merge `3e1d8d39d4c8479b56cc21a789e2d18fbf48fd43`; docs follow-up on tip)  
 **Feature branch:** `atlas/goal-intake-v0-2026-08-03` (kept)  
 **Evidence:** `C:\Users\user\.atlas\quarantine\evidence\goal-intake-v0-2026-08-03\` + merge evidence `...\goal-intake-v0-merge-2026-08-04\`  
 **CEO feed:** `C:\Projects\VOLAURA\memory\atlas\ceo-feed\ATLAS-GOAL-INTAKE-V0-MERGED-2026-08-04.md`
