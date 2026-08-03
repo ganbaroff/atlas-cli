@@ -1,0 +1,36 @@
+{
+  "handId": "chatgpt-browser-reviewer",
+  "purpose": "Dedicated ChatGPT reviewer transport via Playwright + Atlas quarantine browser profile. One conversation workflow only. Returns ACCEPT|REPAIR|REJECT. Never final proof authority.",
+  "capabilities": [
+    "chatgpt-open-dedicated",
+    "chatgpt-submit-review",
+    "chatgpt-wait-complete",
+    "chatgpt-extract-verdict"
+  ],
+  "trustLevel": "medium",
+  "allowedEnvironments": ["local-quarantine-browser-profile"],
+  "allowedActions": [
+    "chatgpt-open-dedicated",
+    "chatgpt-submit-review",
+    "chatgpt-wait-complete",
+    "chatgpt-extract-verdict"
+  ],
+  "disallowedActions": [
+    "arbitrary-browse",
+    "other-conversations",
+    "credential-read",
+    "cookie-export",
+    "download",
+    "account-settings",
+    "atlas-memory-write",
+    "self-verify",
+    "final-proof"
+  ],
+  "costClass": "FOREGROUND-CEO-SUPERVISED",
+  "autonomy": "foreground-only",
+  "inputContract": "CourierReviewRequest: structured goal, scope, diff, tests, effectProofs, contracts. Profile under ~/.atlas/quarantine/browser-profiles/chatgpt-reviewer only.",
+  "timeoutMs": 300000,
+  "retryPolicy": "none",
+  "abortPolicy": "Login wall stops once for CEO manual login in dedicated profile. Generation timeout or empty/duplicate response fail closed.",
+  "escalationCondition": "Any URL outside ChatGPT host, credential copy need, or out-of-scope REPAIR instruction -> stop / escalate."
+}

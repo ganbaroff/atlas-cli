@@ -1,0 +1,34 @@
+{
+  "handId": "cursor-headless",
+  "purpose": "Bounded Cursor Agent CLI executor for disposable worktrees only. Monitors stream-json, enforces timeout/cancel, resumes with reviewer feedback. Never self-verifies.",
+  "capabilities": [
+    "cursor-launch",
+    "cursor-stream-monitor",
+    "cursor-resume",
+    "cursor-cancel"
+  ],
+  "trustLevel": "medium",
+  "allowedEnvironments": ["local-quarantine-disposable"],
+  "allowedActions": [
+    "cursor-launch",
+    "cursor-stream-monitor",
+    "cursor-resume",
+    "cursor-cancel"
+  ],
+  "disallowedActions": [
+    "unrestricted-force",
+    "self-verify",
+    "write-outside-worktree",
+    "deploy",
+    "push",
+    "credential-export",
+    "unattended-daemon"
+  ],
+  "costClass": "FOREGROUND-CEO-SUPERVISED",
+  "autonomy": "foreground-only",
+  "inputContract": "CourierCursorTask: workspace path (disposable only), objective, allowedPaths, allowedCommands, timeoutMs, optional resumeChatId. Sandbox must be enabled; unrestricted --yolo forbidden.",
+  "timeoutMs": 600000,
+  "retryPolicy": "once",
+  "abortPolicy": "On timeout Atlas kills the process tree and marks run timed-out. Never silently verified.",
+  "escalationCondition": "Auth missing, write outside disposable, missing terminal stream-json result event, or force without sandbox -> fail closed / escalate to CEO."
+}
