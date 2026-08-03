@@ -142,6 +142,27 @@ export const STATE_WRITER_INVENTORY: Readonly<
   'src/goal-runner/budgets.ts': [
     authoritative(['goal-budgets'], 'goal ceilings, attempts, fingerprints, and goal lease'),
   ],
+  'src/courier/courier-loop.ts': [
+    surface(
+      'operational',
+      'explicit-proof-path',
+      'courier receipts write only to caller-selected quarantine evidenceDir',
+    ),
+  ],
+  'src/hands/chatgpt-browser-reviewer-adapter.ts': [
+    surface(
+      'operational',
+      'explicit-proof-path',
+      'ChatGPT reviewer screenshots/JSON under caller quarantine evidenceDir; profile is dedicated Atlas quarantine',
+    ),
+  ],
+  'src/hands/cursor-headless-adapter.ts': [
+    surface(
+      'operational',
+      'explicit-proof-path',
+      'Cursor stream-json/meta under caller quarantine evidenceDir; may apply proposed writes only inside disposable workspace',
+    ),
+  ],
   'src/learning/claim-file-lock.ts': [
     authoritative(['learning'], 'claim mutation exclusion'),
   ],

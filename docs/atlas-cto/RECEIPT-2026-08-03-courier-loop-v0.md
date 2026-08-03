@@ -4,8 +4,10 @@
 **CEO decision:** ACCEPT  
 **Capability:** `ATLAS COURIER LOOP v0`  
 **Proof ID:** `proof_2026_08_03_atlas_courier_replacement`  
-**Feature branch:** `atlas/courier-replacement-proof-2026-08-03`  
-**Base tip:** `f7c4a5f` on `codex/atlas-cost-router-design`  
+**Feature branch:** `atlas/courier-replacement-proof-2026-08-03` @ `1da2f97840fecbcc0137177ff5037fc4f6dca0c6`  
+**Merge commit:** `370f920ffd7ed25db066c51e58260296ba0f4cf0`  
+**Canonical tip:** `codex/atlas-cost-router-design` @ `370f920`  
+**Base tip before merge:** `f7c4a5f`  
 **Proof receipt (CEO):** `C:\Projects\VOLAURA\memory\atlas\ceo-feed\ATLAS-COURIER-REPLACEMENT-PROOF-COMPLETE-2026-08-03.md`  
 **Evidence (preserved, not in git):** `C:\Users\user\.atlas\quarantine\evidence\courier-proof-2026-08-03\`
 
@@ -36,7 +38,7 @@ Atlas can act as courier between:
 
 ```text
 cd C:\Users\user\OneDrive\Documents\GitHub\ANUS
-git revert -m 1 <MERGE_COMMIT>
+git revert -m 1 370f920
 # Evidence/tools under ~\.atlas\quarantine and ~\.atlas\tools remain; delete only if CEO directs
 ```
 

@@ -103,6 +103,8 @@ describe('Hand Contract V0 (isolated temp exec-graph dir per test)', () => {
     expect(getHand('sonnet-foreground').handId).toBe('sonnet-foreground');
     expect(listHands().map((h) => h.handId).sort()).toEqual([
       'browser-foreground',
+      'chatgpt-browser-reviewer',
+      'cursor-headless',
       'file-search',
       'local-readonly',
       'sonnet-foreground',
