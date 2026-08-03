@@ -8,9 +8,9 @@ Markdown-first companion to `src/core-spine/*`.
 |---|---|
 | `executor-adapter-contract.ts` | Normalized future-hand adapter contract (no Hermes/Cursor/Codex impl yet) |
 | `project-agent-contract.ts` | Project boundary; `personalMemoryWrite` locked to `prohibited` |
-| `evidence-pack-contract.ts` | `goal→…→receipt` evidence shape |
+| `evidence-pack-contract.ts` | `goal→…→receipt` evidence shape; `effectProofs` link effects → command/test/artifact ids |
 | `lifecycle-binding.ts` | Maps spine stages → existing exec-graph statuses |
-| `spine-verifier.ts` | Fail-closed invariants (no LLM) |
+| `spine-verifier.ts` | Fail-closed invariants incl. explicit effect↔command linkage (no LLM) |
 
 ## Authority
 

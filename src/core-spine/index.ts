@@ -18,8 +18,14 @@ export {
 export {
   parseEvidencePack,
   evidencePackSchema,
+  commandRunSchema,
+  effectProofSchema,
+  evidenceArtifactSchema,
   EvidencePackError,
   type EvidencePack,
+  type CommandRun,
+  type EffectProof,
+  type EvidenceArtifact,
 } from './evidence-pack-contract.js';
 
 export {

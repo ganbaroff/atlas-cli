@@ -69,11 +69,23 @@ const validPack = (over: Record<string, unknown> = {}) => ({
   executorIdentity: 'adapter.human-cursor@0.1.0',
   declaredEffects: ['write-test-file'],
   actualEffects: ['write-test-file'],
+  effectProofs: [
+    {
+      effectId: 'write-test-file',
+      provenBy: [
+        { kind: 'command' as const, ref: 'cmd-diff' },
+        { kind: 'test' as const, ref: 'tst-unit' },
+      ],
+    },
+  ],
+  artifacts: [{ id: 'art-diff', kind: 'diff' as const, hash: 'a'.repeat(64) }],
   diffHash: 'a'.repeat(64),
   commandsRun: [
-    { command: 'git diff --stat', exitCode: 0, outputHash: 'c'.repeat(64) },
+    { id: 'cmd-diff', command: 'git diff --stat', exitCode: 0, outputHash: 'c'.repeat(64) },
   ],
-  testCommands: [{ command: 'npm test', exitCode: 0, outputHash: 'b'.repeat(64) }],
+  testCommands: [
+    { id: 'tst-unit', command: 'npm test', exitCode: 0, outputHash: 'b'.repeat(64) },
+  ],
   costRecord: { provider: 'none', tokens: 0, paid: false },
   verifierResult: { verified: true, reason: 'evidence-complete', verifierId: 'spine-verifier' },
   rollbackState: { available: true, method: 'git-worktree-discard', proven: false },
@@ -135,6 +147,8 @@ describe('core-spine evidence pack', () => {
   it('accepts a complete evidence pack', () => {
     const p = parseEvidencePack(validPack());
     expect(p.diffHash).toHaveLength(64);
+    expect(p.effectProofs).toHaveLength(1);
+    expect(p.commandsRun[0].id).toBe('cmd-diff');
   });
 
   it('rejects incomplete evidence (missing diff hash)', () => {
@@ -147,10 +161,50 @@ describe('core-spine evidence pack', () => {
         validPack({
           commandsRun: [],
           testCommands: [],
+          artifacts: [],
+          effectProofs: [
+            {
+              effectId: 'write-test-file',
+              provenBy: [{ kind: 'command', ref: 'missing' }],
+            },
+          ],
           verifierResult: { verified: true, reason: 'looks good', verifierId: 'executor-self' },
         }),
       ),
     ).toThrow();
+  });
+
+  it('rejects missing command reference in effectProofs', () => {
+    expect(() =>
+      parseEvidencePack(
+        validPack({
+          effectProofs: [
+            {
+              effectId: 'write-test-file',
+              provenBy: [{ kind: 'command', ref: 'does-not-exist' }],
+            },
+          ],
+        }),
+      ),
+    ).toThrow(/missing command reference/i);
+  });
+
+  it('rejects orphan actual effect without effectProof', () => {
+    expect(() =>
+      parseEvidencePack(
+        validPack({
+          declaredEffects: ['write-test-file', 'extra-effect'],
+          actualEffects: ['write-test-file', 'extra-effect'],
+          // only first effect proved — second orphan
+          effectProofs: [
+            {
+              effectId: 'write-test-file',
+              provenBy: [{ kind: 'command', ref: 'cmd-diff' }],
+            },
+          ],
+        }),
+      ),
+    ).toThrow(/orphan declared effect/i);
   });
 });
 
@@ -188,11 +242,18 @@ describe('core-spine verification invariants', () => {
       validPack({
         commandsRun: [],
         testCommands: [],
+        artifacts: [],
+        effectProofs: [
+          {
+            effectId: 'write-test-file',
+            provenBy: [{ kind: 'command', ref: 'gone' }],
+          },
+        ],
       }),
       { project: project() },
     );
     expect(r.verified).toBe(false);
-    expect(r.reason).toMatch(/missing|incomplete|evidence/i);
+    expect(r.reason).toMatch(/missing|incomplete|evidence|narrative/i);
   });
 
   it('rejects executor self-certification', () => {
@@ -230,6 +291,16 @@ describe('core-spine verification invariants', () => {
       validPack({
         declaredEffects: ['write-test-file'],
         actualEffects: ['write-test-file', 'push-origin'],
+        effectProofs: [
+          {
+            effectId: 'write-test-file',
+            provenBy: [{ kind: 'command', ref: 'cmd-diff' }],
+          },
+          {
+            effectId: 'push-origin',
+            provenBy: [{ kind: 'command', ref: 'cmd-diff' }],
+          },
+        ],
       }),
       { project: project() },
     );
@@ -241,7 +312,9 @@ describe('core-spine verification invariants', () => {
     expect(
       verifyEvidencePack(
         validPack({
-          testCommands: [{ command: 'npm test', exitCode: 1, outputHash: 'b'.repeat(64) }],
+          testCommands: [
+            { id: 'tst-unit', command: 'npm test', exitCode: 1, outputHash: 'b'.repeat(64) },
+          ],
         }),
         { project: project() },
       ).verified,
@@ -250,7 +323,13 @@ describe('core-spine verification invariants', () => {
       verifyEvidencePack(
         validPack({
           testCommands: [
-            { command: 'npm test', exitCode: 0, outputHash: 'b'.repeat(64), skipped: true },
+            {
+              id: 'tst-unit',
+              command: 'npm test',
+              exitCode: 0,
+              outputHash: 'b'.repeat(64),
+              skipped: true,
+            },
           ],
         }),
         { project: project() },
@@ -261,12 +340,14 @@ describe('core-spine verification invariants', () => {
   it('rejects failed commandsRun', () => {
     const r = verifyEvidencePack(
       validPack({
-        commandsRun: [{ command: 'git diff', exitCode: 2, outputHash: 'c'.repeat(64) }],
+        commandsRun: [
+          { id: 'cmd-diff', command: 'git diff', exitCode: 2, outputHash: 'c'.repeat(64) },
+        ],
       }),
       { project: project() },
     );
     expect(r.verified).toBe(false);
-    expect(r.reason).toMatch(/commands.*failed/i);
+    expect(r.reason).toMatch(/failed|commands/i);
   });
 
   it('rejects missing rollback information', () => {
@@ -285,6 +366,16 @@ describe('core-spine verification invariants', () => {
       validPack({
         declaredEffects: ['write-test-file', 'write-personal-memory:atlas'],
         actualEffects: ['write-test-file', 'write-personal-memory:atlas'],
+        effectProofs: [
+          {
+            effectId: 'write-test-file',
+            provenBy: [{ kind: 'command', ref: 'cmd-diff' }],
+          },
+          {
+            effectId: 'write-personal-memory:atlas',
+            provenBy: [{ kind: 'command', ref: 'cmd-diff' }],
+          },
+        ],
       }),
       { project: project() },
     );
@@ -317,6 +408,177 @@ describe('core-spine verification invariants', () => {
 
   it('accepts a pack that satisfies all invariants', () => {
     const r = verifyEvidencePack(validPack(), { project: project() });
+    expect(r.verified).toBe(true);
+  });
+});
+
+describe('core-spine effect↔command linkage (DEBT-CS-001)', () => {
+  const project = () => parseProjectAgentContract(validProject());
+
+  it('accepts a valid effect-to-command link', () => {
+    const r = verifyEvidencePack(validPack(), { project: project() });
+    expect(r.verified).toBe(true);
+    expect(r.reason).toBe('evidence-complete');
+  });
+
+  it('rejects missing command reference at verify time', () => {
+    // Bypass parse by feeding object that somehow got past — use verify on parse-fail path
+    const r = verifyEvidencePack(
+      validPack({
+        effectProofs: [
+          {
+            effectId: 'write-test-file',
+            provenBy: [{ kind: 'command', ref: 'no-such-cmd' }],
+          },
+        ],
+      }),
+      { project: project() },
+    );
+    expect(r.verified).toBe(false);
+    expect(r.reason).toMatch(/missing command reference/i);
+  });
+
+  it('rejects orphan declared effect without proof', () => {
+    const r = verifyEvidencePack(
+      validPack({
+        declaredEffects: ['write-test-file', 'orphan-effect'],
+        actualEffects: ['write-test-file', 'orphan-effect'],
+        effectProofs: [
+          {
+            effectId: 'write-test-file',
+            provenBy: [{ kind: 'command', ref: 'cmd-diff' }],
+          },
+        ],
+      }),
+      { project: project() },
+    );
+    expect(r.verified).toBe(false);
+    expect(r.reason).toMatch(/orphan declared effect/i);
+  });
+
+  it('rejects failed command linked to successful effect', () => {
+    const r = verifyEvidencePack(
+      validPack({
+        commandsRun: [
+          { id: 'cmd-diff', command: 'git diff --stat', exitCode: 1, outputHash: 'c'.repeat(64) },
+        ],
+        // effect still claims this failed command as proof; also tests still ok so
+        // parse may succeed — verifier must reject failed prove-ref
+        effectProofs: [
+          {
+            effectId: 'write-test-file',
+            provenBy: [{ kind: 'command', ref: 'cmd-diff' }],
+          },
+        ],
+      }),
+      { project: project() },
+    );
+    expect(r.verified).toBe(false);
+    expect(r.reason).toMatch(/failed command cannot prove|commands.*failed/i);
+  });
+
+  it('rejects skipped command linked to effect', () => {
+    const r = verifyEvidencePack(
+      validPack({
+        commandsRun: [
+          {
+            id: 'cmd-diff',
+            command: 'git diff --stat',
+            exitCode: 0,
+            outputHash: 'c'.repeat(64),
+            skipped: true,
+          },
+        ],
+        effectProofs: [
+          {
+            effectId: 'write-test-file',
+            provenBy: [{ kind: 'command', ref: 'cmd-diff' }],
+          },
+        ],
+      }),
+      { project: project() },
+    );
+    expect(r.verified).toBe(false);
+    expect(r.reason).toMatch(/skipped command cannot prove|skipped/i);
+  });
+
+  it('rejects narrative-only effect evidence (no effectProofs)', () => {
+    const r = verifyEvidencePack(
+      validPack({
+        effectProofs: [],
+      }),
+      { project: project() },
+    );
+    expect(r.verified).toBe(false);
+    expect(r.reason).toMatch(/effectProofs|narrative|incomplete/i);
+  });
+
+  it('accepts one command supporting multiple effects', () => {
+    const r = verifyEvidencePack(
+      validPack({
+        declaredEffects: ['write-contract', 'write-tests'],
+        actualEffects: ['write-contract', 'write-tests'],
+        effectProofs: [
+          {
+            effectId: 'write-contract',
+            provenBy: [{ kind: 'command', ref: 'cmd-diff' }],
+          },
+          {
+            effectId: 'write-tests',
+            provenBy: [{ kind: 'command', ref: 'cmd-diff' }],
+          },
+        ],
+      }),
+      { project: project() },
+    );
+    expect(r.verified).toBe(true);
+  });
+
+  it('accepts multiple commands supporting one effect', () => {
+    const r = verifyEvidencePack(
+      validPack({
+        commandsRun: [
+          { id: 'cmd-diff', command: 'git diff --stat', exitCode: 0, outputHash: 'c'.repeat(64) },
+          { id: 'cmd-status', command: 'git status', exitCode: 0, outputHash: 'd'.repeat(64) },
+        ],
+        effectProofs: [
+          {
+            effectId: 'write-test-file',
+            provenBy: [
+              { kind: 'command', ref: 'cmd-diff' },
+              { kind: 'command', ref: 'cmd-status' },
+              { kind: 'test', ref: 'tst-unit' },
+            ],
+          },
+        ],
+      }),
+      { project: project() },
+    );
+    expect(r.verified).toBe(true);
+  });
+
+  it('remains compatible with a complete valid evidence pack', () => {
+    const parsed = parseEvidencePack(validPack());
+    const r = verifyEvidencePack(parsed, { project: project() });
+    expect(r.verified).toBe(true);
+    expect(parsed.effectProofs[0].provenBy.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('accepts artifact-linked proof when hash matches diffHash', () => {
+    const r = verifyEvidencePack(
+      validPack({
+        effectProofs: [
+          {
+            effectId: 'write-test-file',
+            provenBy: [
+              { kind: 'artifact', ref: 'art-diff' },
+              { kind: 'test', ref: 'tst-unit' },
+            ],
+          },
+        ],
+      }),
+      { project: project() },
+    );
     expect(r.verified).toBe(true);
   });
 });
