@@ -47,3 +47,14 @@ git revert -m 1 370f920
 One small real Atlas self-improvement task in isolated ANUS worktree: ≤5 files, no production effects, one Cursor + one ChatGPT review, max one repair, spine verify, CEO receipt, &lt;1h wall clock.
 
 **ATLAS COURIER LOOP v0 MERGED AND VERIFIED**
+
+## Verification (post-merge)
+
+- Focused: courier negatives + core-spine + hands + state-writer-inventory **PASS**
+- Full suite excluding env-broken `m10-install-lifecycle` / `e2e-binary` (missing `tsup`): **143 files / 1390 pass**
+- `m10` / `e2e-binary`: pre-existing missing `tsup` — not a courier regression
+- Runners remain Disabled; no daemon; no push/deploy
+
+**Merge:** `370f920` · **Post-merge fix tip:** `0c0876c` on `codex/atlas-cost-router-design`
+
+**ATLAS COURIER LOOP v0 MERGED AND VERIFIED**
