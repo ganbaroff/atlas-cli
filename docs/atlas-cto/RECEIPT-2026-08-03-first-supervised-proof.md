@@ -7,7 +7,8 @@
 **Code commit:** `9b163114b66a1434860d79ec97b23682488e7401`  
 **Base:** `7a43a49d432f00115b00012fad2b038f8fee316e`  
 **Merge commit:** `5a9eafbf9a7e76efd96171a347ebaf19896e41f0`  
-**Canonical branch:** `codex/atlas-cost-router-design`
+**Post-merge docs tip:** `6efe46ab34ff8268b1d91c62e338026f88ff63e5` (CHG/receipt/DEBT close)  
+**Canonical branch:** `codex/atlas-cost-router-design` @ `6efe46a`
 
 ## Ancestry
 
