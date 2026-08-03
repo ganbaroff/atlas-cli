@@ -1,0 +1,69 @@
+{
+  "originalCeoMessage": "Проведи полный анализ integronix.az. Ничего не меняй. Определи, чего не хватает сайту, включая фотографии, доверие, тексты, мобильную версию и конверсию.",
+  "interpretedObjective": "Read-only audit of integronix.az: identify site gaps (photos, trust, copy, mobile, conversion) without changing anything",
+  "selectedProject": {
+    "projectId": "prj_integronix",
+    "name": "Integronix"
+  },
+  "projectPath": null,
+  "relevantCanonicalMemorySources": [
+    "C:\\Projects\\VOLAURA\\memory\\atlas\\CEO-PROJECT-MAP.md#integronix",
+    "C:\\Projects\\VOLAURA\\memory\\atlas\\CURRENT-COMPACT.md"
+  ],
+  "requestedOutcome": "Written gap analysis with evidence citations; zero site mutations",
+  "allowedActions": [
+    "memory-read",
+    "web-observe-readonly",
+    "report-write-quarantine",
+    "screenshot-readonly"
+  ],
+  "forbiddenActions": [
+    "production-write",
+    "deploy",
+    "dns-change",
+    "credential-access",
+    "payment",
+    "delete-data",
+    "invent-project-facts",
+    "second-planner",
+    "second-task-graph",
+    "code-write"
+  ],
+  "riskLevel": "low",
+  "approvalRequirements": [],
+  "completionCriteria": [
+    "Gap list covers requested dimensions",
+    "Each claim cites observation or canon memory",
+    "No production or site changes performed"
+  ],
+  "evidenceRequirements": [
+    "diff-or-observation-log",
+    "command-exit-hashes",
+    "memory-source-citations",
+    "no-mutation-proof"
+  ],
+  "unresolvedAssumptions": [
+    "No verified live repository path — audit is external/read-only observation only",
+    "Live production state is unverified — conclusions must say so"
+  ],
+  "recommendedNextWorkflow": "courier-loop-readonly-audit",
+  "status": "ready",
+  "facts": [
+    "Integronix is a separate B2B/B2G security-systems maintenance business in Baku",
+    "CEO-PROJECT-MAP marks Integronix as UNVERIFIED / maintenance",
+    "Only an archived audit root was located at C:\\Projects\\_archive\\integronix-audit",
+    "June Atlas registry and domain alarms are too stale to claim current production state"
+  ],
+  "assumptions": [
+    "No verified live repository path — audit is external/read-only observation only",
+    "CEO forbade changes — treat all work as observe/report",
+    "Audit dimensions include photos, trust signals, copy, mobile UX, and conversion (inferred from CEO wording)"
+  ],
+  "conciseCeoSummary": "Integronix: Read-only audit of integronix.az: identify site gaps (photos, trust, copy, mobile, conversion) without changing anything Status ready, risk low.",
+  "memoryConflicts": [
+    "Historical domain-alarm notes conflict with current UNVERIFIED status — do not treat alarms as live production truth"
+  ],
+  "staleMemoryWarnings": [
+    "Production owner, deployment, DNS, RFQ, email, WAF, monitoring are not currently verified"
+  ]
+}
