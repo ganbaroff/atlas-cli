@@ -1,10 +1,11 @@
 # CHG-2026-08-03 — Atlas Goal Intake v0
 
-**Status:** COMPLETE — awaiting CEO receipt (merge HOLD until CEO ACCEPT)  
+**Status:** MERGED AND VERIFIED (CEO ACCEPT+MERGE 2026-08-04)  
 **Capability:** `ATLAS GOAL INTAKE v0`  
 **Branch:** `atlas/goal-intake-v0-2026-08-03`  
-**Commits:** `f9ba24d` (feat) → `ac83be3` (repair)  
+**Commits:** `f9ba24d` (feat) → `ac83be3` (repair) → `628b9b2` (docs)  
 **Base tip:** `0b75dae` (`codex/atlas-cost-router-design`)  
+**Merge commit:** `3e1d8d3`  
 **Courier:** Loop v0 — ChatGPT via Comet; isolated ANUS worktree
 
 ## Change (4 ≤ 5 production files)
