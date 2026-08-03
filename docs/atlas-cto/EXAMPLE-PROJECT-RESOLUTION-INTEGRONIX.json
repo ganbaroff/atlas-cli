@@ -1,6 +1,6 @@
 {
   "contractSummary": {
-    "originalCeoMessage": "Проведи полный анализ integronix.az. Ничего не меняй. Определи, чего не хватает сайту, включая фотографии, доверие, тексты, мобильную версию и конверсию.",
+    "originalCeoMessage": "Проведи полный анализ integronix.az. Ничего не меняй.",
     "interpretedObjective": "Read-only audit of integronix.az: identify site gaps (photos, trust, copy, mobile, conversion) without changing anything",
     "selectedProject": {
       "projectId": "prj_integronix",

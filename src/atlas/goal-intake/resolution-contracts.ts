@@ -37,26 +37,65 @@ export const alternativeMatchSchema = z.object({
   reason: z.string().min(1),
 });
 
-export const atlasProjectResolutionSchema = z.object({
-  projectId: z.string().min(1),
-  requestedProjectName: z.string().min(1),
-  aliasesMatched: z.array(z.string()),
-  status: resolutionStatusSchema,
-  /** Verified path only when READY; otherwise null — never invented. */
-  canonicalPath: z.string().nullable(),
-  pathType: resolutionPathTypeSchema,
-  repositoryRoot: z.string().nullable(),
-  gitBranch: z.string().nullable(),
-  gitHead: z.string().nullable(),
-  workingTree: z.enum(['clean', 'dirty', 'unknown', 'n/a']),
-  sourceOfTruth: z.array(z.string()).min(1),
-  alternativeMatches: z.array(alternativeMatchSchema),
-  conflicts: z.array(z.string()),
-  staleRegistryFindings: z.array(z.string()),
-  confidence: resolutionConfidenceSchema,
-  recommendedNextAction: z.string().min(1),
-  evidenceReferences: z.array(z.string()).min(1),
-});
+export const atlasProjectResolutionSchema = z
+  .object({
+    projectId: z.string().min(1),
+    requestedProjectName: z.string().min(1),
+    aliasesMatched: z.array(z.string()),
+    status: resolutionStatusSchema,
+    /** Verified path only when READY; otherwise null — never invented. */
+    canonicalPath: z.string().nullable(),
+    pathType: resolutionPathTypeSchema,
+    repositoryRoot: z.string().nullable(),
+    gitBranch: z.string().nullable(),
+    gitHead: z.string().nullable(),
+    workingTree: z.enum(['clean', 'dirty', 'unknown', 'n/a']),
+    sourceOfTruth: z.array(z.string()).min(1),
+    alternativeMatches: z.array(alternativeMatchSchema),
+    conflicts: z.array(z.string()),
+    staleRegistryFindings: z.array(z.string()),
+    confidence: resolutionConfidenceSchema,
+    recommendedNextAction: z.string().min(1),
+    evidenceReferences: z.array(z.string()).min(1),
+  })
+  .superRefine((val, ctx) => {
+    if (val.status === 'READY') {
+      if (!val.canonicalPath) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'READY requires non-null canonicalPath',
+          path: ['canonicalPath'],
+        });
+      }
+      if (val.pathType !== 'git-repository') {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'READY requires pathType git-repository',
+          path: ['pathType'],
+        });
+      }
+      if (!val.repositoryRoot) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'READY requires non-null repositoryRoot',
+          path: ['repositoryRoot'],
+        });
+      }
+      if (!val.gitHead) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'READY requires non-null gitHead',
+          path: ['gitHead'],
+        });
+      }
+    } else if (val.canonicalPath !== null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `${val.status} requires canonicalPath: null`,
+        path: ['canonicalPath'],
+      });
+    }
+  });
 
 export type AtlasProjectResolution = z.infer<typeof atlasProjectResolutionSchema>;
 

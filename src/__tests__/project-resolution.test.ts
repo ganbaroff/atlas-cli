@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest';
 import {
   interpretCeoGoal,
   parseAtlasGoalContract,
+  parseAtlasProjectResolution,
+  AtlasProjectResolutionError,
   resolveProjectPath,
   getProjectById,
   withRegistryOverrides,
@@ -395,5 +397,53 @@ describe('atlas project resolution v0', () => {
     expect(resolution.canonicalPath).toBeNull();
     // must not invent READY path from static registry alone
     expect(boundContract.projectPath).toBe(hint); // preserved prior hint, not newly invented READY path
+  });
+
+  it('16. schema rejects READY without verified git fields', () => {
+    expect(() =>
+      parseAtlasProjectResolution({
+        projectId: 'prj_x',
+        requestedProjectName: 'X',
+        aliasesMatched: [],
+        status: 'READY',
+        canonicalPath: null,
+        pathType: 'git-repository',
+        repositoryRoot: null,
+        gitBranch: null,
+        gitHead: null,
+        workingTree: 'clean',
+        sourceOfTruth: ['t'],
+        alternativeMatches: [],
+        conflicts: [],
+        staleRegistryFindings: [],
+        confidence: 'high',
+        recommendedNextAction: 'x',
+        evidenceReferences: ['e'],
+      }),
+    ).toThrow(AtlasProjectResolutionError);
+  });
+
+  it('17. schema rejects NEEDS_APPROVAL with non-null canonicalPath', () => {
+    expect(() =>
+      parseAtlasProjectResolution({
+        projectId: 'prj_x',
+        requestedProjectName: 'X',
+        aliasesMatched: [],
+        status: 'NEEDS_APPROVAL',
+        canonicalPath: 'C:\\Projects\\X',
+        pathType: 'git-repository',
+        repositoryRoot: 'C:\\Projects\\X',
+        gitBranch: 'main',
+        gitHead: 'deadbeef',
+        workingTree: 'dirty',
+        sourceOfTruth: ['t'],
+        alternativeMatches: [],
+        conflicts: [],
+        staleRegistryFindings: [],
+        confidence: 'medium',
+        recommendedNextAction: 'x',
+        evidenceReferences: ['e'],
+      }),
+    ).toThrow(/canonicalPath: null/i);
   });
 });
