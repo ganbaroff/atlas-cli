@@ -1,0 +1,56 @@
+{
+  "contractSummary": {
+    "originalCeoMessage": "Проведи полный анализ integronix.az. Ничего не меняй. Определи, чего не хватает сайту, включая фотографии, доверие, тексты, мобильную версию и конверсию.",
+    "interpretedObjective": "Read-only audit of integronix.az: identify site gaps (photos, trust, copy, mobile, conversion) without changing anything",
+    "selectedProject": {
+      "projectId": "prj_integronix",
+      "name": "Integronix"
+    },
+    "projectPathBefore": null
+  },
+  "resolution": {
+    "projectId": "prj_integronix",
+    "requestedProjectName": "Integronix",
+    "aliasesMatched": [
+      "integronix",
+      "integronix.az"
+    ],
+    "status": "BLOCKED",
+    "canonicalPath": null,
+    "pathType": "archive",
+    "repositoryRoot": null,
+    "gitBranch": null,
+    "gitHead": null,
+    "workingTree": "n/a",
+    "sourceOfTruth": [
+      "filesystem",
+      "registry",
+      "fail-closed"
+    ],
+    "alternativeMatches": [
+      {
+        "path": "C:\\Projects\\_archive\\integronix-audit",
+        "pathType": "archive",
+        "role": "archive",
+        "reason": "Archived evidence only — not an active canonical source"
+      }
+    ],
+    "conflicts": [
+      "No verified active canonical repository — archive/stale evidence insufficient for READY",
+      "Historical domain-alarm notes conflict with current UNVERIFIED status — do not treat alarms as live production truth"
+    ],
+    "staleRegistryFindings": [
+      "memory-stale: Production owner, deployment, DNS, RFQ, email, WAF, monitoring are not currently verified"
+    ],
+    "confidence": "low",
+    "recommendedNextAction": "ceo-locate-or-register-active-integronix-repo",
+    "evidenceReferences": [
+      "registry:prj_integronix",
+      "CEO-PROJECT-MAP.md#integronix + filesystem probe",
+      "C:\\Projects\\VOLAURA\\memory\\atlas\\CEO-PROJECT-MAP.md#integronix",
+      "C:\\Projects\\VOLAURA\\memory\\atlas\\CURRENT-COMPACT.md",
+      "archive:C:\\Projects\\_archive\\integronix-audit"
+    ]
+  },
+  "boundProjectPath": null
+}

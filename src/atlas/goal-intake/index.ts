@@ -8,8 +8,31 @@ export {
 } from './contracts.js';
 export {
   GOAL_INTAKE_PROJECT_REGISTRY,
+  DEFAULT_APPROVED_DISCOVERY_ROOTS,
   findProjectByAlias,
   getProjectById,
+  withRegistryOverrides,
   type RegistryProject,
+  type RegistryPathCandidate,
+  type RegistryLifecycle,
+  type RegistryPathType,
 } from './project-registry.js';
 export { interpretCeoGoal, intakeCeoGoal, type InterpretGoalInput, type BindGoalOptions } from './intake.js';
+export {
+  AtlasProjectResolutionError,
+  atlasProjectResolutionSchema,
+  parseAtlasProjectResolution,
+  type AtlasProjectResolution,
+  type ResolutionStatus,
+  type ResolutionPathType,
+} from './resolution-contracts.js';
+export {
+  resolveProjectPath,
+  bindResolution,
+  createDefaultPathProbe,
+  type PathProbe,
+  type FsEntryProbe,
+  type GitProbeResult,
+  type ResolveProjectOptions,
+  type ResolveProjectResult,
+} from './resolve-project.js';
