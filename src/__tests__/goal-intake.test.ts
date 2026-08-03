@@ -124,11 +124,12 @@ describe('atlas goal intake v0', () => {
 
   it('binds ready goal to exec-graph', () => {
     const c = intakeCeoGoal({ ceoMessage: INTEGRONIX_MSG }, { bindExecGraph: true });
-    expect(c.execGraphBinding?.goalId).toMatch(/^gol_/);
+    expect(c.execGraphBinding?.goalId).toMatch(/^gol_gi_/);
     expect(c.execGraphBinding?.taskId).toMatch(/^tsk_/);
-    // idempotent second bind uses same key — new goal ids may differ by design; task idempotencyKey stable
+    // Repeated bind must reuse the same goal/task pair (not a new goal + old task).
     const again = intakeCeoGoal({ ceoMessage: INTEGRONIX_MSG }, { bindExecGraph: true });
     expect(again.execGraphBinding?.taskId).toBe(c.execGraphBinding?.taskId);
+    expect(again.execGraphBinding?.goalId).toBe(c.execGraphBinding?.goalId);
   });
 
   it('parseAtlasGoalContract rejects empty objective', () => {

@@ -252,8 +252,10 @@ export function intakeCeoGoal(
     );
   }
 
+  // Same CEO message → same goal+task pair (deterministic goal id + task idempotencyKey).
   const key = sha8(contract.originalCeoMessage);
   const goal = createGoal({
+    id: `gol_gi_${key}`,
     title: contract.interpretedObjective.slice(0, 200),
     source: { kind: 'ceo-chat', ref: `goal-intake:${key}` },
     actor: opts.actor ?? 'atlas-goal-intake',
@@ -274,8 +276,9 @@ export function intakeCeoGoal(
     idempotencyKey: `goal-intake:${key}`,
   });
 
+  // Prefer task.goalId so a deduped task never binds to a freshly-created orphan goal.
   return parseAtlasGoalContract({
     ...contract,
-    execGraphBinding: { goalId: goal.id, taskId: task.id },
+    execGraphBinding: { goalId: task.goalId, taskId: task.id },
   });
 }
