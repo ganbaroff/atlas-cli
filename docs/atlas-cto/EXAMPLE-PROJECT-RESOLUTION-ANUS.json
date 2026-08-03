@@ -1,0 +1,54 @@
+{
+  "contractSummary": {
+    "originalCeoMessage": "Сделай read-only обзор Atlas brain / ANUS, ничего не меняй",
+    "interpretedObjective": "Сделай read-only обзор Atlas brain / ANUS, ничего не меняй",
+    "selectedProject": {
+      "projectId": "prj_anus_atlas",
+      "name": "ANUS / Atlas brain"
+    },
+    "projectPathBefore": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS"
+  },
+  "resolution": {
+    "projectId": "prj_anus_atlas",
+    "requestedProjectName": "ANUS / Atlas brain",
+    "aliasesMatched": [
+      "anus",
+      "atlas",
+      "atlas brain"
+    ],
+    "status": "READY",
+    "canonicalPath": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS",
+    "pathType": "git-repository",
+    "repositoryRoot": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS",
+    "gitBranch": "codex/atlas-cost-router-design",
+    "gitHead": "6106029edf837a232ad6b1ff60aaf90689e792b5",
+    "workingTree": "clean",
+    "sourceOfTruth": [
+      "filesystem",
+      "git",
+      "registry"
+    ],
+    "alternativeMatches": [
+      {
+        "path": "C:\\Projects\\ATLAS",
+        "pathType": "git-repository",
+        "role": "workspace-shell",
+        "reason": "ATLAS workspace/shell — distinct remote; not ANUS canon"
+      }
+    ],
+    "conflicts": [],
+    "staleRegistryFindings": [],
+    "confidence": "high",
+    "recommendedNextAction": "proceed-with-bound-goal-contract",
+    "evidenceReferences": [
+      "registry:prj_anus_atlas",
+      "CEO-PROJECT-MAP + local git remotes",
+      "C:\\Projects\\VOLAURA\\memory\\atlas\\bootstrap.md",
+      "C:\\Projects\\VOLAURA\\memory\\atlas\\CURRENT-COMPACT.md",
+      "verified-path:C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS",
+      "git-head:6106029edf837a232ad6b1ff60aaf90689e792b5",
+      "remote:https://github.com/ganbaroff/atlas-cli.git"
+    ]
+  },
+  "boundProjectPath": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS"
+}
