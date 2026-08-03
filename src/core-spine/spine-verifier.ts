@@ -3,6 +3,7 @@
  * Pure: no LLM, no network, no task-state writes.
  *
  * Fail-closed: project contract is REQUIRED (adapter allowlist always applied).
+ * Effects must be explicitly linked to successful commands/tests/artifacts.
  */
 import { parseEvidencePack, type EvidencePack } from './evidence-pack-contract.js';
 import type { ProjectAgentContract } from './project-agent-contract.js';
@@ -57,6 +58,102 @@ function checkCommandList(
   return null;
 }
 
+function indexById<T extends { id: string }>(items: T[]): Map<string, T> {
+  return new Map(items.map((i) => [i.id, i]));
+}
+
+/**
+ * Every actual effect must cite ≥1 prove-ref that exists and (for commands/tests)
+ * completed successfully. Failed/skipped commands cannot prove effects.
+ */
+function checkEffectProofs(pack: EvidencePack): SpineVerifyResult | null {
+  if (!pack.effectProofs || pack.effectProofs.length === 0) {
+    return { verified: false, reason: 'narrative-only effect evidence: effectProofs required' };
+  }
+
+  const commands = indexById(pack.commandsRun);
+  const tests = indexById(pack.testCommands);
+  const artifacts = indexById(pack.artifacts);
+  const actual = new Set(pack.actualEffects);
+  const proven = new Set<string>();
+
+  for (const proof of pack.effectProofs) {
+    if (!actual.has(proof.effectId)) {
+      return {
+        verified: false,
+        reason: `orphan effect proof: ${proof.effectId} not in actualEffects`,
+      };
+    }
+    if (!proof.provenBy || proof.provenBy.length === 0) {
+      return {
+        verified: false,
+        reason: `narrative-only effect evidence: ${proof.effectId} has empty provenBy`,
+      };
+    }
+
+    for (const ref of proof.provenBy) {
+      if (ref.kind === 'command') {
+        const cmd = commands.get(ref.ref);
+        if (!cmd) {
+          return { verified: false, reason: `missing command reference: ${ref.ref}` };
+        }
+        if (cmd.skipped) {
+          return {
+            verified: false,
+            reason: `skipped command cannot prove effect ${proof.effectId}: ${ref.ref}`,
+          };
+        }
+        if (cmd.exitCode !== 0) {
+          return {
+            verified: false,
+            reason: `failed command cannot prove effect ${proof.effectId}: ${ref.ref} (exit ${cmd.exitCode})`,
+          };
+        }
+      } else if (ref.kind === 'test') {
+        const t = tests.get(ref.ref);
+        if (!t) {
+          return { verified: false, reason: `missing test reference: ${ref.ref}` };
+        }
+        if (t.skipped) {
+          return {
+            verified: false,
+            reason: `skipped test cannot prove effect ${proof.effectId}: ${ref.ref}`,
+          };
+        }
+        if (t.exitCode !== 0) {
+          return {
+            verified: false,
+            reason: `failed test cannot prove effect ${proof.effectId}: ${ref.ref} (exit ${t.exitCode})`,
+          };
+        }
+      } else if (ref.kind === 'artifact') {
+        const art = artifacts.get(ref.ref);
+        if (!art) {
+          return { verified: false, reason: `missing artifact reference: ${ref.ref}` };
+        }
+        if (art.kind === 'diff' && art.hash && art.hash.toLowerCase() !== pack.diffHash.toLowerCase()) {
+          return {
+            verified: false,
+            reason: `artifact ${ref.ref} hash mismatch vs pack.diffHash`,
+          };
+        }
+      }
+    }
+    proven.add(proof.effectId);
+  }
+
+  for (const effectId of pack.actualEffects) {
+    if (!proven.has(effectId)) {
+      return {
+        verified: false,
+        reason: `orphan declared effect: ${effectId} has no effectProof`,
+      };
+    }
+  }
+
+  return null;
+}
+
 export function verifyEvidencePack(
   input: unknown,
   opts: SpineVerifyOptions,
@@ -75,8 +172,8 @@ export function verifyEvidencePack(
     };
   }
 
-  if (pack.commandsRun.length === 0 && pack.testCommands.length === 0) {
-    return { verified: false, reason: 'missing evidence: no commands or tests recorded' };
+  if (pack.commandsRun.length === 0 && pack.testCommands.length === 0 && pack.artifacts.length === 0) {
+    return { verified: false, reason: 'missing evidence: no commands, tests, or artifacts recorded' };
   }
 
   try {
@@ -97,29 +194,8 @@ export function verifyEvidencePack(
     };
   }
 
-  // Every actual effect must be backed by at least one recorded command or test
-  // (string containment is the minimal link without a second evidence store).
-  for (const effect of pack.actualEffects) {
-    const covered = [...pack.commandsRun, ...pack.testCommands].some((c) =>
-      c.command.toLowerCase().includes(effect.toLowerCase().slice(0, 12)) ||
-      effect.toLowerCase().includes('write') ||
-      effect.toLowerCase().includes('test'),
-    );
-    // Stronger rule: require non-empty records already; additionally reject
-    // effects that look like unlogged network/push without any command mention.
-    if (/push|deploy|network|curl|wget/i.test(effect)) {
-      const mentioned = [...pack.commandsRun, ...pack.testCommands].some((c) =>
-        new RegExp(effect.split(/[^a-z0-9]+/i)[0] ?? effect, 'i').test(c.command),
-      );
-      if (!mentioned) {
-        return {
-          verified: false,
-          reason: `unrecorded command/effect: ${effect}`,
-        };
-      }
-    }
-    void covered;
-  }
+  const linkFail = checkEffectProofs(pack);
+  if (linkFail) return linkFail;
 
   const cmdFail = checkCommandList('commands', pack.commandsRun);
   if (cmdFail) return cmdFail;
