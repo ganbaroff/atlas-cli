@@ -170,7 +170,9 @@ async function main(): Promise<void> {
   let tamperCheck: ReturnType<typeof runTamperRejectCheck> | { skipped: string } = {
     skipped: 'receipt not verified; tamper-reject check only runs on a verified receipt',
   };
-  if (receipt.verifierResult?.verified === true) {
+  const deterministicVerified =
+    receipt.deterministicVerdict?.verified === true || receipt.verifierResult?.verified === true;
+  if (deterministicVerified) {
     tamperCheck = runTamperRejectCheck();
     writeFileSync(join(EVIDENCE, 'TAMPER-REJECT-CHECK.json'), JSON.stringify(tamperCheck, null, 2), 'utf8');
   }
@@ -182,6 +184,10 @@ async function main(): Promise<void> {
         goRepairReject: receipt.goRepairReject,
         iterationCount: receipt.iterationCount,
         verifierVerified: receipt.verifierResult.verified,
+        deterministicVerdict: receipt.deterministicVerdict,
+        reviewerStatus: receipt.reviewerStatus,
+        finalStatus: receipt.finalStatus,
+        repairsApplied: receipt.repairsApplied,
         yusifCourierActions: receipt.yusifCourierActions,
         errors: receipt.errors,
         tamperCheck,
