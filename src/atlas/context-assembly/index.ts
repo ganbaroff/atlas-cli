@@ -24,3 +24,10 @@ export {
   type ContextSourceReader,
   type SourceReadResult,
 } from './assemble.js';
+export {
+  runGoalContext,
+  type GoalContextEnvelope,
+  type GoalContextFinalStatus,
+  type RunGoalContextOptions,
+  type RunGoalContextResult,
+} from './pipeline.js';
