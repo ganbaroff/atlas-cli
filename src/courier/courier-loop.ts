@@ -74,6 +74,7 @@ export type ReviewerStatus =
 
 export type CourierFinalStatus =
   | 'VERIFIED_WITH_ADVISORY_ACCEPT'
+  | 'VERIFIED_WITH_ADVISORY_REJECT'
   | 'VERIFIED_WITH_ADVISORY_REPAIR_APPLIED'
   | 'VERIFIED_WITHOUT_ADVISORY_REVIEW'
   | 'REJECT';
@@ -689,9 +690,11 @@ export async function runCourierLoop(config: CourierLoopConfig): Promise<Courier
     ? 'REJECT'
     : repairsApplied > 0
       ? 'VERIFIED_WITH_ADVISORY_REPAIR_APPLIED'
-      : reviewerStatus === 'ADVISORY_ACCEPT' || reviewerStatus === 'ADVISORY_REJECT'
+      : reviewerStatus === 'ADVISORY_ACCEPT'
         ? 'VERIFIED_WITH_ADVISORY_ACCEPT'
-        : 'VERIFIED_WITHOUT_ADVISORY_REVIEW';
+        : reviewerStatus === 'ADVISORY_REJECT'
+          ? 'VERIFIED_WITH_ADVISORY_REJECT'
+          : 'VERIFIED_WITHOUT_ADVISORY_REVIEW';
 
   const finalDiffHash = sha256(finalDiff || 'EMPTY_DIFF');
   const stopped = !verifierResult.verified;

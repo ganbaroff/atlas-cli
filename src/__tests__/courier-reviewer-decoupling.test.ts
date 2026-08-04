@@ -170,6 +170,22 @@ function repairReview(instruction = 'Tighten bound in src/counter.js') {
   };
 }
 
+function rejectReview() {
+  return {
+    adapterId: CHATGPT_BROWSER_REVIEWER_ADAPTER_ID,
+    verdict: 'REJECT' as const,
+    repairInstruction: null,
+    responseText: 'VERDICT: REJECT',
+    responseHash: 'a'.repeat(64),
+    submittedMessageHash: '2'.repeat(64),
+    screenshotPath: null,
+    timestamps: { startedAt: new Date().toISOString(), completedAt: new Date().toISOString() },
+    browserErrors: [],
+    loginRequired: false,
+    emptyOrDuplicate: false,
+  };
+}
+
 /** Malformed reviewer response — parses to a null verdict (no VERDICT: line matched). */
 function malformedReview() {
   return {
@@ -324,6 +340,25 @@ describe('courier reviewer/verifier decoupling — RED (target contract not yet 
     expect(pack.commandsRun.length).toBeGreaterThan(0);
     expect(computeEvidenceHash(pack)).toBe(pack.collectedEvidenceHash);
     expect(Object.isFrozen(pack.commandsRun)).toBe(true);
+  });
+
+  it('R9: deterministic verified true + reviewer REJECT (advisory) -> honest finalStatus, never claims ACCEPT', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'atlas-courier-r9-'));
+    const ws = makeGoodWorkspace(dir);
+    const cursorRunner = goodCursorRunner();
+    const chatgptReviewer = vi.fn(async () => rejectReview());
+
+    const receipt = (await runCourierLoop(
+      baseConfig(dir, ws, { cursorRunner: cursorRunner as any, chatgptReviewer: chatgptReviewer as any }),
+    )) as any;
+
+    expect(receipt.deterministicVerdict).toBeTruthy();
+    expect(receipt.deterministicVerdict?.verified).toBe(true);
+    expect(receipt.reviewerStatus).toBe('ADVISORY_REJECT');
+    // Deterministic authority holds (still a VERIFIED outcome), but the label must be honest:
+    // the reviewer rejected, so it must never read as an "accept".
+    expect(receipt.finalStatus).toMatch(/^VERIFIED/);
+    expect(receipt.finalStatus).not.toMatch(/ACCEPT/);
   });
 
   it('R8: deterministic verification runs before any reviewer call', async () => {
