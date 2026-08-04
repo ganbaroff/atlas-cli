@@ -1,0 +1,152 @@
+{
+  "schemaVersion": "atlas-capability-acceptance/v0",
+  "adr": "ADR-0010",
+  "decisionDate": "2026-08-05",
+  "northStar": "Phase1 acceptance = morning report in Russian; Phase2 = RU/AZ/EN documents via adapter",
+  "cases": [
+    {
+      "id": "V01",
+      "lane": "voice",
+      "title": "GigaAM-v3 ONNX int8 primary STT transcribes Russian fixture",
+      "criterion": "Primary STT engine is GigaAM-v3 ONNX int8 (MIT); Russian speech fixture yields non-empty transcript containing expected tokens",
+      "probe": "adapter_stt_primary",
+      "status": "UNTESTED"
+    },
+    {
+      "id": "V02",
+      "lane": "voice",
+      "title": "faster-whisper int8 fallback engages when primary unavailable",
+      "criterion": "With primary forced unavailable, fallback STT is faster-whisper int8 and still returns Russian transcript",
+      "probe": "adapter_stt_fallback",
+      "status": "UNTESTED"
+    },
+    {
+      "id": "V03",
+      "lane": "voice",
+      "title": "Silero VAD distinguishes speech vs silence",
+      "criterion": "Silero VAD marks speech fixture as speech and silence fixture as non-speech",
+      "probe": "adapter_vad",
+      "status": "UNTESTED"
+    },
+    {
+      "id": "V04",
+      "lane": "voice",
+      "title": "Silero TTS v5_4_ru synthesizes Russian morning-report line",
+      "criterion": "TTS model id is v5_4_ru; input Russian sentence produces non-empty wav/pcm audio bytes",
+      "probe": "adapter_tts",
+      "status": "UNTESTED"
+    },
+    {
+      "id": "V05",
+      "lane": "voice",
+      "title": "Push-to-talk path: audio in to text out via FastAPI",
+      "criterion": "POST push-to-talk endpoint accepts short wav and returns text; wake-word path not required",
+      "probe": "adapter_ptt",
+      "status": "UNTESTED"
+    },
+    {
+      "id": "V06",
+      "lane": "voice",
+      "title": "Adapter is not a brain (no scheduler / task authority)",
+      "criterion": "Health/metadata advertises adapter-only; no cron, no exec-graph writes, no second task queue",
+      "probe": "adapter_no_brain",
+      "status": "UNTESTED"
+    },
+    {
+      "id": "V07",
+      "lane": "voice",
+      "title": "atlas-cli can call local voice adapter HTTP contract",
+      "criterion": "Documented CLI or client module reaches local FastAPI base URL and parses JSON transcript envelope",
+      "probe": "cli_voice_client",
+      "status": "UNTESTED"
+    },
+    {
+      "id": "V08",
+      "lane": "voice",
+      "title": "Morning report Russian round-trip (north-star acceptance)",
+      "criterion": "Sample morning-report Russian text -> TTS -> STT recovers meaning-equivalent Russian (human or CER threshold TBD)",
+      "probe": "morning_report_roundtrip",
+      "status": "UNTESTED"
+    },
+    {
+      "id": "V09",
+      "lane": "voice",
+      "title": "Cloud fallback order Riva/NIM then Azure F0; sensitive stays local",
+      "criterion": "Non-sensitive path may use NVIDIA Riva/NIM then Azure Speech F0; sensitive flag forces local-only and never uploads audio",
+      "probe": "cloud_fallback_policy",
+      "status": "UNTESTED"
+    },
+    {
+      "id": "V10",
+      "lane": "voice",
+      "title": "Voice stack fits RTX 5060 8GB without OOM",
+      "criterion": "Loading declared voice models alone does not OOM on 8GB; peak VRAM recorded in evidence",
+      "probe": "voice_vram_budget",
+      "status": "UNTESTED"
+    },
+    {
+      "id": "O01",
+      "lane": "documents",
+      "title": "Python 3.12 venv required (reject 3.14 as primary)",
+      "criterion": "Documents adapter runtime is Python 3.12.x; harness fails closed if only 3.14+ without 3.12",
+      "probe": "python312_venv",
+      "status": "UNTESTED"
+    },
+    {
+      "id": "O02",
+      "lane": "documents",
+      "title": "PaddleOCR-VL 1.6 HF Transformers backend loads",
+      "criterion": "PaddleOCR-VL 1.6 via HF Transformers initializes and OCRs a RU fixture page",
+      "probe": "paddleocr_vl_load",
+      "status": "UNTESTED"
+    },
+    {
+      "id": "O03",
+      "lane": "documents",
+      "title": "PP-StructureV3 extracts table from fixture",
+      "criterion": "Table fixture yields structured rows/columns (not empty) via PP-StructureV3",
+      "probe": "pp_structure_v3_table",
+      "status": "UNTESTED"
+    },
+    {
+      "id": "O04",
+      "lane": "documents",
+      "title": "Tesseract rus+aze+eng CPU fallback works",
+      "criterion": "With primary OCR forced down, Tesseract with rus+aze+eng returns text for multilingual fixture",
+      "probe": "tesseract_fallback",
+      "status": "UNTESTED"
+    },
+    {
+      "id": "O05",
+      "lane": "documents",
+      "title": "Azerbaijani diacritics preserved (EasyOCR #357 guard)",
+      "criterion": "AZ fixture with ə/ö/ğ/ş/ç/ü is not mangled relative to gold; EasyOCR must not be the engine",
+      "probe": "az_diacritics_guard",
+      "status": "UNTESTED"
+    },
+    {
+      "id": "O06",
+      "lane": "documents",
+      "title": "Documents adapter matches Voice adapter pattern",
+      "criterion": "FastAPI sidecar + atlas-cli client; no own scheduler/brain",
+      "probe": "docs_adapter_pattern",
+      "status": "UNTESTED"
+    },
+    {
+      "id": "O07",
+      "lane": "documents",
+      "title": "Combined Voice+Documents disk budget ~5GB",
+      "criterion": "Measured on-disk model/runtime assets for both phases ≤ ~5GB (or CEO-approved override receipt)",
+      "probe": "disk_budget_5gb",
+      "status": "UNTESTED"
+    },
+    {
+      "id": "O08",
+      "lane": "documents",
+      "title": "Voice+OCR VRAM contention fail-closed on 8GB",
+      "criterion": "Simultaneous load either serialises or refuses with clear error; no silent dual-OOM on RTX 5060 8GB",
+      "probe": "vram_contention_gate",
+      "status": "UNTESTED"
+    }
+  ]
+}
