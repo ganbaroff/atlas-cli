@@ -487,10 +487,17 @@ export function assembleContextPack(
   const externalTarget =
     selectedSources.find((s) => s.authority === 'external-readonly-target')?.pathOrUrl ?? null;
 
-  const projectExecutionReady = resolution.status === 'READY' && !!resolution.canonicalPath;
+  // Git canon READY is not the same as production/implementation execution authority.
+  // Integronix stays exec-gated while deploy/production-write remain forbidden.
+  const implementationGated =
+    projectId === 'prj_integronix' &&
+    (contract.forbiddenActions.includes('deploy') ||
+      contract.forbiddenActions.includes('production-write'));
+  const projectExecutionReady =
+    resolution.status === 'READY' && !!resolution.canonicalPath && !implementationGated;
   const readOnlyTargetReady =
     readOnly &&
-    (projectExecutionReady ||
+    ((resolution.status === 'READY' && !!resolution.canonicalPath) ||
       (!!externalTarget && resolution.status !== 'NEEDS_APPROVAL' && projectId !== 'prj_unknown'));
 
   let planningStatus: AtlasContextPack['planningStatus'] = 'BLOCKED';
@@ -502,11 +509,20 @@ export function assembleContextPack(
     blockers.push('Unknown project identity');
   } else if (readOnly && externalTarget && !projectExecutionReady) {
     planningStatus = 'READY_TO_PLAN';
-    confidence = 'medium';
-    assumptions.push(
-      'READ-ONLY TARGET READY for audit planning; PROJECT EXECUTION remains blocked until repository authority resolves',
-    );
-    blockers.push('PROJECT EXECUTION NOT READY — repository unresolved');
+    confidence = resolution.status === 'READY' ? 'high' : 'medium';
+    if (resolution.status === 'READY' && resolution.canonicalPath) {
+      assumptions.push(
+        'Git canon READY; READ-ONLY TARGET READY; production deployment and implementation remain NEEDS_APPROVAL until CEO receipt',
+      );
+      blockers.push(
+        'PROJECT EXECUTION NOT READY — production deploy / implementation CEO-gated (forbiddenActions)',
+      );
+    } else {
+      assumptions.push(
+        'READ-ONLY TARGET READY for audit planning; PROJECT EXECUTION remains blocked until repository authority resolves',
+      );
+      blockers.push('PROJECT EXECUTION NOT READY — repository unresolved');
+    }
     facts.push({
       text: 'READ-ONLY TARGET READY ≠ PROJECT EXECUTION READY',
       kind: 'constraint',

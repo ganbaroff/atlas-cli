@@ -321,16 +321,49 @@ describe('atlas project resolution v0', () => {
         git: { isGit: false, root: null, branch: null, head: null, dirty: null, remoteUrl: null },
       }),
     });
+    const reg = withRegistryOverrides(getProjectById('prj_integronix')!, {
+      projectPath: null,
+      lifecycle: 'archived',
+      projectType: 'archive',
+      expectedPathCandidates: [
+        { path: arch, role: 'archive', pathType: 'archive' },
+      ],
+    });
     const { resolution } = resolveProjectPath(
       baseContract('prj_integronix', 'Integronix', {
         originalCeoMessage: 'Анализ integronix.az, ничего не меняй',
       }),
-      { probe, approvedRoots: ROOTS },
+      { probe, registryProject: reg, approvedRoots: ROOTS },
     );
     expect(resolution.status).toBe('BLOCKED');
     expect(resolution.pathType).toBe('archive');
     expect(resolution.canonicalPath).toBeNull();
     expect(resolution.alternativeMatches.some((a) => a.pathType === 'archive')).toBe(true);
+  });
+
+  it('12b. Integronix Git canon + archive → READY on INTEGRONIX', () => {
+    const canon = 'C:\\Projects\\INTEGRONIX';
+    const arch = 'C:\\Projects\\_archive\\integronix-audit';
+    const probe = makeProbe({
+      [canon]: entry({
+        git: gitProbe({ root: canon, dirty: false, remoteUrl: null, branch: 'main', head: 'deadbeef' }),
+      }),
+      [arch]: entry({
+        pathType: 'archive',
+        git: { isGit: false, root: null, branch: null, head: null, dirty: null, remoteUrl: null },
+      }),
+    });
+    const { resolution, boundContract } = resolveProjectPath(
+      baseContract('prj_integronix', 'Integronix', {
+        originalCeoMessage: 'Анализ integronix.az, ничего не меняй',
+      }),
+      { probe, approvedRoots: ROOTS },
+    );
+    expect(resolution.status).toBe('READY');
+    expect(resolution.canonicalPath).toBe(canon);
+    expect(resolution.pathType).toBe('git-repository');
+    expect(resolution.alternativeMatches.some((a) => a.pathType === 'archive')).toBe(true);
+    expect(boundContract.projectPath).toBe(canon);
   });
 
   it('13. ANUS canon vs ATLAS workspace shell — READY on ANUS, ATLAS alternative', () => {

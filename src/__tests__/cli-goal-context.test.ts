@@ -222,23 +222,24 @@ describe('atlas goal context — isolated pipeline', () => {
 });
 
 describe('atlas goal context CLI (wiring; Integronix + fail-closed)', () => {
-  it('Integronix read-only audit ready while repo execution blocked', () => {
+  it('Integronix read-only audit ready while production/implementation execution gated', () => {
     const res = runCli(['goal', 'context', '--message', INTEGRONIX_MSG, '--json']);
     expect(res.status).toBe(0);
     const out = parseOnlyJson(res.stdout);
     expect(out.finalStatus).toBe('READY_TO_PLAN');
     expect(out.readOnlyTargetReady).toBe(true);
     expect(out.projectExecutionReady).toBe(false);
-    expect(out.projectResolution).toMatchObject({ status: 'BLOCKED', canonicalPath: null });
-    expect(String(out.recommendedNextAction)).toMatch(/readonly|EXECUTION remains blocked/i);
+    expect(out.projectResolution).toMatchObject({
+      status: 'READY',
+      pathType: 'git-repository',
+    });
+    expect(String((out.projectResolution as Record<string, unknown>).canonicalPath).replace(/\//g, '\\')).toMatch(
+      /\\Projects\\INTEGRONIX$/i,
+    );
+    expect(String(out.recommendedNextAction)).toMatch(/readonly|NEEDS_APPROVAL|CEO-gated|EXECUTION/i);
     const pack = out.contextPack as Record<string, unknown>;
     expect(pack.externalTarget).toBe('https://integronix.az/');
     expect(typeof pack.assembledAtIso).toBe('string');
-    const serialized = JSON.stringify(out);
-    const invented = serialized.match(/Projects\\\\integronix[^"\\]*/gi) ?? [];
-    for (const m of invented) {
-      expect(m.toLowerCase()).toContain('archive');
-    }
   });
 
   it('conflicting sources exposed (Integronix)', () => {

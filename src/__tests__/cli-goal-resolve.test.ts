@@ -222,21 +222,17 @@ describe('atlas goal resolve — injected probe (no live OneDrive)', () => {
 });
 
 describe('atlas goal resolve CLI (wiring; no dirtiness gate on live ANUS)', () => {
-  it('T3: Integronix resolves BLOCKED with no invented path, exit 2', () => {
+  it('T3: Integronix resolves READY to C:\\Projects\\INTEGRONIX, exit 0', () => {
     const res = runCli(['goal', 'resolve', '--message', INTEGRONIX_MSG, '--json']);
-    expect(res.status).toBe(2);
+    expect(res.status).toBe(0);
     const out = parseOnlyJson(res.stdout);
-    expect(out.finalStatus).toBe('blocked');
+    expect(out.finalStatus).toBe('ready');
     const resolution = out.projectResolution as Record<string, unknown>;
-    expect(resolution.status).toBe('BLOCKED');
-    expect(resolution.canonicalPath).toBeNull();
-    expect(typeof resolution.recommendedNextAction).toBe('string');
-    expect((resolution.recommendedNextAction as string).length).toBeGreaterThan(0);
-    const serialized = JSON.stringify(out);
-    const matches = serialized.match(/Projects\\\\integronix[^"]*/gi) ?? [];
-    for (const m of matches) {
-      expect(m.toLowerCase()).toContain('archive');
-    }
+    expect(resolution.status).toBe('READY');
+    expect(String(resolution.canonicalPath).replace(/\//g, '\\')).toMatch(/\\Projects\\INTEGRONIX$/i);
+    expect(resolution.pathType).toBe('git-repository');
+    const alts = resolution.alternativeMatches as Array<Record<string, unknown>>;
+    expect(alts.some((a) => String(a.pathType) === 'archive')).toBe(true);
   });
 
   it('T4: unknown project resolves fail-closed, exit 4', () => {
@@ -269,7 +265,7 @@ describe('atlas goal resolve CLI (wiring; no dirtiness gate on live ANUS)', () =
       stateDir: safeReaddir(STATE_DIR),
     };
     const res = runCli(['goal', 'resolve', '--message', INTEGRONIX_MSG, '--json']);
-    expect(res.status).toBe(2);
+    expect(res.status).toBe(0);
     const after = {
       status: execFileSync('git', ['status', '--porcelain=v1'], { cwd: ROOT, encoding: 'utf8' }),
       head: execFileSync('git', ['log', '-1', '--format=%H'], { cwd: ROOT, encoding: 'utf8' }).trim(),
@@ -286,8 +282,8 @@ describe('atlas goal resolve CLI (wiring; no dirtiness gate on live ANUS)', () =
     expect(b).toEqual(a);
   });
 
-  it('T8: exit codes — blocked=2, invalid=1 (Atlas READY asserted via probe suite)', () => {
-    expect(runCli(['goal', 'resolve', '--message', INTEGRONIX_MSG, '--json']).status).toBe(2);
+  it('T8: exit codes — Integronix ready=0, invalid=1 (Atlas READY asserted via probe suite)', () => {
+    expect(runCli(['goal', 'resolve', '--message', INTEGRONIX_MSG, '--json']).status).toBe(0);
     expect(runCli(['goal', 'resolve', '--message', '', '--json']).status).toBe(1);
   });
 });

@@ -50,23 +50,28 @@ export const GOAL_INTAKE_PROJECT_REGISTRY: readonly RegistryProject[] = [
   {
     projectId: 'prj_integronix',
     name: 'Integronix',
-    projectPath: null,
+    projectPath: 'C:\\Projects\\INTEGRONIX',
     aliases: ['integronix', 'integronix.az', 'интегроникс'],
     canonicalMemorySources: [
       'C:\\Projects\\VOLAURA\\memory\\atlas\\CEO-PROJECT-MAP.md#integronix',
       'C:\\Projects\\VOLAURA\\memory\\atlas\\CURRENT-COMPACT.md',
+      'C:\\Projects\\INTEGRONIX\\docs\\provenance\\PRODUCTION-BASELINE-a116b17e.md',
     ],
     knownFacts: [
       'Integronix is a separate B2B/B2G security-systems maintenance business in Baku',
-      'CEO-PROJECT-MAP marks Integronix as UNVERIFIED / maintenance',
-      'Only an archived audit root was located at C:\\Projects\\_archive\\integronix-audit',
-      'June Atlas registry and domain alarms are too stale to claim current production state',
+      'Canonical Git source is C:\\Projects\\INTEGRONIX (CEO-authorized 2026-08-05 offline import from deploy-v2)',
+      'Canonical Git source status: READY after FS+git verification',
+      'Production deployment status: NEEDS_APPROVAL (Pages tip a116b17e; no deploy from this gate)',
+      'Read-only website audit: READY',
+      'Implementation / Proof Pack in isolated worktree: NEEDS_APPROVAL until next CEO receipt',
+      'Archive C:\\Projects\\_archive\\integronix-audit remains historical evidence only',
     ],
     memoryConflicts: [
-      'Historical domain-alarm notes conflict with current UNVERIFIED status — do not treat alarms as live production truth',
+      'Historical domain-alarm notes must not override current production tip a116b17e or the INTEGRONIX Git canon',
     ],
     staleWarnings: [
-      'Production owner, deployment, DNS, RFQ, email, WAF, monitoring are not currently verified',
+      'Git canon is reconstructed — not byte-identical to production a116b17e',
+      'Dashboard rollback of prior Pages deployments remains untested',
     ],
     defaultForbiddenActions: [
       'production-write',
@@ -76,18 +81,25 @@ export const GOAL_INTAKE_PROJECT_REGISTRY: readonly RegistryProject[] = [
       'payment',
       'delete-data',
     ],
-    projectType: 'archive',
-    lifecycle: 'archived',
+    projectType: 'git-repository',
+    lifecycle: 'active',
     expectedPathCandidates: [
+      {
+        path: 'C:\\Projects\\INTEGRONIX',
+        role: 'canonical',
+        pathType: 'git-repository',
+        note: 'CEO-authorized Git canon (2026-08-05) — deploy remains gated',
+      },
       {
         path: 'C:\\Projects\\_archive\\integronix-audit',
         role: 'archive',
         pathType: 'archive',
-        note: 'Archived audit root only — not an active product repo',
+        note: 'Historical audit/deploy bundles only — not canonical',
       },
     ],
-    verificationTimestamp: '2026-07-10T00:00:00.000Z',
-    evidenceSource: 'CEO-PROJECT-MAP.md#integronix + filesystem probe',
+    verificationTimestamp: '2026-08-05T00:00:00.000Z',
+    evidenceSource:
+      'CEO canon creation 2026-08-05 + integronix-source-reconciliation-2026-08-05 + FS/git probe',
   },
   {
     projectId: 'prj_anus_atlas',

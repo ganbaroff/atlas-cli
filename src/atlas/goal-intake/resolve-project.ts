@@ -426,49 +426,60 @@ export function resolveProjectPath(
     return { resolution, boundContract: bindResolution(contract, resolution) };
   }
 
-  // Active vs archive conflict
+  // Active vs archive: conflict only when canon is ambiguous.
+  // CEO-registered single role=canonical git + role=archive alternatives → proceed to READY path.
   if (gitCanonicals.length >= 1 && archiveHits.length >= 1) {
     const primary = gitCanonicals[0]!;
-    const resolution = parseAtlasProjectResolution({
-      projectId: project.projectId,
-      requestedProjectName: project.name,
-      aliasesMatched: matched,
-      status: 'NEEDS_APPROVAL',
-      canonicalPath: null,
-      pathType: 'git-repository',
-      repositoryRoot: primary.probe.git.root,
-      gitBranch: primary.probe.git.branch,
-      gitHead: primary.probe.git.head,
-      workingTree: primary.probe.git.dirty ? 'dirty' : 'clean',
-      sourceOfTruth: ['filesystem', 'git', 'registry'],
-      alternativeMatches: [
-        {
-          path: primary.path,
-          pathType: 'git-repository',
-          role: 'canonical-candidate',
-          reason: 'Active git repository',
-        },
-        ...archiveHits.map((h) => ({
-          path: h.path,
-          pathType: 'archive' as const,
-          role: 'archive',
-          reason: 'Archived copy also present',
-        })),
-      ],
-      conflicts: [
-        'Active repository and archived copy both present — confirm which is authority',
-        ...conflicts,
-      ],
-      staleRegistryFindings: staleFindings,
-      confidence: 'medium',
-      recommendedNextAction: 'ceo-confirm-active-vs-archive-authority',
-      evidenceReferences: [
-        ...evidence,
-        `active:${primary.path}`,
-        ...archiveHits.map((h) => `archive:${h.path}`),
-      ],
-    });
-    return { resolution, boundContract: bindResolution(contract, resolution) };
+    const unambiguousCanon =
+      project.projectId === 'prj_integronix' &&
+      gitCanonicals.length === 1 &&
+      primary.candidate?.role === 'canonical' &&
+      archiveHits.every(
+        (h) => h.candidate?.role === 'archive' || h.candidate?.role == null || h.probe.pathType === 'archive',
+      ) &&
+      !archiveHits.some((h) => h.candidate?.role === 'canonical');
+    if (!unambiguousCanon) {
+      const resolution = parseAtlasProjectResolution({
+        projectId: project.projectId,
+        requestedProjectName: project.name,
+        aliasesMatched: matched,
+        status: 'NEEDS_APPROVAL',
+        canonicalPath: null,
+        pathType: 'git-repository',
+        repositoryRoot: primary.probe.git.root,
+        gitBranch: primary.probe.git.branch,
+        gitHead: primary.probe.git.head,
+        workingTree: primary.probe.git.dirty ? 'dirty' : 'clean',
+        sourceOfTruth: ['filesystem', 'git', 'registry'],
+        alternativeMatches: [
+          {
+            path: primary.path,
+            pathType: 'git-repository',
+            role: 'canonical-candidate',
+            reason: 'Active git repository',
+          },
+          ...archiveHits.map((h) => ({
+            path: h.path,
+            pathType: 'archive' as const,
+            role: 'archive',
+            reason: 'Archived copy also present',
+          })),
+        ],
+        conflicts: [
+          'Active repository and archived copy both present — confirm which is authority',
+          ...conflicts,
+        ],
+        staleRegistryFindings: staleFindings,
+        confidence: 'medium',
+        recommendedNextAction: 'ceo-confirm-active-vs-archive-authority',
+        evidenceReferences: [
+          ...evidence,
+          `active:${primary.path}`,
+          ...archiveHits.map((h) => `archive:${h.path}`),
+        ],
+      });
+      return { resolution, boundContract: bindResolution(contract, resolution) };
+    }
   }
 
   // Documentation-only only

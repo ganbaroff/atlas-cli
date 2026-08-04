@@ -15,42 +15,41 @@
       "integronix",
       "integronix.az"
     ],
-    "status": "BLOCKED",
-    "canonicalPath": null,
-    "pathType": "archive",
-    "repositoryRoot": null,
-    "gitBranch": null,
-    "gitHead": null,
-    "workingTree": "n/a",
+    "status": "READY",
+    "canonicalPath": "C:\\Projects\\INTEGRONIX",
+    "pathType": "git-repository",
+    "repositoryRoot": "C:\\Projects\\INTEGRONIX",
+    "gitBranch": "main",
+    "gitHead": "(verified at resolve time)",
+    "workingTree": "clean",
     "sourceOfTruth": [
       "filesystem",
-      "registry",
-      "fail-closed"
+      "git",
+      "registry"
     ],
     "alternativeMatches": [
       {
         "path": "C:\\Projects\\_archive\\integronix-audit",
         "pathType": "archive",
         "role": "archive",
-        "reason": "Archived evidence only — not an active canonical source"
+        "reason": "Archive present but not selected as canon"
       }
     ],
-    "conflicts": [
-      "No verified active canonical repository — archive/stale evidence insufficient for READY",
-      "Historical domain-alarm notes conflict with current UNVERIFIED status — do not treat alarms as live production truth"
-    ],
-    "staleRegistryFindings": [
-      "memory-stale: Production owner, deployment, DNS, RFQ, email, WAF, monitoring are not currently verified"
-    ],
-    "confidence": "low",
-    "recommendedNextAction": "ceo-locate-or-register-active-integronix-repo",
+    "conflicts": [],
+    "staleRegistryFindings": [],
+    "confidence": "high",
+    "recommendedNextAction": "proceed-with-bound-goal-contract",
     "evidenceReferences": [
       "registry:prj_integronix",
-      "CEO-PROJECT-MAP.md#integronix + filesystem probe",
-      "C:\\Projects\\VOLAURA\\memory\\atlas\\CEO-PROJECT-MAP.md#integronix",
-      "C:\\Projects\\VOLAURA\\memory\\atlas\\CURRENT-COMPACT.md",
+      "verified-path:C:\\Projects\\INTEGRONIX",
       "archive:C:\\Projects\\_archive\\integronix-audit"
-    ]
+    ],
+    "gates": {
+      "canonicalGitSource": "READY",
+      "productionDeployment": "NEEDS_APPROVAL",
+      "readOnlyWebsiteAudit": "READY",
+      "implementationWorktree": "NEEDS_APPROVAL"
+    }
   },
-  "boundProjectPath": null
+  "boundProjectPath": "C:\\Projects\\INTEGRONIX"
 }
