@@ -6,7 +6,13 @@
 
 - Date: 2026-08-05
 - Branch: `codex/atlas-cost-router-design`
-- HEAD before this handoff commit: see `git log -1` after Phase 1 voice commit
+- HEAD before this handoff commit:
+
+```
+$ git log -1 --oneline
+803f41e feat(voice): Ship ADR-0010 Phase 1 FastAPI adapter with V01-V10 PASS
+```
+
 
 ## 2. What changed this session — files + one line each
 
