@@ -1,94 +1,68 @@
 # Cursor Handoff
 
-> Standing end-of-session ritual. This file is replaced each session, not appended to. Written by the Cursor seat after Integronix source reconciliation (read-only).
+> Standing end-of-session ritual. Replaced each session. Cursor seat — Integronix Git canon creation (offline only).
 
 ## 1. Date, branch, HEAD
 
 - Date: 2026-08-05
 - Branch: `codex/atlas-cost-router-design`
-- HEAD before this handoff commit: `0f5eb00` — `chore: cursor handoff`
+- HEAD before this handoff commit: run `git log -1 --oneline` after commit
+
+## 2. Files changed this session — one line each
+
+Integronix (separate repo `C:\Projects\INTEGRONIX`, not this commit):
+
+- Import commit `420f7ff` — deploy-v2 baseline (178 permitted files; tag `source-deploy-v2-import-2026-08-05`)
+- Docs commit `bead38f` — provenance + runtime surfaces
+- Handoff commit `e08fffe` — `docs/CURSOR-HANDOFF.md` + validation transcript
+
+ANUS (this repository):
+
+- `src/atlas/goal-intake/project-registry.ts` — Integronix → `C:\Projects\INTEGRONIX` active git canon; archive retained as alternative
+- `src/atlas/goal-intake/resolve-project.ts` — Integronix-only: explicit canon + archive → READY (not conflict)
+- `src/atlas/context-assembly/assemble.ts` — Integronix Git READY ≠ projectExecutionReady while deploy/production-write forbidden
+- `src/__tests__/project-resolution.test.ts` — archive-only still BLOCKED; new 12b READY+archive
+- `src/__tests__/cli-goal-resolve.test.ts` — Integronix READY exit 0
+- `src/__tests__/cli-goal-context.test.ts` — audit READY_TO_PLAN; execReady false; path INTEGRONIX
+- `docs/atlas-cto/EXAMPLE-PROJECT-RESOLUTION-INTEGRONIX.json` — READY example + gate distinctions
+- `docs/atlas-cto/CURSOR-HANDOFF.md` — this file
+
+## 3. Real validation output
 
 ```
-$ git log -1 --oneline
-0f5eb00 chore: cursor handoff
+$ node node_modules/vitest/vitest.mjs run src/__tests__/project-resolution.test.ts \
+  src/__tests__/cli-goal-resolve.test.ts src/__tests__/cli-goal-context.test.ts \
+  src/__tests__/context-assembly.test.ts
+Test Files  4 passed (4)
+Tests  64 passed (64)
 
-$ git branch --show-current
-codex/atlas-cost-router-design
-```
+$ git -C C:\Projects\INTEGRONIX log --oneline
+e08fffe chore: cursor handoff
+bead38f docs: add production provenance and runtime surfaces
+420f7ff chore: import deploy-v2 source baseline
 
-## 2. Files changed this session (one line each)
+$ git -C C:\Projects\INTEGRONIX status -sb
+## main
 
-ANUS repo (committed this session — handoff only):
-
-- `docs/atlas-cto/CURSOR-HANDOFF.md` — replace with Integronix source-reconciliation gate results (read-only; no code changes).
-
-Outside ANUS (evidence only; not in this git commit):
-
-- `C:\Users\user\.atlas\quarantine\evidence\integronix-source-reconciliation-2026-08-05\LOCAL-MANIFEST-DEPLOY-V2.json` — SHA-256 manifest for archive deploy-v2 (182 files).
-- `...\LOCAL-MANIFEST-SOURCE-DEPLOY.json` — SHA-256 manifest for archive source/deploy (116 files).
-- `...\LIVE-MANIFEST.json` — public crawl routes/assets/products/SEO.
-- `...\CLOUDFLARE-AUTHORITY.json` — Pages deployments + D1 schema/counts (no secrets/values).
-- `...\DRIFT-REPORT.json` — live vs deploy-v2 vs source/deploy classifications.
-- `...\SOURCE-RECONCILIATION-REPORT.md` — full gate report.
-- `...\RECEIPT.md` — session receipt.
-
-**Not modified:** `C:\Projects\_archive\integronix-audit\deploy-v2\`, `...\source\deploy\`, production, DNS, D1 rows.
-
-## 3. Real test/command output
-
-```
-$ npx wrangler pages project list
-│ Project Name │ Project Domains                                        │ Git Provider │ Last Modified │
-│ integronix   │ integronix.pages.dev, integronix.az, www.integronix.az │ No           │ 3 weeks ago   │
-
-$ npx wrangler pages deployment list --project-name=integronix --json
-(current Production entry)
-{"Id":"a116b17e-079b-4c57-b743-9d477b898d15","Environment":"Production","Branch":"main",
- "Deployment":"https://a116b17e.integronix.pages.dev","Status":"3 weeks ago"}
-
-$ npx wrangler d1 execute integronix --remote --command "SELECT ... COUNT(*) ..."
-"t":"categories","n":5
-"t":"products","n":68
-"t":"product_images","n":58
-"t":"product_docs","n":0
-"t":"product_specs","n":20
-"t":"redirects","n":0
-"t":"pub","pub_ru":68,"pub_az":0,"pub_en":0
-
-Local manifests:
-deploy-v2 fileCount=182 totalBytes=15347958 functions=34
-source/deploy fileCount=116 totalBytes=14739471
-
-Drift (hash-proven):
-a116MatchesDeployV2=False
-faffMatchesSourceDeploy=True
-homepage: LIVE_DIFFERS_FROM_DEPLOY_V2
-care/services/company: live == source/deploy, != deploy-v2
-css/js/favicon/sitemap: LIVE_MATCHES_DEPLOY_V2
-/ru/ /en/ hubs: 404; /az/: 200; EN catalogs: 404
+Import verify: matched=178 excluded=4 secret_scan=PASS
+tracked_files(after docs)=184+ at handoff tip
 ```
 
 ## 4. Known risks and broken items
 
-- No verified Integronix Git repository / production commit exists.
-- `deploy-v2` is **not** byte-identical to production tip `a116b17e`.
-- Local `deploy-v2` marketing pages (care/services/company) are **ahead of** what production still serves (prod still matches `source/deploy` for those).
-- `deploy-v2/en/*` exists locally but production `/en/` and `/en/index.html` return **404**.
-- Catalog/product HTML is D1-generated; D1 rows were not exported (by design).
-- Wrangler CLI has **no** pages deployment rollback subcommand; dashboard restore **untested**.
-- Junk must not enter Git: `functions/deploy_output.log.js`, `functions/wrangler.toml.js`, `.wrangler/`, secrets shells.
-- Cloudflare-managed robots preamble and email-protection bytes are live-only edge artifacts.
+- Production untouched; tip still `a116b17e` — canon is reconstructed, not byte-identical
+- Proof Pack / deploy / DNS / D1 writes still forbidden
+- Dashboard rollback untested
+- Archive path still exists; must not be treated as canon
 
 ## 5. Next three steps
 
-1. CEO decides whether to approve creating a **new** Integronix Git canon path (outside archive) per `RECONSTRUCT_CANON_FROM_DEPLOY_V2_AND_LIVE`.
-2. If approved: seed repo from `deploy-v2` minus junk/secrets; pin `a116b17e-079b-4c57-b743-9d477b898d15` + evidence hashes; keep D1 external; decide whether first commit keeps local-ahead HTML or aligns to prod tip.
-3. Before any deploy: prove dashboard restore of a prior deployment ID in a non-destructive dry-run / CEO-watched restore test; do not ship Proof Pack until canon + rollback gates PASS.
+1. CEO receipt on Integronix Git canon + ANUS registry update
+2. If accepted: isolated worktree for content/Proof Pack (still NEEDS_APPROVAL until GO)
+3. Separate CEO GO before any Cloudflare Pages deploy
 
-## 6. Blockers requiring CEO or orchestrator decision
+## 6. CEO/orchestrator blockers
 
-- **Approve or reject** creating Integronix Git canon (`NEEDS_APPROVAL` now).
-- **Choose alignment policy:** keep local-ahead `deploy-v2` HTML vs reset selected pages to match `a116b17e` / `source/deploy` where prod still matches old bundle.
-- **Authorize** (or forbid) any future wrangler deploy / dashboard rollback test.
-- **Authorize** optional D1 schema-only dump into canon docs (still no customer/RFQ row export without separate approval).
-- Do **not** start Proof Pack implementation or production deploy from this gate alone.
+- Accept/reject `C:\Projects\INTEGRONIX` as sole Git authority
+- Authorize implementation wave / Proof Pack
+- Authorize any production deploy or rollback test
