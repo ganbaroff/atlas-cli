@@ -93,20 +93,14 @@ async function main(): Promise<void> {
     },
   });
 
+  // Verify the ORIGINALLY collected pack, unmodified — no synthetic commandsRun
+  // substitution and no pre-stamped verifierResult. The hash gate in verifyEvidencePack
+  // now covers commandsRun/testCommands/effects/artifacts/diffHash/costRecord/
+  // rollbackState, so any such substitution is rejected fail-closed; the only honest path
+  // is to hand the verifier exactly what collectIndependentEvidence produced and read back
+  // its own returned verdict below.
   const project = buildCourierProjectContract(disp);
-  const packForVerify = {
-    ...pack,
-    commandsRun: [
-      {
-        id: 'cmd-git-diff',
-        command: 'git diff HEAD',
-        exitCode: 0,
-        outputHash: sha256(diff || 'EMPTY'),
-      },
-    ],
-    verifierResult: { verified: true, reason: 'evidence-complete', verifierId: 'spine-verifier' },
-  };
-  const verified = verifyEvidencePack(packForVerify, { project });
+  const verified = verifyEvidencePack(pack, { project });
 
   const out = {
     reviewVerdict: review.verdict,

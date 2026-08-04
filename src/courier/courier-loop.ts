@@ -217,6 +217,12 @@ export function collectIndependentEvidence(input: {
       outputHash: testHash,
     },
   ];
+  const costRecord = { provider: 'cursor-agent', tokens: 0, paid: false };
+  const rollbackState = {
+    available: true,
+    method: 'git checkout -- . && git clean -fd',
+    proven: true,
+  };
 
   const collectedEvidenceHash = computeEvidenceHash({
     commandsRun,
@@ -226,6 +232,8 @@ export function collectIndependentEvidence(input: {
     effectProofs,
     artifacts,
     diffHash,
+    costRecord,
+    rollbackState,
   });
 
   const pack = parseEvidencePack({
@@ -241,7 +249,7 @@ export function collectIndependentEvidence(input: {
     diffHash,
     commandsRun,
     testCommands,
-    costRecord: { provider: 'cursor-agent', tokens: 0, paid: false },
+    costRecord,
     collectedEvidenceHash,
     // Advisory only — the spine verifier never reads this field to decide a verdict.
     verifierResult: {
@@ -249,11 +257,7 @@ export function collectIndependentEvidence(input: {
       reason: 'pending independent verify',
       verifierId: 'spine-verifier',
     },
-    rollbackState: {
-      available: true,
-      method: 'git checkout -- . && git clean -fd',
-      proven: true,
-    },
+    rollbackState,
     ceoDecision: 'pending',
   });
 
@@ -264,6 +268,14 @@ export function collectIndependentEvidence(input: {
   return pack;
 }
 
+/**
+ * Freezes every evidence-bearing field the collector produced, including nested
+ * objects/arrays — commandsRun, testCommands, artifacts, effectProofs (+ provenBy),
+ * declaredEffects, actualEffects, costRecord, rollbackState, and verifierResult (when
+ * present) — so nothing downstream can mutate the collected records in place. Building a
+ * *different* pack (e.g. via spread) is still possible in JS, but doing so changes
+ * collectedEvidenceHash's recomputation at verify time and is caught as a hash mismatch.
+ */
 function deepFreezeEvidencePack(pack: EvidencePack): void {
   for (const c of pack.commandsRun) Object.freeze(c);
   Object.freeze(pack.commandsRun);
@@ -279,6 +291,9 @@ function deepFreezeEvidencePack(pack: EvidencePack): void {
   Object.freeze(pack.effectProofs);
   Object.freeze(pack.declaredEffects);
   Object.freeze(pack.actualEffects);
+  Object.freeze(pack.costRecord);
+  Object.freeze(pack.rollbackState);
+  if (pack.verifierResult) Object.freeze(pack.verifierResult);
   Object.freeze(pack);
 }
 

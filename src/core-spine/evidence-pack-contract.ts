@@ -179,6 +179,10 @@ export type EvidenceHashInput = {
   effectProofs: EffectProof[];
   artifacts: EvidenceArtifact[];
   diffHash: string;
+  /** Read by the verifier for its paid-spend gate — must be hash-bound (see below). */
+  costRecord: { provider: string; tokens: number; paid: boolean };
+  /** Read by the verifier for its rollback gate — must be hash-bound (see below). */
+  rollbackState: { available: boolean; method: string; proven: boolean };
 };
 
 /**
@@ -188,6 +192,9 @@ export type EvidenceHashInput = {
  * what is submitted for verification is detected as a hash mismatch, fail-closed.
  * Deterministic key order: all arrays are sorted by stable id/content before hashing so
  * that field re-ordering never changes the hash, only actual content changes do.
+ * Includes costRecord and rollbackState — verifyEvidencePack reads both from the
+ * untrusted pack for its paid-spend gate and rollback gate, so both must be hash-bound
+ * or a caller could tamper them post-collection without detection.
  */
 export function computeEvidenceHash(pack: EvidenceHashInput): string {
   const canonicalCommand = (c: CommandRun) => ({
@@ -208,6 +215,16 @@ export function computeEvidenceHash(pack: EvidenceHashInput): string {
       .map((r) => ({ kind: r.kind, ref: r.ref }))
       .sort((a, b) => `${a.kind}:${a.ref}`.localeCompare(`${b.kind}:${b.ref}`)),
   });
+  const canonicalCostRecord = (c: EvidenceHashInput['costRecord']) => ({
+    provider: c.provider,
+    tokens: c.tokens,
+    paid: c.paid,
+  });
+  const canonicalRollbackState = (r: EvidenceHashInput['rollbackState']) => ({
+    available: r.available,
+    method: r.method,
+    proven: r.proven,
+  });
 
   const canonical = {
     commandsRun: [...pack.commandsRun].map(canonicalCommand).sort((a, b) => a.id.localeCompare(b.id)),
@@ -217,6 +234,8 @@ export function computeEvidenceHash(pack: EvidenceHashInput): string {
     effectProofs: [...pack.effectProofs].map(canonicalProof).sort((a, b) => a.effectId.localeCompare(b.effectId)),
     artifacts: [...pack.artifacts].map(canonicalArtifact).sort((a, b) => a.id.localeCompare(b.id)),
     diffHash: pack.diffHash,
+    costRecord: canonicalCostRecord(pack.costRecord),
+    rollbackState: canonicalRollbackState(pack.rollbackState),
   };
 
   return createHash('sha256').update(JSON.stringify(canonical), 'utf8').digest('hex');

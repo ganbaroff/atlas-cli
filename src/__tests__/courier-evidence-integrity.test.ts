@@ -433,3 +433,45 @@ describe('T8 — happy path end-to-end: real evidence produces verified:true wit
     expect(receipt.verifierResult.verifierId).toBe('spine-verifier');
   });
 });
+
+describe('T9 — costRecord is hash-bound: post-hash tampering is caught by the hash gate', () => {
+  it('rejects a pack whose costRecord.paid was flipped after collectedEvidenceHash was stamped', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'atlas-t9-'));
+    const project = buildCourierProjectContract(dir);
+    const basePack = {
+      taskId: 'tsk_t9',
+      changeId: 'chg_t9',
+      projectId: 'prj_courier_proof_disposable',
+      baseCommit: 'a'.repeat(7),
+      executorIdentity: `${CURSOR_HEADLESS_ADAPTER_ID}@0.1.0`,
+      declaredEffects: ['e1'],
+      actualEffects: ['e1'],
+      effectProofs: [{ effectId: 'e1', provenBy: [{ kind: 'test' as const, ref: 't1' }] }],
+      artifacts: [] as never[],
+      diffHash: 'b'.repeat(64),
+      commandsRun: [] as never[],
+      testCommands: [{ id: 't1', command: 'npm test', exitCode: 0, outputHash: 'c'.repeat(64) }],
+      // Original evidence: a PAID run (tokens actually spent).
+      costRecord: { provider: 'cursor-agent', tokens: 500, paid: true },
+      rollbackState: { available: true, method: 'git checkout', proven: true },
+      ceoDecision: 'pending' as const,
+    };
+    const collectedEvidenceHash = computeEvidenceHash(basePack);
+
+    // Fabricate: flip paid:true → paid:false (to slip past the project's
+    // modelSpendPolicy.allowPaid=false gate) while keeping the ORIGINAL, now-stale
+    // collectedEvidenceHash unchanged — this is exactly the laundering pattern the hash
+    // gate must catch. Today (pre-fix) costRecord is not part of the hash input, so this
+    // tampered pack still matches its stale hash and sails through the paid-spend gate as
+    // verified:true — that is the reproduction this test proves.
+    const tampered = {
+      ...basePack,
+      collectedEvidenceHash,
+      costRecord: { provider: 'cursor-agent', tokens: 500, paid: false },
+    };
+
+    const r = verifyEvidencePack(tampered, { project });
+    expect(r.verified).toBe(false);
+    expect(r.reason).toMatch(/hash/i);
+  });
+});

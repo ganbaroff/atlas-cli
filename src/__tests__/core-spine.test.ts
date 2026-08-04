@@ -101,6 +101,8 @@ const validPack = (over: Record<string, unknown> = {}) => {
     effectProofs: Array<{ effectId: string; provenBy: Array<{ kind: 'command' | 'test' | 'artifact'; ref: string }> }>;
     artifacts: Array<{ id: string; kind: 'diff' | 'file' | 'output'; hash?: string }>;
     diffHash: string;
+    costRecord: { provider: string; tokens: number; paid: boolean };
+    rollbackState: { available: boolean; method: string; proven: boolean };
   };
   // NEW API: collectedEvidenceHash is required and must be computed from the SAME
   // evidence-bearing fields the pack ends up with (i.e. after `over` overrides are
@@ -117,6 +119,8 @@ const validPack = (over: Record<string, unknown> = {}) => {
       effectProofs: base.effectProofs,
       artifacts: base.artifacts,
       diffHash: base.diffHash,
+      costRecord: base.costRecord,
+      rollbackState: base.rollbackState,
     });
   return { ...base, collectedEvidenceHash };
 };
