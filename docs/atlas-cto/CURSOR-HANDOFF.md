@@ -10,72 +10,50 @@
 
 ```
 $ git log -1 --oneline
-b2ce138 chore: cursor handoff
+9d93ff8 docs(adr): Record ADR-0010 voice/documents capability stack
 ```
 
 ## 2. What changed this session — files + one line each
 
-**This turn (Planning & Worker Orchestration v0 design):** no repository files modified. Design delivered in chat only.
+- `docs/atlas-cto/ADR-0010-2026-08-05-capability-stack-voice-documents.md` — ACCEPTED ADR: Phase1 Voice + Phase2 Documents; rejected stack; budget/VRAM gates
+- `docs/adr/0010-capability-stack-voice-and-documents.md` — numbering stub → atlas-cto ADR body
+- `scripts/acceptance/capability-stack/cases.json` — 10 voice + 8 OCR cases (all UNTESTED)
+- `scripts/acceptance/capability-stack/run.py` — harness; exit 2 while UNTESTED; `--require-pass` forbids fake done
+- `scripts/acceptance/capability-stack/README.md` — how to run
 
-**Earlier same arc (already on branch, not re-done this turn):**
-
-- `src/atlas/goal-intake/project-registry.ts` — Integronix canon `C:\Projects\INTEGRONIX`; archive alternative; deploy/implementation gates in knownFacts (`1d74ee4`)
-- `src/atlas/goal-intake/resolve-project.ts` — Integronix-only: registry canon + archive → READY
-- `src/atlas/context-assembly/assemble.ts` — Integronix Git READY ≠ `projectExecutionReady` while deploy/production-write forbidden
-- `src/__tests__/project-resolution.test.ts` — archive-only BLOCKED; 12b READY+archive
-- `src/__tests__/cli-goal-resolve.test.ts` — Integronix READY exit 0
-- `src/__tests__/cli-goal-context.test.ts` — RO audit READY_TO_PLAN; execReady false
-- `docs/atlas-cto/EXAMPLE-PROJECT-RESOLUTION-INTEGRONIX.json` — READY example + gate distinctions
-- External repo `C:\Projects\INTEGRONIX` — import `420f7ff`, provenance `bead38f`, handoff `e08fffe`, tag `source-deploy-v2-import-2026-08-05`
+No FastAPI adapters, no model downloads, no daemon.
 
 ## 3. Receipts — real output
 
-Focused tests from Integronix registry commit session (still HEAD parent `1d74ee4` / handoff `b2ce138`):
-
 ```
-$ node node_modules/vitest/vitest.mjs run src/__tests__/project-resolution.test.ts \
-  src/__tests__/cli-goal-resolve.test.ts src/__tests__/cli-goal-context.test.ts \
-  src/__tests__/context-assembly.test.ts
+$ python scripts/acceptance/capability-stack/run.py
+ADR-0010 capability acceptance - {'PASS': 0, 'FAIL': 0, 'UNTESTED': 18, 'SKIP': 0}
+  [UNTESTED] V01 ... V10
+  [UNTESTED] O01 ... O08
+  [UNTESTED] O01 ... runner_python=3.14.3 (documents 3.12 venv not verified)
+exitCode=2 (0=all PASS, 1=FAIL, 2=UNTESTED remaining)
+NOT DONE: implement adapters/fixtures until all cases PASS.
 
- ✓ src/__tests__/cli-goal-resolve.test.ts (11 tests)
- ✓ src/__tests__/cli-goal-context.test.ts (13 tests)
- Test Files  4 passed (4)
-      Tests  64 passed (64)
- Duration  32.43s
-```
-
-Planning design turn: no vitest/tsc run (no code). Status:
-
-```
-$ git status -sb
-## codex/atlas-cost-router-design
-```
-
-Integronix canon (external):
-
-```
-$ git -C C:\Projects\INTEGRONIX log --oneline
-e08fffe chore: cursor handoff
-bead38f docs: add production provenance and runtime surfaces
-420f7ff chore: import deploy-v2 source baseline
+$ git log -1 --oneline
+9d93ff8 docs(adr): Record ADR-0010 voice/documents capability stack
 ```
 
 ## 4. Risks / broken things you know about
 
-- Integronix Git canon is reconstructed — not byte-identical to production `a116b17e`
-- Production deploy / DNS / D1 write / Proof Pack still CEO-gated
-- Dashboard Pages rollback untested
-- Planning & Orchestration v0 is **design only** — no `PlanContract` code, no `atlas goal plan` CLI yet
-- Cost Router not resumed (per brief)
+- Host default Python is **3.14.3** — ADR requires Documents on **3.12** venv; do not install Paddle wheels on 3.14 as primary
+- All 18 acceptance cases UNTESTED — Voice/Documents **not done**
+- RTX 5060 8GB contention Voice+OCR still only policy, not enforced in code
+- Disk ~5GB budget not measured yet
+- No atlas-cli HTTP client for adapter yet
 
 ## 5. Next 3 steps
 
-1. CEO receipt on Integronix Git canon + registry (`1d74ee4`) and/or Planning v0 design
-2. If Planning approved: implement minimum `PlanContract` + `atlas goal plan --message --json` (synthesize only; no execute)
-3. Proof Pack / write work only in isolated worktree after separate CEO GO
+1. CEO receipt on ADR-0010 (or veto lines)
+2. Create Python 3.12 venvs + FastAPI adapter stubs (voice first); wire probes in `run.py`
+3. Install GigaAM/Silero within disk budget; only then chase V01–V08 PASS (morning report)
 
 ## 6. Blockers that need CEO or the orchestrator chat
 
-- Accept/reject `C:\Projects\INTEGRONIX` as sole Git authority
-- Accept/reject Planning & Worker Orchestration v0 design (or change scope)
-- Authorize any implementation of `atlas goal plan` / Proof Pack / Cloudflare deploy
+- Approve ADR-0010 as written
+- Authorize model downloads / disk use (~5GB)
+- Authorize Phase 1 adapter implementation wave (still no production/cloud speech for sensitive audio)
