@@ -6,54 +6,53 @@
 
 - Date: 2026-08-05
 - Branch: `codex/atlas-cost-router-design`
-- HEAD before this handoff commit:
-
-```
-$ git log -1 --oneline
-9d93ff8 docs(adr): Record ADR-0010 voice/documents capability stack
-```
+- HEAD before this handoff commit: see `git log -1` after Phase 1 voice commit
 
 ## 2. What changed this session — files + one line each
 
-- `docs/atlas-cto/ADR-0010-2026-08-05-capability-stack-voice-documents.md` — ACCEPTED ADR: Phase1 Voice + Phase2 Documents; rejected stack; budget/VRAM gates
-- `docs/adr/0010-capability-stack-voice-and-documents.md` — numbering stub → atlas-cto ADR body
-- `scripts/acceptance/capability-stack/cases.json` — 10 voice + 8 OCR cases (all UNTESTED)
-- `scripts/acceptance/capability-stack/run.py` — harness; exit 2 while UNTESTED; `--require-pass` forbids fake done
-- `scripts/acceptance/capability-stack/README.md` — how to run
-
-No FastAPI adapters, no model downloads, no daemon.
+- `adapters/voice/` — Python 3.12 FastAPI sidecar (GigaAM-v3 ONNX int8, faster-whisper int8, Silero VAD, Silero TTS `v5_4_ru` / voice `xenia`); no brain/scheduler
+- `adapters/voice/.venv/` — local 3.12.10 venv (gitignored); host Python 3.14 untouched
+- `src/atlas/voice-adapter-client.ts` — HTTP client for atlas-cli
+- `src/cli.ts` — `atlas voice health|stt|tts|warmup`
+- `scripts/acceptance/capability-stack/run.py` — live V01–V10 probes; `--lane voice --require-voice-pass`
+- `scripts/acceptance/capability-stack/cases.json` — V01–V10 marked PASS; O* still UNTESTED
+- `docs/atlas-cto/receipts/voice-phase1-acceptance-2026-08-05.json` — real harness receipt (10 PASS)
+- `docs/atlas-cto/receipts/disk-free-2026-08-05.txt` — disk free after installs (~44.2 GB)
 
 ## 3. Receipts — real output
 
 ```
-$ python scripts/acceptance/capability-stack/run.py
-ADR-0010 capability acceptance - {'PASS': 0, 'FAIL': 0, 'UNTESTED': 18, 'SKIP': 0}
-  [UNTESTED] V01 ... V10
-  [UNTESTED] O01 ... O08
-  [UNTESTED] O01 ... runner_python=3.14.3 (documents 3.12 venv not verified)
-exitCode=2 (0=all PASS, 1=FAIL, 2=UNTESTED remaining)
-NOT DONE: implement adapters/fixtures until all cases PASS.
+$ adapters\voice\.venv\Scripts\python.exe -c "import sys; print(sys.version)"
+3.12.10 ...
 
-$ git log -1 --oneline
-9d93ff8 docs(adr): Record ADR-0010 voice/documents capability stack
+$ POST /warmup
+{"ok":true,"loaded":{"gigaam":true,"whisper":true,"vad":true,"tts":true},"peakRssMb":1006.75}
+
+$ run.py --lane voice --require-voice-pass
+ADR-0010 capability acceptance - {'PASS': 10, 'FAIL': 0, 'UNTESTED': 0, 'SKIP': 0}
+  [PASS] V01 ... V10
+exitCode=0
 ```
+
+Disk: CEO GO cited 47.6 GB free; after model install ~44.2 GB free (see receipts).
 
 ## 4. Risks / broken things you know about
 
-- Host default Python is **3.14.3** — ADR requires Documents on **3.12** venv; do not install Paddle wheels on 3.14 as primary
-- All 18 acceptance cases UNTESTED — Voice/Documents **not done**
-- RTX 5060 8GB contention Voice+OCR still only policy, not enforced in code
-- Disk ~5GB budget not measured yet
-- No atlas-cli HTTP client for adapter yet
+- V10 measured **CPU RSS ~1.0 GB**, not CUDA VRAM — torch CPU wheels; RTX 5060 VRAM gate still needs GPU run when CUDA torch available
+- GigaAM drop "Atlas" token on morning fixture (still ≥3 expected tokens) — CER threshold not formalized
+- Silero TTS hub package `v5_4_ru` exposes voices `aidar|baya|kseniya|xenia` (not the package id as apply_tts speaker)
+- Documents Phase 2 / O01–O08 **not started**
+- Adapter must be running on `:8765` for CLI/harness
+- OneDrive path + Cursor workspace root mismatch can hide uncommitted files — verify `adapters/voice/*.py` on disk before restart
 
 ## 5. Next 3 steps
 
-1. CEO receipt on ADR-0010 (or veto lines)
-2. Create Python 3.12 venvs + FastAPI adapter stubs (voice first); wire probes in `run.py`
-3. Install GigaAM/Silero within disk budget; only then chase V01–V08 PASS (morning report)
+1. Optional: CUDA torch + re-run V10 with peak VRAM evidence on RTX 5060 8GB
+2. Wire Telegram / morning-report path to call adapter (still no second brain)
+3. Phase 2 Documents GO only when CEO authorizes O-cases (PaddleOCR-VL 1.6 on separate 3.12 venv)
 
 ## 6. Blockers that need CEO or the orchestrator chat
 
-- Approve ADR-0010 as written
-- Authorize model downloads / disk use (~5GB)
-- Authorize Phase 1 adapter implementation wave (still no production/cloud speech for sensitive audio)
+- None for Phase 1 Voice GO closure — V01–V10 PASS
+- Authorize Phase 2 Documents when ready
+- Decide whether cloud Riva/NIM / Azure F0 credentials get wired (policy endpoint only today)
