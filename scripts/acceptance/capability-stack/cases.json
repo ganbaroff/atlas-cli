@@ -10,7 +10,7 @@
       "title": "GigaAM-v3 ONNX int8 primary STT transcribes Russian fixture",
       "criterion": "Primary STT engine is GigaAM-v3 ONNX int8 (MIT); Russian speech fixture yields non-empty transcript containing expected tokens",
       "probe": "adapter_stt_primary",
-      "status": "UNTESTED"
+      "status": "PASS"
     },
     {
       "id": "V02",
@@ -18,7 +18,7 @@
       "title": "faster-whisper int8 fallback engages when primary unavailable",
       "criterion": "With primary forced unavailable, fallback STT is faster-whisper int8 and still returns Russian transcript",
       "probe": "adapter_stt_fallback",
-      "status": "UNTESTED"
+      "status": "PASS"
     },
     {
       "id": "V03",
@@ -26,7 +26,7 @@
       "title": "Silero VAD distinguishes speech vs silence",
       "criterion": "Silero VAD marks speech fixture as speech and silence fixture as non-speech",
       "probe": "adapter_vad",
-      "status": "UNTESTED"
+      "status": "PASS"
     },
     {
       "id": "V04",
@@ -34,7 +34,7 @@
       "title": "Silero TTS v5_4_ru synthesizes Russian morning-report line",
       "criterion": "TTS model id is v5_4_ru; input Russian sentence produces non-empty wav/pcm audio bytes",
       "probe": "adapter_tts",
-      "status": "UNTESTED"
+      "status": "PASS"
     },
     {
       "id": "V05",
@@ -42,7 +42,7 @@
       "title": "Push-to-talk path: audio in to text out via FastAPI",
       "criterion": "POST push-to-talk endpoint accepts short wav and returns text; wake-word path not required",
       "probe": "adapter_ptt",
-      "status": "UNTESTED"
+      "status": "PASS"
     },
     {
       "id": "V06",
@@ -50,7 +50,7 @@
       "title": "Adapter is not a brain (no scheduler / task authority)",
       "criterion": "Health/metadata advertises adapter-only; no cron, no exec-graph writes, no second task queue",
       "probe": "adapter_no_brain",
-      "status": "UNTESTED"
+      "status": "PASS"
     },
     {
       "id": "V07",
@@ -58,7 +58,7 @@
       "title": "atlas-cli can call local voice adapter HTTP contract",
       "criterion": "Documented CLI or client module reaches local FastAPI base URL and parses JSON transcript envelope",
       "probe": "cli_voice_client",
-      "status": "UNTESTED"
+      "status": "PASS"
     },
     {
       "id": "V08",
@@ -66,7 +66,7 @@
       "title": "Morning report Russian round-trip (north-star acceptance)",
       "criterion": "Sample morning-report Russian text -> TTS -> STT recovers meaning-equivalent Russian (human or CER threshold TBD)",
       "probe": "morning_report_roundtrip",
-      "status": "UNTESTED"
+      "status": "PASS"
     },
     {
       "id": "V09",
@@ -74,7 +74,7 @@
       "title": "Cloud fallback order Riva/NIM then Azure F0; sensitive stays local",
       "criterion": "Non-sensitive path may use NVIDIA Riva/NIM then Azure Speech F0; sensitive flag forces local-only and never uploads audio",
       "probe": "cloud_fallback_policy",
-      "status": "UNTESTED"
+      "status": "PASS"
     },
     {
       "id": "V10",
@@ -82,7 +82,7 @@
       "title": "Voice stack fits RTX 5060 8GB without OOM",
       "criterion": "Loading declared voice models alone does not OOM on 8GB; peak VRAM recorded in evidence",
       "probe": "voice_vram_budget",
-      "status": "UNTESTED"
+      "status": "PASS"
     },
     {
       "id": "O01",

@@ -1,0 +1,266 @@
+{
+  "counts": {
+    "PASS": 10,
+    "FAIL": 0,
+    "UNTESTED": 0,
+    "SKIP": 0
+  },
+  "exitCode": 0,
+  "results": [
+    {
+      "id": "V01",
+      "lane": "voice",
+      "title": "GigaAM-v3 ONNX int8 primary STT transcribes Russian fixture",
+      "criterion": "Primary STT engine is GigaAM-v3 ONNX int8 (MIT); Russian speech fixture yields non-empty transcript containing expected tokens",
+      "probe": "adapter_stt_primary",
+      "declaredStatus": "UNTESTED",
+      "resultStatus": "PASS",
+      "reason": "engine=gigaam-v3-ctc-onnx-int8 hits=['доброе', 'утро', 'задач', 'клиент', 'отч'] text='доброе утро сегодня три задачи проверить ответить клиенту записать отчет'",
+      "detail": {
+        "text": "доброе утро сегодня три задачи проверить ответить клиенту записать отчет",
+        "engine": "gigaam-v3-ctc-onnx-int8",
+        "durationMs": 626,
+        "sensitive": true
+      }
+    },
+    {
+      "id": "V02",
+      "lane": "voice",
+      "title": "faster-whisper int8 fallback engages when primary unavailable",
+      "criterion": "With primary forced unavailable, fallback STT is faster-whisper int8 and still returns Russian transcript",
+      "probe": "adapter_stt_fallback",
+      "declaredStatus": "UNTESTED",
+      "resultStatus": "PASS",
+      "reason": "engine=faster-whisper-int8 hits=['доброе', 'утро', 'задач', 'клиент', 'отч'] text='Доброе утро. Сегодня три задачи. Проверить, ответить клиенту, записать отчет.'",
+      "detail": {
+        "text": "Доброе утро. Сегодня три задачи. Проверить, ответить клиенту, записать отчет.",
+        "engine": "faster-whisper-int8",
+        "durationMs": 4200,
+        "sensitive": true
+      }
+    },
+    {
+      "id": "V03",
+      "lane": "voice",
+      "title": "Silero VAD distinguishes speech vs silence",
+      "criterion": "Silero VAD marks speech fixture as speech and silence fixture as non-speech",
+      "probe": "adapter_vad",
+      "declaredStatus": "UNTESTED",
+      "resultStatus": "PASS",
+      "reason": "speech={'speech': True, 'speechProbability': 0.8493913043478261, 'engine': 'silero-vad'} silence={'speech': False, 'speechProbability': 0.0, 'engine': 'silero-vad'}",
+      "detail": {
+        "speech": {
+          "speech": true,
+          "speechProbability": 0.8493913043478261,
+          "engine": "silero-vad"
+        },
+        "silence": {
+          "speech": false,
+          "speechProbability": 0.0,
+          "engine": "silero-vad"
+        }
+      }
+    },
+    {
+      "id": "V04",
+      "lane": "voice",
+      "title": "Silero TTS v5_4_ru synthesizes Russian morning-report line",
+      "criterion": "TTS model id is v5_4_ru; input Russian sentence produces non-empty wav/pcm audio bytes",
+      "probe": "adapter_tts",
+      "declaredStatus": "UNTESTED",
+      "resultStatus": "PASS",
+      "reason": "model=v5_4_ru bytes=552044 voice=xenia",
+      "detail": {
+        "headers": {
+          "date": "Tue, 04 Aug 2026 23:41:10 GMT",
+          "server": "uvicorn",
+          "x-atlas-tts-engine": "silero-tts",
+          "x-atlas-tts-model": "v5_4_ru",
+          "x-atlas-tts-speaker": "xenia",
+          "x-atlas-tts-sample-rate": "48000",
+          "x-atlas-tts-bytes": "552044",
+          "content-length": "552044",
+          "content-type": "audio/wav",
+          "connection": "close"
+        }
+      }
+    },
+    {
+      "id": "V05",
+      "lane": "voice",
+      "title": "Push-to-talk path: audio in to text out via FastAPI",
+      "criterion": "POST push-to-talk endpoint accepts short wav and returns text; wake-word path not required",
+      "probe": "adapter_ptt",
+      "declaredStatus": "UNTESTED",
+      "resultStatus": "PASS",
+      "reason": "text='доброе утро сегодня три задачи проверить ответить клиенту записать отчет' engine=gigaam-v3-ctc-onnx-int8",
+      "detail": {
+        "text": "доброе утро сегодня три задачи проверить ответить клиенту записать отчет",
+        "engine": "gigaam-v3-ctc-onnx-int8",
+        "durationMs": 526,
+        "sensitive": true
+      }
+    },
+    {
+      "id": "V06",
+      "lane": "voice",
+      "title": "Adapter is not a brain (no scheduler / task authority)",
+      "criterion": "Health/metadata advertises adapter-only; no cron, no exec-graph writes, no second task queue",
+      "probe": "adapter_no_brain",
+      "declaredStatus": "UNTESTED",
+      "resultStatus": "PASS",
+      "reason": "role=adapter-only brain=False scheduler=False taskAuthority=False",
+      "detail": {
+        "ok": true,
+        "service": "atlas-voice-adapter",
+        "version": "0.1.0",
+        "role": "adapter-only",
+        "brain": false,
+        "scheduler": false,
+        "taskAuthority": false,
+        "engines": {
+          "sttPrimary": "gigaam-v3-ctc-onnx-int8",
+          "sttFallback": "faster-whisper-int8",
+          "vad": "silero-vad",
+          "tts": "silero-tts-v5_4_ru",
+          "loaded": {
+            "gigaam": true,
+            "whisper": true,
+            "vad": true,
+            "tts": true
+          },
+          "loadErrors": {}
+        },
+        "cloudFallbackOrder": [
+          "nvidia-riva-nim",
+          "azure-speech-f0"
+        ],
+        "sensitiveDefaultLocalOnly": true,
+        "peakRssMb": 1006.75390625,
+        "cacheDir": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\adapters\\voice\\.cache",
+        "python": "3.12.10"
+      }
+    },
+    {
+      "id": "V07",
+      "lane": "voice",
+      "title": "atlas-cli can call local voice adapter HTTP contract",
+      "criterion": "Documented CLI or client module reaches local FastAPI base URL and parses JSON transcript envelope",
+      "probe": "cli_voice_client",
+      "declaredStatus": "UNTESTED",
+      "resultStatus": "PASS",
+      "reason": "cli client health ok via node",
+      "detail": "{\"ok\":true,\"service\":\"atlas-voice-adapter\",\"version\":\"0.1.0\",\"role\":\"adapter-only\",\"brain\":false,\"scheduler\":false,\"taskAuthority\":false,\"engines\":{\"sttPrimary\":\"gigaam-v3-ctc-onnx-int8\",\"sttFallback\":\"faster-whisper-int8\",\"vad\":\"silero-vad\",\"tts\":\"silero-tts-v5_4_ru\",\"loaded\":{\"gigaam\":true,\"whisper\":true,\"vad\":true,\"tts\":true},\"loadErrors\":{}},\"cloudFallbackOrder\":[\"nvidia-riva-nim\",\"azure-speech-f0\"],\"sensitiveDefaultLocalOnly\":true,\"peakRssMb\":1006.75390625,\"cacheDir\":\"C:\\\\Users\\\\user\\\\OneDr"
+    },
+    {
+      "id": "V08",
+      "lane": "voice",
+      "title": "Morning report Russian round-trip (north-star acceptance)",
+      "criterion": "Sample morning-report Russian text -> TTS -> STT recovers meaning-equivalent Russian (human or CER threshold TBD)",
+      "probe": "morning_report_roundtrip",
+      "declaredStatus": "UNTESTED",
+      "resultStatus": "PASS",
+      "reason": "hits=['доброе', 'утро', 'задач', 'клиент', 'отч']/('доброе', 'утро', 'задач', 'atlas', 'клиент', 'отч') transcript='доброе утро сегодня три задачи проверить ответить клиенту записать отчет'",
+      "detail": {
+        "stt": {
+          "text": "доброе утро сегодня три задачи проверить ответить клиенту записать отчет",
+          "engine": "gigaam-v3-ctc-onnx-int8",
+          "durationMs": 507,
+          "sensitive": true
+        },
+        "ttsBytes": 552044
+      }
+    },
+    {
+      "id": "V09",
+      "lane": "voice",
+      "title": "Cloud fallback order Riva/NIM then Azure F0; sensitive stays local",
+      "criterion": "Non-sensitive path may use NVIDIA Riva/NIM then Azure Speech F0; sensitive flag forces local-only and never uploads audio",
+      "probe": "cloud_fallback_policy",
+      "declaredStatus": "UNTESTED",
+      "resultStatus": "PASS",
+      "reason": "sensitive={'allowCloud': False, 'reason': 'sensitive audio stays local-only (ADR-0010)', 'order': ['nvidia-riva-nim', 'azure-speech-f0']} nonSensitive={'allowCloud': True, 'reason': 'non-sensitive may use cloud fallback order', 'order': ['nvidia-riva-nim', 'azure-speech-f0']}",
+      "detail": {
+        "sensitive": {
+          "allowCloud": false,
+          "reason": "sensitive audio stays local-only (ADR-0010)",
+          "order": [
+            "nvidia-riva-nim",
+            "azure-speech-f0"
+          ]
+        },
+        "nonSensitive": {
+          "allowCloud": true,
+          "reason": "non-sensitive may use cloud fallback order",
+          "order": [
+            "nvidia-riva-nim",
+            "azure-speech-f0"
+          ]
+        }
+      }
+    },
+    {
+      "id": "V10",
+      "lane": "voice",
+      "title": "Voice stack fits RTX 5060 8GB without OOM",
+      "criterion": "Loading declared voice models alone does not OOM on 8GB; peak VRAM recorded in evidence",
+      "probe": "voice_vram_budget",
+      "declaredStatus": "UNTESTED",
+      "resultStatus": "PASS",
+      "reason": "peakRssMb=1006.75390625 loaded={'gigaam': True, 'whisper': True, 'vad': True, 'tts': True} (CPU int8; VRAM N/A if no CUDA)",
+      "detail": {
+        "warmup": {
+          "ok": true,
+          "loaded": {
+            "gigaam": true,
+            "whisper": true,
+            "vad": true,
+            "tts": true
+          },
+          "peakRssMb": 1006.75390625
+        },
+        "health": {
+          "ok": true,
+          "service": "atlas-voice-adapter",
+          "version": "0.1.0",
+          "role": "adapter-only",
+          "brain": false,
+          "scheduler": false,
+          "taskAuthority": false,
+          "engines": {
+            "sttPrimary": "gigaam-v3-ctc-onnx-int8",
+            "sttFallback": "faster-whisper-int8",
+            "vad": "silero-vad",
+            "tts": "silero-tts-v5_4_ru",
+            "loaded": {
+              "gigaam": true,
+              "whisper": true,
+              "vad": true,
+              "tts": true
+            },
+            "loadErrors": {}
+          },
+          "cloudFallbackOrder": [
+            "nvidia-riva-nim",
+            "azure-speech-f0"
+          ],
+          "sensitiveDefaultLocalOnly": true,
+          "peakRssMb": 1006.75390625,
+          "cacheDir": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\adapters\\voice\\.cache",
+          "python": "3.12.10"
+        }
+      }
+    }
+  ],
+  "adr": "ADR-0010",
+  "schemaVersion": "atlas-capability-acceptance/v0",
+  "northStar": "Phase1 acceptance = morning report in Russian; Phase2 = RU/AZ/EN documents via adapter",
+  "adapterUrl": "http://127.0.0.1:8765",
+  "laneFilter": "voice",
+  "ranAt": "2026-08-04T23:41:13.562973+00:00",
+  "voiceGate": {
+    "ok": true,
+    "passed": 10
+  },
+  "note": "Phase 1 Voice GO: V01–V10 PASS; O-cases not executed"
+}

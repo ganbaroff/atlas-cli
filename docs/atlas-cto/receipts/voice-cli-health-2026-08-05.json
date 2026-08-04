@@ -1,0 +1,30 @@
+﻿{
+  "ok": true,
+  "service": "atlas-voice-adapter",
+  "version": "0.1.0",
+  "role": "adapter-only",
+  "brain": false,
+  "scheduler": false,
+  "taskAuthority": false,
+  "engines": {
+    "sttPrimary": "gigaam-v3-ctc-onnx-int8",
+    "sttFallback": "faster-whisper-int8",
+    "vad": "silero-vad",
+    "tts": "silero-tts-v5_4_ru",
+    "loaded": {
+      "gigaam": true,
+      "whisper": true,
+      "vad": true,
+      "tts": true
+    },
+    "loadErrors": {}
+  },
+  "cloudFallbackOrder": [
+    "nvidia-riva-nim",
+    "azure-speech-f0"
+  ],
+  "sensitiveDefaultLocalOnly": true,
+  "peakRssMb": 1006.75390625,
+  "cacheDir": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\adapters\\voice\\.cache",
+  "python": "3.12.10"
+}

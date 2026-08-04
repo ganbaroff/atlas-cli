@@ -1419,6 +1419,94 @@ program
     console.log(buildStatusReport());
   });
 
+// --- Voice adapter client (ADR-0010 Phase 1) — HTTP only, no brain ---
+
+const voiceCmd = program
+  .command('voice')
+  .description('Local voice FastAPI adapter client (STT/VAD/TTS); not a brain');
+
+voiceCmd
+  .command('health')
+  .description('GET /health on voice adapter')
+  .option('--url <base>', 'Adapter base URL', process.env.ATLAS_VOICE_URL ?? 'http://127.0.0.1:8765')
+  .option('--json', 'JSON output')
+  .action(async (opts: { url: string; json?: boolean }) => {
+    const { voiceHealth } = await import('./atlas/voice-adapter-client.js');
+    try {
+      const h = await voiceHealth(opts.url);
+      if (opts.json) console.log(JSON.stringify(h, null, 2));
+      else {
+        console.log(
+          `voice adapter ok=${h.ok} role=${h.role} brain=${h.brain} scheduler=${h.scheduler} python=${h.python ?? '?'}`,
+        );
+      }
+      if (h.brain || h.scheduler || h.taskAuthority) process.exitCode = 1;
+    } catch (e: any) {
+      console.error(`ERROR: ${e.message ?? e}`);
+      process.exitCode = 1;
+    }
+  });
+
+voiceCmd
+  .command('stt')
+  .description('POST /stt — transcribe a wav file')
+  .requiredOption('--file <path>', 'WAV path')
+  .option('--engine <name>', 'primary|fallback|auto', 'auto')
+  .option('--url <base>', 'Adapter base URL', process.env.ATLAS_VOICE_URL ?? 'http://127.0.0.1:8765')
+  .option('--json', 'JSON output')
+  .action(async (opts: { file: string; engine: string; url: string; json?: boolean }) => {
+    const { voiceStt } = await import('./atlas/voice-adapter-client.js');
+    try {
+      const r = await voiceStt({
+        filePath: opts.file,
+        engine: opts.engine as 'primary' | 'fallback' | 'auto',
+        baseUrl: opts.url,
+      });
+      if (opts.json) console.log(JSON.stringify(r, null, 2));
+      else console.log(`${r.engine}: ${r.text}`);
+    } catch (e: any) {
+      console.error(`ERROR: ${e.message ?? e}`);
+      process.exitCode = 1;
+    }
+  });
+
+voiceCmd
+  .command('tts')
+  .description('POST /tts — synthesize Russian wav (Silero v5_4_ru)')
+  .requiredOption('--text <text>', 'Text to speak')
+  .requiredOption('--out <path>', 'Output wav path')
+  .option('--url <base>', 'Adapter base URL', process.env.ATLAS_VOICE_URL ?? 'http://127.0.0.1:8765')
+  .option('--json', 'JSON output')
+  .action(async (opts: { text: string; out: string; url: string; json?: boolean }) => {
+    const { voiceTts } = await import('./atlas/voice-adapter-client.js');
+    try {
+      const r = await voiceTts({ text: opts.text, outPath: opts.out, baseUrl: opts.url });
+      if (opts.json) console.log(JSON.stringify(r, null, 2));
+      else console.log(`wrote ${opts.out} bytes=${r.bytes} sr=${r.sampleRate}`);
+    } catch (e: any) {
+      console.error(`ERROR: ${e.message ?? e}`);
+      process.exitCode = 1;
+    }
+  });
+
+voiceCmd
+  .command('warmup')
+  .description('POST /warmup — load models (may download)')
+  .option('--engines <list>', 'Comma list', 'gigaam,vad,tts,whisper')
+  .option('--url <base>', 'Adapter base URL', process.env.ATLAS_VOICE_URL ?? 'http://127.0.0.1:8765')
+  .option('--json', 'JSON output')
+  .action(async (opts: { engines: string; url: string; json?: boolean }) => {
+    const { voiceWarmup } = await import('./atlas/voice-adapter-client.js');
+    try {
+      const r = await voiceWarmup(opts.engines, opts.url);
+      if (opts.json) console.log(JSON.stringify(r, null, 2));
+      else console.log(JSON.stringify(r));
+    } catch (e: any) {
+      console.error(`ERROR: ${e.message ?? e}`);
+      process.exitCode = 1;
+    }
+  });
+
 // --- Supervised Assist (M7) ---
 
 const assistCmd = program
