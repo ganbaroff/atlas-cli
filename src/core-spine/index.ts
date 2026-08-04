@@ -21,11 +21,13 @@ export {
   commandRunSchema,
   effectProofSchema,
   evidenceArtifactSchema,
+  computeEvidenceHash,
   EvidencePackError,
   type EvidencePack,
   type CommandRun,
   type EffectProof,
   type EvidenceArtifact,
+  type EvidenceHashInput,
 } from './evidence-pack-contract.js';
 
 export {
@@ -38,6 +40,7 @@ export {
 export {
   verifyEvidencePack,
   assertIndependentVerifier,
+  SPINE_VERIFIER_ID,
   type SpineVerifyResult,
   type SpineVerifyOptions,
 } from './spine-verifier.js';

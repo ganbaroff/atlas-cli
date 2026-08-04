@@ -7,6 +7,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import {
+  computeEvidenceHash,
   parseEvidencePack,
   type EvidencePack,
 } from '../core-spine/evidence-pack-contract.js';
@@ -185,42 +186,64 @@ export function collectIndependentEvidence(input: {
   const testHash = sha256(input.test.output);
   const effectId = 'edit-src-counter-js';
 
-  return parseEvidencePack({
+  // Collect the RAW facts first — including a failed cursor exit code, unaltered. Nothing
+  // downstream (courier-loop's final-verify block) is permitted to substitute these
+  // records; the commitment hash below binds the verified pack to exactly this evidence.
+  const declaredEffects = [effectId];
+  const actualEffects = [effectId];
+  const effectProofs = [
+    {
+      effectId,
+      provenBy: [
+        { kind: 'test' as const, ref: 'test-npm-test' },
+        { kind: 'artifact' as const, ref: 'art-diff' },
+      ],
+    },
+  ];
+  const artifacts = [{ id: 'art-diff', kind: 'diff' as const, hash: diffHash }];
+  const commandsRun = [
+    {
+      id: 'cmd-cursor-agent',
+      command: 'cursor-agent -p --output-format stream-json',
+      exitCode: input.cursor.exitCode ?? 1,
+      outputHash: sha256(input.cursor.claimedResultText ?? ''),
+    },
+  ];
+  const testCommands = [
+    {
+      id: 'test-npm-test',
+      command: input.test.command,
+      exitCode: input.test.exitCode,
+      outputHash: testHash,
+    },
+  ];
+
+  const collectedEvidenceHash = computeEvidenceHash({
+    commandsRun,
+    testCommands,
+    declaredEffects,
+    actualEffects,
+    effectProofs,
+    artifacts,
+    diffHash,
+  });
+
+  const pack = parseEvidencePack({
     taskId: input.taskId,
     changeId: `chg_${PROOF_ID.replace(/[^a-z0-9_]/gi, '_')}`,
     projectId: 'prj_courier_proof_disposable',
     baseCommit,
     executorIdentity: `${CURSOR_HEADLESS_ADAPTER_ID}@0.1.0`,
-    declaredEffects: [effectId],
-    actualEffects: [effectId],
-    effectProofs: [
-      {
-        effectId,
-        provenBy: [
-          { kind: 'test', ref: 'test-npm-test' },
-          { kind: 'artifact', ref: 'art-diff' },
-        ],
-      },
-    ],
-    artifacts: [{ id: 'art-diff', kind: 'diff', hash: diffHash }],
+    declaredEffects,
+    actualEffects,
+    effectProofs,
+    artifacts,
     diffHash,
-    commandsRun: [
-      {
-        id: 'cmd-cursor-agent',
-        command: 'cursor-agent -p --output-format stream-json',
-        exitCode: input.cursor.exitCode ?? 1,
-        outputHash: sha256(input.cursor.claimedResultText ?? ''),
-      },
-    ],
-    testCommands: [
-      {
-        id: 'test-npm-test',
-        command: input.test.command,
-        exitCode: input.test.exitCode,
-        outputHash: testHash,
-      },
-    ],
+    commandsRun,
+    testCommands,
     costRecord: { provider: 'cursor-agent', tokens: 0, paid: false },
+    collectedEvidenceHash,
+    // Advisory only — the spine verifier never reads this field to decide a verdict.
     verifierResult: {
       verified: false,
       reason: 'pending independent verify',
@@ -233,6 +256,30 @@ export function collectIndependentEvidence(input: {
     },
     ceoDecision: 'pending',
   });
+
+  // Freeze the collected records so nothing downstream can mutate them in place. Building
+  // a *different* pack (e.g. via spread) is still possible in JS, but doing so changes
+  // collectedEvidenceHash's recomputation at verify time and is caught as a hash mismatch.
+  deepFreezeEvidencePack(pack);
+  return pack;
+}
+
+function deepFreezeEvidencePack(pack: EvidencePack): void {
+  for (const c of pack.commandsRun) Object.freeze(c);
+  Object.freeze(pack.commandsRun);
+  for (const c of pack.testCommands) Object.freeze(c);
+  Object.freeze(pack.testCommands);
+  for (const a of pack.artifacts) Object.freeze(a);
+  Object.freeze(pack.artifacts);
+  for (const p of pack.effectProofs) {
+    for (const ref of p.provenBy) Object.freeze(ref);
+    Object.freeze(p.provenBy);
+    Object.freeze(p);
+  }
+  Object.freeze(pack.effectProofs);
+  Object.freeze(pack.declaredEffects);
+  Object.freeze(pack.actualEffects);
+  Object.freeze(pack);
 }
 
 function assertPathInside(workspace: string, candidate: string): void {
@@ -457,6 +504,13 @@ export async function runCourierLoop(config: CourierLoopConfig): Promise<Courier
   const finalDiffHash = sha256(finalDiff || 'EMPTY_DIFF');
   let verifierResult = { verified: false, reason: 'incomplete', verifierId: 'spine-verifier' };
 
+  // Reviewer verdict (ACCEPT/REPAIR/REJECT) is recorded above in chatgptReviews as an
+  // ADVISORY signal only — it gates whether the courier even attempts final verification
+  // (no point verifying mid-repair-cycle work), but it can never itself produce a
+  // verified:true receipt. The deterministic spine-verifier's returned result, built from
+  // the ORIGINALLY collected evidence (no substitution — a failed cursor command simply
+  // remains in commandsRun and the verifier's own checkCommandList rejects it), is the
+  // only gate for verifierResult below.
   if (lastCursor && finalTest.exitCode === 0 && lastReview?.verdict === 'ACCEPT') {
     try {
       const pack = collectIndependentEvidence({
@@ -466,42 +520,21 @@ export async function runCourierLoop(config: CourierLoopConfig): Promise<Courier
         test: { command: 'npm test', exitCode: finalTest.exitCode, output: finalTest.output },
       });
       const project = buildCourierProjectContract(workspace);
-      // Cursor command must succeed for effect proofs that cite it — use test+artifact as proofs
-      const packForVerify = {
-        ...pack,
-        commandsRun:
-          (lastCursor.exitCode ?? 1) === 0
-            ? pack.commandsRun
-            : [
-                {
-                  id: 'cmd-git-diff',
-                  command: 'git diff HEAD',
-                  exitCode: 0,
-                  outputHash: pack.diffHash,
-                },
-              ],
-        effectProofs: [
-          {
-            effectId: 'edit-src-counter-js',
-            provenBy: [
-              { kind: 'test' as const, ref: 'test-npm-test' },
-              { kind: 'artifact' as const, ref: 'art-diff' },
-            ],
-          },
-        ],
-        verifierResult: { verified: true, reason: 'evidence-complete', verifierId: 'spine-verifier' },
-      };
-      const verified = verifyEvidencePack(packForVerify, { project });
-      verifierResult = { verified: verified.verified, reason: verified.reason, verifierId: 'spine-verifier' };
+      const verified = verifyEvidencePack(pack, { project });
+      verifierResult = { verified: verified.verified, reason: verified.reason, verifierId: verified.verifierId };
       if (CURSOR_HEADLESS_ADAPTER_ID === CHATGPT_BROWSER_REVIEWER_ADAPTER_ID) {
-        verifierResult = { verified: false, reason: 'executor and reviewer identities collide', verifierId: 'spine-verifier' };
+        verifierResult = {
+          verified: false,
+          reason: 'executor and reviewer identities collide',
+          verifierId: verified.verifierId,
+        };
       }
       // identity independence check (executor vs reviewer transport)
       if (lastCursor.adapterId === lastReview.adapterId) {
         verifierResult = {
           verified: false,
           reason: 'executor and reviewer identities are the same',
-          verifierId: 'spine-verifier',
+          verifierId: verified.verifierId,
         };
         errors.push('IDENTITY_COLLISION');
       }

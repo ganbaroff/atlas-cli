@@ -5,12 +5,14 @@
  * Fail-closed: project contract is REQUIRED (adapter allowlist always applied).
  * Effects must be explicitly linked to successful commands/tests/artifacts.
  */
-import { parseEvidencePack, type EvidencePack } from './evidence-pack-contract.js';
+import { computeEvidenceHash, parseEvidencePack, type EvidencePack } from './evidence-pack-contract.js';
 import type { ProjectAgentContract } from './project-agent-contract.js';
 
 export interface SpineVerifyResult {
   verified: boolean;
   reason: string;
+  /** Always SPINE_VERIFIER_ID — stamped by the verifier itself, never caller-supplied. */
+  verifierId: string;
 }
 
 export interface SpineVerifyOptions {
@@ -22,6 +24,19 @@ const PERSONAL_MEMORY_EFFECT = /personal.?memory|memory\/atlas|memory\\atlas|wri
 
 /** Independent verifier identities only — never the executor adapter id. */
 const INDEPENDENT_VERIFIER_RE = /^(spine-verifier|hand-verifier|independent)([@./:].*)?$/i;
+
+/**
+ * The verifier's own identity constant. Callers cannot inject a verifierId — every
+ * SpineVerifyResult returned by verifyEvidencePack is stamped with exactly this value.
+ * Also used as the "self" side of the structural independence check: a pack whose
+ * executorIdentity resolves to this id is rejected fail-closed (an executor cannot claim
+ * to literally be the verifier).
+ */
+export const SPINE_VERIFIER_ID = 'spine-verifier';
+
+function reject(reason: string): SpineVerifyResult {
+  return { verified: false, reason, verifierId: SPINE_VERIFIER_ID };
+}
 
 function adapterIdFromIdentity(identity: string): string {
   return identity.split('@')[0] ?? identity;
@@ -40,10 +55,13 @@ export function assertIndependentVerifier(executorIdentity: string, verifierId: 
   }
 }
 
+/** Internal failure shape for the sub-checks below — verifyEvidencePack stamps verifierId. */
+type SpineCheckFailure = { verified: false; reason: string } | null;
+
 function checkCommandList(
   label: string,
   commands: EvidencePack['commandsRun'],
-): SpineVerifyResult | null {
+): SpineCheckFailure {
   for (const c of commands) {
     if (c.skipped) {
       return { verified: false, reason: `required ${label} skipped` };
@@ -66,7 +84,7 @@ function indexById<T extends { id: string }>(items: T[]): Map<string, T> {
  * Every actual effect must cite ≥1 prove-ref that exists and (for commands/tests)
  * completed successfully. Failed/skipped commands cannot prove effects.
  */
-function checkEffectProofs(pack: EvidencePack): SpineVerifyResult | null {
+function checkEffectProofs(pack: EvidencePack): SpineCheckFailure {
   if (!pack.effectProofs || pack.effectProofs.length === 0) {
     return { verified: false, reason: 'narrative-only effect evidence: effectProofs required' };
   }
@@ -159,90 +177,89 @@ export function verifyEvidencePack(
   opts: SpineVerifyOptions,
 ): SpineVerifyResult {
   if (!opts?.project) {
-    return { verified: false, reason: 'missing project contract (fail-closed)' };
+    return reject('missing project contract (fail-closed)');
   }
 
   let pack: EvidencePack;
   try {
     pack = parseEvidencePack(input);
   } catch (e) {
-    return {
-      verified: false,
-      reason: `incomplete evidence: ${e instanceof Error ? e.message : String(e)}`,
-    };
+    return reject(`incomplete evidence: ${e instanceof Error ? e.message : String(e)}`);
   }
 
   if (pack.commandsRun.length === 0 && pack.testCommands.length === 0 && pack.artifacts.length === 0) {
-    return { verified: false, reason: 'missing evidence: no commands, tests, or artifacts recorded' };
+    return reject('missing evidence: no commands, tests, or artifacts recorded');
   }
 
+  // Structural independence: the verifier computes this itself against its OWN identity
+  // constant. Nothing on the input pack (including the now-advisory-only verifierResult
+  // field) can influence this check — an executor cannot become the verifier by claiming
+  // a matching id/label anywhere in the submitted pack.
   try {
-    assertIndependentVerifier(pack.executorIdentity, pack.verifierResult.verifierId);
+    assertIndependentVerifier(pack.executorIdentity, SPINE_VERIFIER_ID);
   } catch (e) {
-    return {
-      verified: false,
-      reason: e instanceof Error ? e.message : 'self-certification rejected',
-    };
+    return reject(e instanceof Error ? e.message : 'self-certification rejected');
   }
 
   const declared = new Set(pack.declaredEffects);
   const undeclared = pack.actualEffects.filter((e) => !declared.has(e));
   if (undeclared.length > 0) {
-    return {
-      verified: false,
-      reason: `scope violation: undeclared effects ${undeclared.join(', ')}`,
-    };
+    return reject(`scope violation: undeclared effects ${undeclared.join(', ')}`);
   }
 
   const linkFail = checkEffectProofs(pack);
-  if (linkFail) return linkFail;
+  if (linkFail) return reject(linkFail.reason);
 
   const cmdFail = checkCommandList('commands', pack.commandsRun);
-  if (cmdFail) return cmdFail;
+  if (cmdFail) return reject(cmdFail.reason);
   const testFail = checkCommandList('tests', pack.testCommands);
-  if (testFail) return testFail;
+  if (testFail) return reject(testFail.reason);
+
+  // Evidence integrity binding: recompute the commitment hash over the SAME
+  // evidence-bearing fields the collector hashed at collection time. Any substitution or
+  // tampering of commandsRun/testCommands/effects/effectProofs/artifacts/diffHash after
+  // collection changes the recomputed hash and is rejected fail-closed. Missing hash is
+  // also fail-closed (defense in depth — schema already requires the field).
+  if (!pack.collectedEvidenceHash) {
+    return reject('evidence hash missing (fail-closed)');
+  }
+  const recomputedHash = computeEvidenceHash(pack);
+  if (recomputedHash.toLowerCase() !== pack.collectedEvidenceHash.toLowerCase()) {
+    return reject('evidence hash mismatch (fail-closed): submitted pack does not match collected evidence');
+  }
 
   // verificationRequirements enforcement
   const reqs = opts.project.verificationRequirements.map((r) => r.toLowerCase());
   if (reqs.some((r) => r.includes('test')) && pack.testCommands.length === 0) {
-    return { verified: false, reason: 'verificationRequirements demand tests; none recorded' };
+    return reject('verificationRequirements demand tests; none recorded');
   }
   if (reqs.some((r) => r.includes('diff')) && !pack.diffHash) {
-    return { verified: false, reason: 'verificationRequirements demand diff-hash' };
+    return reject('verificationRequirements demand diff-hash');
   }
 
   if (!pack.rollbackState.available || !pack.rollbackState.method.trim()) {
-    return { verified: false, reason: 'missing rollback information' };
+    return reject('missing rollback information');
   }
 
   for (const effect of pack.actualEffects) {
     if (PERSONAL_MEMORY_EFFECT.test(effect)) {
-      return {
-        verified: false,
-        reason: 'personal memory write through project adapter prohibited',
-      };
+      return reject('personal memory write through project adapter prohibited');
     }
   }
 
   const allowed = new Set(opts.project.executorAllowlist);
   const adapterId = adapterIdFromIdentity(pack.executorIdentity);
   if (!allowed.has(adapterId)) {
-    return {
-      verified: false,
-      reason: `unknown adapter not on project allowlist: ${adapterId}`,
-    };
+    return reject(`unknown adapter not on project allowlist: ${adapterId}`);
   }
 
   if (pack.costRecord.paid && !opts.project.modelSpendPolicy.allowPaid) {
-    return { verified: false, reason: 'paid spend forbidden by project modelSpendPolicy' };
+    return reject('paid spend forbidden by project modelSpendPolicy');
   }
 
-  if (!pack.verifierResult.verified) {
-    return {
-      verified: false,
-      reason: `prior verifier rejected: ${pack.verifierResult.reason}`,
-    };
-  }
-
-  return { verified: true, reason: 'evidence-complete' };
+  // NOTE: pack.verifierResult (caller-supplied) is intentionally NEVER read here. The
+  // verifier's own computation above (structural independence + evidence hash + every
+  // fail-closed check) is the sole authority for the verdict. A caller/reviewer claiming
+  // verified:true in the submitted pack has zero effect on this return value.
+  return { verified: true, reason: 'evidence-complete', verifierId: SPINE_VERIFIER_ID };
 }

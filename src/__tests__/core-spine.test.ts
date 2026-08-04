@@ -14,6 +14,7 @@ import {
 import {
   parseEvidencePack,
   EvidencePackError,
+  computeEvidenceHash,
 } from '../core-spine/evidence-pack-contract.js';
 import {
   mapSpineStageToTaskStatus,
@@ -61,37 +62,64 @@ const validProject = () => ({
   emergencyStop: 'ATLAS_PAUSE or control pause',
 });
 
-const validPack = (over: Record<string, unknown> = {}) => ({
-  taskId: 'tsk_core_spine_demo',
-  changeId: 'chg_2026_08_03_core_spine',
-  projectId: 'prj_jobhunt_ksa',
-  baseCommit: '073f1e5b8947bea50af9d27d51730e6cec2fea74',
-  executorIdentity: 'adapter.human-cursor@0.1.0',
-  declaredEffects: ['write-test-file'],
-  actualEffects: ['write-test-file'],
-  effectProofs: [
-    {
-      effectId: 'write-test-file',
-      provenBy: [
-        { kind: 'command' as const, ref: 'cmd-diff' },
-        { kind: 'test' as const, ref: 'tst-unit' },
-      ],
-    },
-  ],
-  artifacts: [{ id: 'art-diff', kind: 'diff' as const, hash: 'a'.repeat(64) }],
-  diffHash: 'a'.repeat(64),
-  commandsRun: [
-    { id: 'cmd-diff', command: 'git diff --stat', exitCode: 0, outputHash: 'c'.repeat(64) },
-  ],
-  testCommands: [
-    { id: 'tst-unit', command: 'npm test', exitCode: 0, outputHash: 'b'.repeat(64) },
-  ],
-  costRecord: { provider: 'none', tokens: 0, paid: false },
-  verifierResult: { verified: true, reason: 'evidence-complete', verifierId: 'spine-verifier' },
-  rollbackState: { available: true, method: 'git-worktree-discard', proven: false },
-  ceoDecision: 'pending' as const,
-  ...over,
-});
+const validPack = (over: Record<string, unknown> = {}) => {
+  const base = {
+    taskId: 'tsk_core_spine_demo',
+    changeId: 'chg_2026_08_03_core_spine',
+    projectId: 'prj_jobhunt_ksa',
+    baseCommit: '073f1e5b8947bea50af9d27d51730e6cec2fea74',
+    executorIdentity: 'adapter.human-cursor@0.1.0',
+    declaredEffects: ['write-test-file'],
+    actualEffects: ['write-test-file'],
+    effectProofs: [
+      {
+        effectId: 'write-test-file',
+        provenBy: [
+          { kind: 'command' as const, ref: 'cmd-diff' },
+          { kind: 'test' as const, ref: 'tst-unit' },
+        ],
+      },
+    ],
+    artifacts: [{ id: 'art-diff', kind: 'diff' as const, hash: 'a'.repeat(64) }],
+    diffHash: 'a'.repeat(64),
+    commandsRun: [
+      { id: 'cmd-diff', command: 'git diff --stat', exitCode: 0, outputHash: 'c'.repeat(64) },
+    ],
+    testCommands: [
+      { id: 'tst-unit', command: 'npm test', exitCode: 0, outputHash: 'b'.repeat(64) },
+    ],
+    costRecord: { provider: 'none', tokens: 0, paid: false },
+    verifierResult: { verified: true, reason: 'evidence-complete', verifierId: 'spine-verifier' },
+    rollbackState: { available: true, method: 'git-worktree-discard', proven: false },
+    ceoDecision: 'pending' as const,
+    ...over,
+  } as Record<string, unknown> & {
+    commandsRun: Array<{ id: string; command: string; exitCode: number; outputHash: string; skipped?: boolean }>;
+    testCommands: Array<{ id: string; command: string; exitCode: number; outputHash: string; skipped?: boolean }>;
+    declaredEffects: string[];
+    actualEffects: string[];
+    effectProofs: Array<{ effectId: string; provenBy: Array<{ kind: 'command' | 'test' | 'artifact'; ref: string }> }>;
+    artifacts: Array<{ id: string; kind: 'diff' | 'file' | 'output'; hash?: string }>;
+    diffHash: string;
+  };
+  // NEW API: collectedEvidenceHash is required and must be computed from the SAME
+  // evidence-bearing fields the pack ends up with (i.e. after `over` overrides are
+  // applied) so that spine-verifier's independent recomputation matches by default —
+  // tests that intentionally want a stale/mismatched hash can still pass
+  // collectedEvidenceHash explicitly via `over`.
+  const collectedEvidenceHash =
+    (over as Record<string, unknown>).collectedEvidenceHash ??
+    computeEvidenceHash({
+      commandsRun: base.commandsRun,
+      testCommands: base.testCommands,
+      declaredEffects: base.declaredEffects,
+      actualEffects: base.actualEffects,
+      effectProofs: base.effectProofs,
+      artifacts: base.artifacts,
+      diffHash: base.diffHash,
+    });
+  return { ...base, collectedEvidenceHash };
+};
 
 describe('core-spine executor adapter contract', () => {
   it('accepts a valid executor contract', () => {
@@ -256,14 +284,15 @@ describe('core-spine verification invariants', () => {
     expect(r.reason).toMatch(/missing|incomplete|evidence|narrative/i);
   });
 
+  // ADAPTED: verifierResult is now advisory-only (never read for the verdict), so a
+  // forged verifierId inside it can no longer trigger self-cert rejection. The real
+  // structural self-cert check compares pack.executorIdentity against the verifier's own
+  // SPINE_VERIFIER_ID constant — so this test now sets executorIdentity itself to that
+  // constant, preserving the original intent (an executor cannot become the verifier).
   it('rejects executor self-certification', () => {
     const r = verifyEvidencePack(
       validPack({
-        verifierResult: {
-          verified: true,
-          reason: 'I tested it',
-          verifierId: 'adapter.human-cursor@0.1.0',
-        },
+        executorIdentity: 'spine-verifier',
       }),
       { project: project() },
     );
@@ -271,19 +300,27 @@ describe('core-spine verification invariants', () => {
     expect(r.reason).toMatch(/self-cert/i);
   });
 
+  // ADAPTED: verifierResult.verifierId is advisory-only now, so "forging" it can no
+  // longer change the verdict by definition — that IS the fix. Preserved intent: prove a
+  // caller-forged verifierId (a) never becomes the RETURNED verifierId, and (b) never
+  // changes the real verdict, by comparing two otherwise-identical valid packs whose only
+  // difference is the caller's forged claim.
   it('rejects forged verifier that is not an independent id', () => {
-    const r = verifyEvidencePack(
+    const forgedTrue = verifyEvidencePack(
       validPack({
-        verifierResult: {
-          verified: true,
-          reason: 'ok',
-          verifierId: 'totally-not-executor',
-        },
+        verifierResult: { verified: true, reason: 'ok', verifierId: 'totally-not-executor' },
       }),
       { project: project() },
     );
-    expect(r.verified).toBe(false);
-    expect(r.reason).toMatch(/self-cert|independent/i);
+    const forgedFalse = verifyEvidencePack(
+      validPack({
+        verifierResult: { verified: false, reason: 'lies', verifierId: 'totally-not-executor' },
+      }),
+      { project: project() },
+    );
+    expect(forgedTrue.verified).toBe(forgedFalse.verified);
+    expect(forgedTrue.verifierId).toBe('spine-verifier');
+    expect(forgedFalse.verifierId).toBe('spine-verifier');
   });
 
   it('rejects scope violation (actual effects outside declared)', () => {
