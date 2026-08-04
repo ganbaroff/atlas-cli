@@ -1,7 +1,10 @@
 /**
  * Context Assembly v0 tests — injectable reader; no file writes.
  */
-import { describe, expect, it } from 'vitest';
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
 import {
   interpretCeoGoal,
   parseAtlasGoalContract,
@@ -67,6 +70,14 @@ const compactNew = 'CURRENT: Project Resolution MERGED. Tip ready. Next Context 
 const compactStale = 'STALE SUMMARY: everything broken forever.';
 const receiptNew = 'RECEIPT: Project Resolution MERGED AND VERIFIED 2026-08-04.';
 const historicalAlarm = 'HISTORICAL: Integronix production live READY deployed alarm.';
+
+const tempDirs: string[] = [];
+afterEach(() => {
+  while (tempDirs.length) {
+    const d = tempDirs.pop();
+    if (d) rmSync(d, { recursive: true, force: true });
+  }
+});
 
 describe('atlas context assembly v0', () => {
   it('1. current canonical/receipt wins over stale summary', () => {
@@ -498,9 +509,177 @@ describe('atlas context assembly v0', () => {
     const result = assembleContextPack(c, r, {
       catalog: [],
       reader: memoryReader({}),
+      nowIso: '2026-08-04T00:00:00.000Z',
     });
     expect(result.filesTouchedForWrite).toEqual([]);
     assertNoWrites(result);
+  });
+
+  it('16. no filesystem writes when assembly throws', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'atlas-assemble-throw-'));
+    tempDirs.push(dir);
+    const before = readdirSync(dir);
+    const c = contract('ANUS x', 'prj_anus_atlas', 'ANUS');
+    const r = stubResolution({ status: 'READY', projectId: 'prj_anus_atlas' });
+    expect(() =>
+      assembleContextPack(c, r, {
+        catalog: [
+          {
+            id: 'bad',
+            pathOrUrl: 'mem://bad',
+            sourceType: 'personal-memory',
+            authority: 'unknown',
+            projectIds: ['prj_anus_atlas'],
+            relevanceHints: ['anus'],
+            personalMemory: true,
+          },
+        ],
+        reader: memoryReader({ 'mem://bad': { content: 'x' } }),
+        failUnknownAuthority: true,
+        nowIso: '2026-08-04T00:00:00.000Z',
+      }),
+    ).toThrow(AtlasContextAssemblyError);
+    expect(readdirSync(dir)).toEqual(before);
+  });
+
+  it('17. catalog path exists but is not a regular file → missingEvidence', () => {
+    const c = contract('ANUS tip', 'prj_anus_atlas', 'ANUS');
+    const r = stubResolution({ status: 'READY', projectId: 'prj_anus_atlas' });
+    const { pack } = assembleContextPack(c, r, {
+      catalog: [
+        {
+          id: 'dirish',
+          pathOrUrl: 'mem://dir',
+          sourceType: 'receipt',
+          authority: 'recent-receipt',
+          projectIds: ['prj_anus_atlas'],
+          relevanceHints: ['anus', 'tip'],
+          personalMemory: false,
+        },
+      ],
+      reader: {
+        read() {
+          return { ok: false, content: '', mtimeIso: null, error: 'not-a-file' };
+        },
+      },
+      nowIso: '2026-08-04T00:00:00.000Z',
+    });
+    expect(pack.missingEvidence.some((m) => /not-a-file:mem:\/\/dir/i.test(m))).toBe(true);
+    expect(pack.selectedSources.find((s) => s.id === 'dirish')?.selected).toBe(false);
+  });
+
+  it('18. renamed/missing target → missingEvidence', () => {
+    const c = contract('ANUS renamed target', 'prj_anus_atlas', 'ANUS');
+    const r = stubResolution({ status: 'READY', projectId: 'prj_anus_atlas' });
+    const { pack } = assembleContextPack(c, r, {
+      catalog: [
+        {
+          id: 'gone',
+          pathOrUrl: 'mem://renamed-away',
+          sourceType: 'receipt',
+          authority: 'recent-receipt',
+          projectIds: ['prj_anus_atlas'],
+          relevanceHints: ['anus', 'renamed'],
+          personalMemory: false,
+        },
+      ],
+      reader: memoryReader({}),
+      nowIso: '2026-08-04T00:00:00.000Z',
+    });
+    expect(pack.missingEvidence.some((m) => /missing-source:mem:\/\/renamed-away/i.test(m))).toBe(
+      true,
+    );
+  });
+
+  it('19. two contradictory decision sources exposed', () => {
+    const c = contract('ANUS courier decision conflict', 'prj_anus_atlas', 'ANUS');
+    const r = stubResolution({ status: 'READY', projectId: 'prj_anus_atlas' });
+    const { pack } = assembleContextPack(c, r, {
+      catalog: [
+        {
+          id: 'dec-a',
+          pathOrUrl: 'mem://dec-a',
+          sourceType: 'decision',
+          authority: 'canonical-decision',
+          projectIds: ['prj_anus_atlas'],
+          relevanceHints: ['anus', 'courier', 'decision'],
+          personalMemory: true,
+        },
+        {
+          id: 'dec-b',
+          pathOrUrl: 'mem://dec-b',
+          sourceType: 'decision',
+          authority: 'canonical-decision',
+          projectIds: ['prj_anus_atlas'],
+          relevanceHints: ['anus', 'courier', 'decision'],
+          personalMemory: true,
+        },
+      ],
+      reader: memoryReader({
+        'mem://dec-a': { content: 'Binding decision: ACCEPT MERGED courier loop' },
+        'mem://dec-b': { content: 'Binding decision: REJECT BLOCKED courier loop' },
+      }),
+      nowIso: '2026-08-04T00:00:00.000Z',
+    });
+    expect(pack.unresolvedContradictions.join(' ')).toMatch(/Contradictory decision/i);
+  });
+
+  it('20. huge relevant source cannot starve contract/resolution facts', () => {
+    const c = contract('ANUS huge CURRENT-COMPACT context', 'prj_anus_atlas', 'ANUS');
+    const r = stubResolution({ status: 'READY', projectId: 'prj_anus_atlas' });
+    const huge = `${'CURRENT-COMPACT LINE\n'.repeat(50_000)}Decision: MERGED`;
+    const { pack } = assembleContextPack(c, r, {
+      catalog: [
+        {
+          id: 'current-compact',
+          pathOrUrl: 'mem://compact',
+          sourceType: 'personal-memory',
+          authority: 'current-compact',
+          projectIds: ['prj_anus_atlas'],
+          relevanceHints: ['anus', 'huge', 'current-compact', 'context'],
+          personalMemory: true,
+        },
+      ],
+      budgetBytes: 4_000,
+      perSourceMaxBytes: 1_500,
+      reader: memoryReader({ 'mem://compact': { content: huge } }),
+      nowIso: '2026-08-04T00:00:00.000Z',
+    });
+    expect(pack.selectedSources.find((s) => s.id === 'goal-contract')?.selected).toBe(true);
+    expect(pack.selectedSources.find((s) => s.id === 'project-resolution')?.selected).toBe(true);
+    expect(pack.facts.some((f) => f.citation === 'goal-contract')).toBe(true);
+    expect(pack.facts.some((f) => f.citation === 'project-resolution')).toBe(true);
+    const compact = pack.selectedSources.find((s) => s.id === 'current-compact');
+    expect(compact?.selected).toBe(true);
+    expect(compact!.bytesLoaded).toBeLessThanOrEqual(pack.perSourceMaxBytes);
+    expect(compact!.contentHash).toHaveLength(64);
+    expect(pack.assumptions.some((a) => /truncated-source:current-compact/i.test(a))).toBe(true);
+    expect(pack.contextBytesUsed).toBeLessThanOrEqual(pack.contextBudgetBytes);
+  });
+
+  it('21. identical assemblies with same nowIso produce stable JSON + hashes', () => {
+    const c = contract('ANUS tip stable', 'prj_anus_atlas', 'ANUS');
+    const r = stubResolution({ status: 'READY', projectId: 'prj_anus_atlas' });
+    const opts = {
+      catalog: [
+        {
+          id: 'compact',
+          pathOrUrl: 'mem://compact',
+          sourceType: 'personal-memory' as const,
+          authority: 'current-compact' as const,
+          projectIds: ['prj_anus_atlas'],
+          relevanceHints: ['anus', 'tip'],
+          personalMemory: true,
+        },
+      ],
+      reader: memoryReader({ 'mem://compact': { content: compactNew } }),
+      nowIso: '2026-08-04T15:30:00.000Z',
+      budgetBytes: 8_000,
+    };
+    const a = assembleContextPack(c, r, opts).pack;
+    const b = assembleContextPack(c, r, opts).pack;
+    expect(a.assembledAtIso).toBe('2026-08-04T15:30:00.000Z');
+    expect(JSON.stringify(b)).toBe(JSON.stringify(a));
   });
 });
 

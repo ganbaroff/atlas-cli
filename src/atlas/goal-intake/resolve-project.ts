@@ -62,7 +62,12 @@ export type ResolveProjectResult = {
 };
 
 function norm(p: string): string {
-  return resolve(p).replace(/\//g, '\\').toLowerCase();
+  return resolve(p.replace(/\//g, '\\')).replace(/\//g, '\\').toLowerCase();
+}
+
+/** Exported for tests — Windows path forms C:\… and c:/… normalize equal. */
+export function normalizeAtlasPath(p: string): string {
+  return norm(p);
 }
 
 function isUnderApprovedRoot(absPath: string, roots: readonly string[]): boolean {

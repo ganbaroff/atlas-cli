@@ -69,6 +69,8 @@ export const extractedFactSchema = z.object({
 export const atlasContextPackSchema = z.object({
   goalId: z.string().min(1),
   projectId: z.string().min(1),
+  /** ISO timestamp of assembly — injectable via AssembleContextOptions.nowIso */
+  assembledAtIso: z.string().min(1),
   verifiedProjectPath: z.string().nullable(),
   externalTarget: z.string().nullable(),
   /** Explicit: read-only target readiness vs project execution readiness */
@@ -86,6 +88,7 @@ export const atlasContextPackSchema = z.object({
   contextConfidence: z.enum(['high', 'medium', 'low', 'none']),
   contextBudgetBytes: z.number().int().positive(),
   contextBytesUsed: z.number().int().nonnegative(),
+  perSourceMaxBytes: z.number().int().positive(),
   planningStatus: contextPlanningStatusSchema,
   conciseCeoSummary: z.string().min(1),
 });

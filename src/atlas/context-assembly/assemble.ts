@@ -5,6 +5,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import type { AtlasGoalContract } from '../goal-intake/contracts.js';
+import { isReadOnlyCeoIntent } from '../goal-intake/read-only-intent.js';
 import type { AtlasProjectResolution } from '../goal-intake/resolution-contracts.js';
 import {
   AtlasContextAssemblyError,
@@ -12,7 +13,6 @@ import {
   type AtlasContextPack,
   type ContextSource,
   type ExtractedFact,
-  type SourceAuthority,
 } from './contracts.js';
 import {
   AUTHORITY_RANK,
@@ -35,7 +35,10 @@ export type AssembleContextOptions = {
   reader?: ContextSourceReader;
   catalog?: readonly CatalogEntry[];
   budgetBytes?: number;
+  /** Injected clock — also written as pack.assembledAtIso */
   nowIso?: string;
+  /** Hard cap per catalog source (synthetic goal/resolution always reserved) */
+  perSourceMaxBytes?: number;
   /** Extra catalog rows for tests */
   extraSources?: CatalogEntry[];
   /** When true, treat unknown authority rows as fail-closed */
@@ -50,6 +53,8 @@ export type AssembleContextResult = {
 };
 
 const DEFAULT_BUDGET = 48_000;
+const DEFAULT_PER_SOURCE = 8_000;
+const TRUNCATION_MARKER = '/* truncated-for-context-budget';
 
 function sha256(text: string): string {
   return createHash('sha256').update(text, 'utf8').digest('hex');
@@ -59,11 +64,11 @@ export function createDefaultSourceReader(): ContextSourceReader {
   return {
     read(pathOrUrl: string): SourceReadResult {
       if (/^https?:\/\//i.test(pathOrUrl)) {
-        // External targets: metadata-only in v0 (no live fetch required for assembly)
+        // External targets: metadata-only in v0 (no live fetch). mtime null → assemble uses nowIso.
         return {
           ok: true,
           content: `external-readonly-target:${pathOrUrl}`,
-          mtimeIso: new Date().toISOString(),
+          mtimeIso: null,
         };
       }
       if (!existsSync(pathOrUrl)) {
@@ -101,8 +106,25 @@ function isRelevant(entry: CatalogEntry, contract: AtlasGoalContract, projectId:
   return entry.relevanceHints.some((h) => text.includes(h.toLowerCase()));
 }
 
-function isReadOnlyAudit(contract: AtlasGoalContract): boolean {
-  return /ничего не меняй|read[\s-]?only|не трогай|audit|анализ/i.test(contract.originalCeoMessage);
+function truncateToBytes(full: string, maxBytes: number): { text: string; truncated: boolean } {
+  if (maxBytes < 256) {
+    const marker = `\n\n${TRUNCATION_MARKER} hash-of-full=${sha256(full)} */\n`;
+    return { text: marker, truncated: true };
+  }
+  const fullHash = sha256(full);
+  const marker = `\n\n${TRUNCATION_MARKER} hash-of-full=${fullHash} */\n`;
+  const markerBytes = Buffer.byteLength(marker, 'utf8');
+  const bodyBudget = Math.max(64, maxBytes - markerBytes);
+  let end = Math.min(full.length, bodyBudget);
+  let slice = full.slice(0, end);
+  while (Buffer.byteLength(slice, 'utf8') > bodyBudget && end > 64) {
+    end = Math.floor(end * 0.9);
+    slice = full.slice(0, end);
+  }
+  if (Buffer.byteLength(full, 'utf8') <= maxBytes) {
+    return { text: full, truncated: false };
+  }
+  return { text: slice + marker, truncated: true };
 }
 
 function extractFactsFromContent(
@@ -128,7 +150,6 @@ function extractFactsFromContent(
     return facts;
   }
 
-  // Prefer lines that look like decisions / status
   for (const line of lines.slice(0, 80)) {
     if (/^\*\*Next restart:\*\*/i.test(line) || /^## /i.test(line)) continue;
     if (/MERGED|READY|BLOCKED|ACCEPT|DEBT-|NO-GO|UNVERIFIED/i.test(line)) {
@@ -164,7 +185,6 @@ function extractFactsFromContent(
     });
   }
 
-  // Contract constraints
   if (entry.id === 'ceo-project-map' && /integronix/i.test(goalText(contract))) {
     facts.push({
       text: 'Integronix marked UNVERIFIED / maintenance in project map — do not invent live repo path',
@@ -179,6 +199,7 @@ function extractFactsFromContent(
 function detectContradictions(
   sources: ContextSource[],
   contents: Map<string, string>,
+  decisionFacts: ExtractedFact[],
 ): string[] {
   const out: string[] = [];
   const historical = sources.filter((s) => s.historical && s.selected);
@@ -189,7 +210,6 @@ function detectContradictions(
     );
   }
 
-  // Stale "READY" claims in historical vs BLOCKED in resolution text
   for (const h of historical) {
     const c = contents.get(h.id) ?? '';
     if (/READY|production live|deployed/i.test(c)) {
@@ -198,7 +218,35 @@ function detectContradictions(
       );
     }
   }
-  return out;
+
+  // Two contradictory decision-bearing sources (e.g. MERGED vs BLOCKED / ACCEPT vs REJECT)
+  const positive = decisionFacts.filter((d) => /MERGED|ACCEPT|READY|APPROVED/i.test(d.text));
+  const negative = decisionFacts.filter((d) => /BLOCKED|REJECT|NO-GO|DENIED|FAIL/i.test(d.text));
+  if (positive.length && negative.length) {
+    const posCite = positive[0]!.citation;
+    const negCite = negative[0]!.citation;
+    if (posCite !== negCite) {
+      out.push(
+        `Contradictory decisions across sources: ${posCite} vs ${negCite}`,
+      );
+    }
+  }
+
+  const decisionSources = sources.filter(
+    (s) => s.selected && (s.authority === 'canonical-decision' || s.sourceType === 'decision'),
+  );
+  if (decisionSources.length >= 2) {
+    const bodies = decisionSources.map((s) => ({ id: s.id, text: contents.get(s.id) ?? '' }));
+    const pos = bodies.filter((b) => /MERGED|ACCEPT|READY|APPROVED/i.test(b.text));
+    const neg = bodies.filter((b) => /BLOCKED|REJECT|NO-GO|DENIED|FAIL/i.test(b.text));
+    if (pos.length && neg.length) {
+      out.push(
+        `Contradictory decision sources: ${pos[0]!.id} vs ${neg[0]!.id}`,
+      );
+    }
+  }
+
+  return [...new Set(out)];
 }
 
 /**
@@ -214,6 +262,7 @@ export function assembleContextPack(
   const catalog = [...(opts.catalog ?? CONTEXT_SOURCE_CATALOG), ...(opts.extraSources ?? [])];
   const budget = opts.budgetBytes ?? DEFAULT_BUDGET;
   const nowIso = opts.nowIso ?? new Date().toISOString();
+  const perSourceMax = opts.perSourceMaxBytes ?? Math.min(DEFAULT_PER_SOURCE, Math.max(1024, Math.floor(budget / 3)));
   const failUnknown = opts.failUnknownAuthority !== false;
   const filesTouchedForWrite: string[] = [];
 
@@ -231,7 +280,7 @@ export function assembleContextPack(
   const contents = new Map<string, string>();
   let bytesUsed = 0;
 
-  // Always include synthetic goal + resolution sources (in-memory, hashed)
+  // Always include synthetic goal + resolution sources first (never starved by catalog).
   const goalBlob = JSON.stringify({
     originalCeoMessage: contract.originalCeoMessage,
     interpretedObjective: contract.interpretedObjective,
@@ -317,6 +366,9 @@ export function assembleContextPack(
     const read = reader.read(entry.pathOrUrl);
     if (!read.ok) {
       missingEvidence.push(`missing-source:${entry.pathOrUrl}`);
+      if (read.error === 'not-a-file') {
+        missingEvidence.push(`not-a-file:${entry.pathOrUrl}`);
+      }
       excluded.push({
         id: entry.id,
         sourceType: entry.sourceType,
@@ -332,62 +384,62 @@ export function assembleContextPack(
       continue;
     }
 
-    let loadContent = read.content;
-    let size = Buffer.byteLength(loadContent, 'utf8');
+    const fullHash = sha256(read.content);
+    const remaining = budget - bytesUsed;
+    if (remaining < 128) {
+      excluded.push({
+        id: entry.id,
+        sourceType: entry.sourceType,
+        pathOrUrl: entry.pathOrUrl,
+        authority: entry.authority,
+        freshnessIso: read.mtimeIso ?? nowIso,
+        contentHash: fullHash,
+        bytesLoaded: 0,
+        historical: !!entry.historical,
+        selected: false,
+        exclusionReason: 'context-budget-exceeded',
+      });
+      continue;
+    }
+
+    const sourceCap = Math.min(perSourceMax, remaining);
+    const fullSize = Buffer.byteLength(read.content, 'utf8');
+    // Prefer dropping historical / low-authority entirely when they cannot fit untruncated
+    if (
+      fullSize > sourceCap &&
+      (entry.historical || AUTHORITY_RANK[entry.authority] < 50)
+    ) {
+      excluded.push({
+        id: entry.id,
+        sourceType: entry.sourceType,
+        pathOrUrl: entry.pathOrUrl,
+        authority: entry.authority,
+        freshnessIso: read.mtimeIso ?? nowIso,
+        contentHash: fullHash,
+        bytesLoaded: 0,
+        historical: !!entry.historical,
+        selected: false,
+        exclusionReason: 'context-budget-exceeded',
+      });
+      continue;
+    }
+
+    const { text: loadContent, truncated } = truncateToBytes(read.content, sourceCap);
+    const size = Buffer.byteLength(loadContent, 'utf8');
     if (bytesUsed + size > budget) {
-      const remaining = budget - bytesUsed;
-      if (remaining < 256) {
-        excluded.push({
-          id: entry.id,
-          sourceType: entry.sourceType,
-          pathOrUrl: entry.pathOrUrl,
-          authority: entry.authority,
-          freshnessIso: read.mtimeIso ?? nowIso,
-          contentHash: sha256(read.content),
-          bytesLoaded: 0,
-          historical: !!entry.historical,
-          selected: false,
-          exclusionReason: 'context-budget-exceeded',
-        });
-        continue;
-      }
-      // Prefer dropping historical / lower authority entirely
-      if (entry.historical || AUTHORITY_RANK[entry.authority] < 50) {
-        excluded.push({
-          id: entry.id,
-          sourceType: entry.sourceType,
-          pathOrUrl: entry.pathOrUrl,
-          authority: entry.authority,
-          freshnessIso: read.mtimeIso ?? nowIso,
-          contentHash: sha256(read.content),
-          bytesLoaded: 0,
-          historical: !!entry.historical,
-          selected: false,
-          exclusionReason: 'context-budget-exceeded',
-        });
-        continue;
-      }
-      // High-authority: load bounded excerpt only (never invent; truncate with marker)
-      const sliceChars = Math.max(200, Math.floor(remaining * 0.9));
-      loadContent =
-        read.content.slice(0, sliceChars) +
-        `\n\n/* truncated-for-context-budget hash-of-full=${sha256(read.content)} */\n`;
-      size = Buffer.byteLength(loadContent, 'utf8');
-      if (bytesUsed + size > budget) {
-        excluded.push({
-          id: entry.id,
-          sourceType: entry.sourceType,
-          pathOrUrl: entry.pathOrUrl,
-          authority: entry.authority,
-          freshnessIso: read.mtimeIso ?? nowIso,
-          contentHash: sha256(read.content),
-          bytesLoaded: 0,
-          historical: !!entry.historical,
-          selected: false,
-          exclusionReason: 'context-budget-exceeded',
-        });
-        continue;
-      }
+      excluded.push({
+        id: entry.id,
+        sourceType: entry.sourceType,
+        pathOrUrl: entry.pathOrUrl,
+        authority: entry.authority,
+        freshnessIso: read.mtimeIso ?? nowIso,
+        contentHash: fullHash,
+        bytesLoaded: 0,
+        historical: !!entry.historical,
+        selected: false,
+        exclusionReason: 'context-budget-exceeded',
+      });
+      continue;
     }
 
     bytesUsed += size;
@@ -398,12 +450,15 @@ export function assembleContextPack(
       pathOrUrl: entry.pathOrUrl,
       authority: entry.authority,
       freshnessIso: read.mtimeIso ?? nowIso,
-      contentHash: sha256(read.content), // full-file hash even when excerpt loaded
+      contentHash: fullHash, // full-file hash even when excerpt loaded
       bytesLoaded: size,
       historical: !!entry.historical,
       selected: true,
     };
     selectedSources.push(src);
+    if (truncated) {
+      assumptions.push(`truncated-source:${entry.id}; full-hash=${fullHash}`);
+    }
     facts.push(...extractFactsFromContent(entry, loadContent, contract));
 
     if (entry.historical) {
@@ -411,7 +466,6 @@ export function assembleContextPack(
     }
   }
 
-  // Stale summary must not override newer receipt: if both selected, note constraint
   const hasReceipt = selectedSources.some((s) => s.authority === 'recent-receipt');
   const hasHistorical = selectedSources.some((s) => s.historical);
   const hasCompact = selectedSources.some((s) => s.authority === 'current-compact');
@@ -423,12 +477,13 @@ export function assembleContextPack(
     });
   }
 
+  const decisionFacts = facts.filter((f) => f.kind === 'decision');
   const contradictions = [
-    ...detectContradictions(selectedSources, contents),
+    ...detectContradictions(selectedSources, contents, decisionFacts),
     ...resolution.conflicts,
   ];
 
-  const readOnly = isReadOnlyAudit(contract);
+  const readOnly = isReadOnlyCeoIntent(contract.originalCeoMessage);
   const externalTarget =
     selectedSources.find((s) => s.authority === 'external-readonly-target')?.pathOrUrl ?? null;
 
@@ -438,7 +493,6 @@ export function assembleContextPack(
     (projectExecutionReady ||
       (!!externalTarget && resolution.status !== 'NEEDS_APPROVAL' && projectId !== 'prj_unknown'));
 
-  // Integronix: repo BLOCKED + external target + read-only → READY_TO_PLAN for audit only
   let planningStatus: AtlasContextPack['planningStatus'] = 'BLOCKED';
   let confidence: AtlasContextPack['contextConfidence'] = 'none';
   const blockers: string[] = [...resolution.conflicts.filter((c) => /BLOCKED|absent|insufficient/i.test(c))];
@@ -479,7 +533,6 @@ export function assembleContextPack(
     planningStatus = 'NEEDS_APPROVAL';
   }
 
-  // Separate personal vs project memory in assumptions note
   const personalCount = selectedSources.filter((s) => s.sourceType === 'personal-memory').length;
   const projectMemCount = selectedSources.filter((s) =>
     ['project-memory', 'repository-doc', 'receipt', 'decision'].includes(s.sourceType),
@@ -488,7 +541,7 @@ export function assembleContextPack(
     `Source mix: ${personalCount} personal-memory + ${projectMemCount} project/repo sources (personal memory not fully crawled)`,
   );
 
-  const decisions = facts.filter((f) => f.kind === 'decision').map((f) => f.text);
+  const decisions = decisionFacts.map((f) => f.text);
   const constraints = [
     ...facts.filter((f) => f.kind === 'constraint').map((f) => f.text),
     ...contract.forbiddenActions.slice(0, 5).map((a) => `forbidden:${a}`),
@@ -498,9 +551,18 @@ export function assembleContextPack(
     ...facts.filter((f) => f.kind === 'blocker').map((f) => f.text),
   ];
 
+  // Invariant: synthetic sources never starved
+  if (!selectedSources.some((s) => s.id === 'goal-contract' && s.selected)) {
+    throw new AtlasContextAssemblyError('goal-contract source starved', 'INSUFFICIENT');
+  }
+  if (!selectedSources.some((s) => s.id === 'project-resolution' && s.selected)) {
+    throw new AtlasContextAssemblyError('project-resolution source starved', 'INSUFFICIENT');
+  }
+
   const pack = parseAtlasContextPack({
     goalId,
     projectId,
+    assembledAtIso: nowIso,
     verifiedProjectPath: resolution.canonicalPath,
     externalTarget,
     readOnlyTargetReady: !!readOnlyTargetReady,
@@ -520,11 +582,11 @@ export function assembleContextPack(
     contextConfidence: confidence,
     contextBudgetBytes: budget,
     contextBytesUsed: bytesUsed,
+    perSourceMaxBytes: perSourceMax,
     planningStatus,
     conciseCeoSummary: `${projectId}: plan=${planningStatus}; execReady=${projectExecutionReady}; readOnlyTarget=${!!readOnlyTargetReady}; bytes=${bytesUsed}/${budget}`,
   });
 
-  // Preserve goal intent verbatim
   const goalContract: AtlasGoalContract = {
     ...contract,
     originalCeoMessage: contract.originalCeoMessage,

@@ -4,7 +4,10 @@
  * Read-only. No planning. No exec-graph writes. No filesystem mutation by this module.
  */
 import { interpretCeoGoal } from '../goal-intake/intake.js';
-import { resolveProjectPath } from '../goal-intake/resolve-project.js';
+import {
+  resolveProjectPath,
+  type ResolveProjectOptions,
+} from '../goal-intake/resolve-project.js';
 import type { AtlasGoalContract } from '../goal-intake/contracts.js';
 import type { AtlasProjectResolution } from '../goal-intake/resolution-contracts.js';
 import {
@@ -39,6 +42,13 @@ export type GoalContextEnvelope = {
 export type RunGoalContextOptions = {
   message: string;
   assemble?: AssembleContextOptions;
+  /** Injectable resolve probe/registry — production CLI omits (live defaults). */
+  resolve?: ResolveProjectOptions;
+  /**
+   * When set (including null), replaces intake contract.projectPath before resolve.
+   * Tests use null to avoid live OneDrive path hints with injected fixtures.
+   */
+  projectPathOverride?: string | null;
 };
 
 export type RunGoalContextResult = {
@@ -84,9 +94,12 @@ export function runGoalContext(opts: RunGoalContextOptions): RunGoalContextResul
   const preserved: AtlasGoalContract = {
     ...contract,
     originalCeoMessage: rawMessage,
+    ...(opts.projectPathOverride !== undefined
+      ? { projectPath: opts.projectPathOverride }
+      : {}),
   };
 
-  const { resolution, boundContract } = resolveProjectPath(preserved);
+  const { resolution, boundContract } = resolveProjectPath(preserved, opts.resolve ?? {});
   const boundPreserved: AtlasGoalContract = {
     ...boundContract,
     originalCeoMessage: rawMessage,

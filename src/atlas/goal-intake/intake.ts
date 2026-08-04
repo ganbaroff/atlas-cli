@@ -12,9 +12,8 @@ import {
   type GoalIntakeStatus,
 } from './contracts.js';
 import { findProjectByAlias, getProjectById, type RegistryProject } from './project-registry.js';
+import { isReadOnlyCeoIntent } from './read-only-intent.js';
 
-const READ_ONLY_RE =
-  /ничего не меняй|не меняй|read[\s-]?only|не трогай|audit|анализ|analyze|inspect|review|observe|без изменен/i;
 const DESTRUCTIVE_RE =
   /удал|delete|drop\s+table|wipe|уничтож|rm\s+-rf|format\s+disk/i;
 const FINANCIAL_RE =
@@ -41,16 +40,12 @@ function sha8(text: string): string {
   return createHash('sha256').update(text, 'utf8').digest('hex').slice(0, 8);
 }
 
-function isReadOnly(message: string): boolean {
-  return READ_ONLY_RE.test(message);
-}
-
 function detectStopReasons(message: string): string[] {
   const reasons: string[] = [];
   if (DESTRUCTIVE_RE.test(message)) reasons.push('destructive-action-uncertainty');
   if (FINANCIAL_RE.test(message)) reasons.push('financial-action-requires-ceo');
   if (CREDENTIAL_RE.test(message)) reasons.push('credential-uncertainty');
-  if (PRODUCTION_WRITE_RE.test(message) && !isReadOnly(message)) {
+  if (PRODUCTION_WRITE_RE.test(message) && !isReadOnlyCeoIntent(message)) {
     reasons.push('production-modification-requires-ceo');
   }
   return reasons;
@@ -66,7 +61,7 @@ function riskFor(message: string, readOnly: boolean, stop: string[]): GoalIntake
 function inferObjective(message: string, project: RegistryProject | null): string {
   const trimmed = message.replace(/\s+/g, ' ').trim();
   if (project?.projectId === 'prj_integronix' && /integronix\.az|integronix/i.test(message)) {
-    if (isReadOnly(message)) {
+    if (isReadOnlyCeoIntent(message)) {
       return 'Read-only audit of integronix.az: identify site gaps (photos, trust, copy, mobile, conversion) without changing anything';
     }
   }
@@ -127,7 +122,7 @@ export function interpretCeoGoal(input: InterpretGoalInput): AtlasGoalContract {
 
   const resolved = project;
 
-  const readOnly = isReadOnly(message);
+  const readOnly = isReadOnlyCeoIntent(message);
   const stop = detectStopReasons(message);
   const riskLevel = riskFor(message, readOnly, stop);
 
