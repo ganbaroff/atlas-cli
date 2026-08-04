@@ -37,7 +37,7 @@ let ownedInstanceLeaseId: string | undefined;
 
 // CWD-FIX: resolve .env from module dir, not process.cwd()
 import { parse as dotenvParse } from 'dotenv';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname } from 'node:path';
 const ANUS_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const envPath = resolve(ANUS_ROOT, '.env');
@@ -535,6 +535,72 @@ goalCmd
       console.log(JSON.stringify(goal, null, 2));
     } catch (err) {
       console.error(`goal add error: ${err instanceof Error ? err.message : String(err)}`);
+      process.exitCode = 1;
+    }
+  });
+
+goalCmd
+  .command('resolve')
+  .description(
+    'Interpret a CEO message and resolve the target project path (read-only, no exec-graph writes)',
+  )
+  .requiredOption('--message <text>', 'CEO message to interpret')
+  .option('--json', 'Emit only a single JSON object on stdout')
+  .action(async (opts) => {
+    try {
+      const { interpretCeoGoal } = await import('./atlas/goal-intake/intake.js');
+      const { resolveProjectPath } = await import('./atlas/goal-intake/resolve-project.js');
+
+      const contract = interpretCeoGoal({ ceoMessage: opts.message });
+      const { resolution, boundContract } = resolveProjectPath(contract);
+
+      let finalStatus: 'ready' | 'blocked' | 'needs-approval' | 'unknown-project';
+      if (contract.status === 'unknown-project') {
+        finalStatus = 'unknown-project';
+      } else if (resolution.status === 'BLOCKED' || contract.status === 'blocked') {
+        finalStatus = 'blocked';
+      } else if (resolution.status === 'NEEDS_APPROVAL' || contract.status === 'needs-approval') {
+        finalStatus = 'needs-approval';
+      } else {
+        finalStatus = 'ready';
+      }
+
+      const reasons: string[] = [
+        ...boundContract.approvalRequirements,
+        ...resolution.conflicts,
+        resolution.recommendedNextAction,
+      ];
+
+      const payload = {
+        goalContract: boundContract,
+        projectResolution: resolution,
+        finalStatus,
+        evidence: resolution.evidenceReferences,
+        reasons,
+      };
+
+      if (opts.json) {
+        console.log(JSON.stringify(payload));
+      } else {
+        const detail =
+          finalStatus === 'ready' && resolution.canonicalPath
+            ? resolution.canonicalPath
+            : resolution.recommendedNextAction;
+        console.log(
+          `project=${boundContract.selectedProject.name} finalStatus=${finalStatus} ${detail}`,
+        );
+      }
+
+      const exitCode: Record<typeof finalStatus, number> = {
+        ready: 0,
+        blocked: 2,
+        'needs-approval': 3,
+        'unknown-project': 4,
+      };
+      process.exit(exitCode[finalStatus]);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(JSON.stringify({ error: message }));
       process.exitCode = 1;
     }
   });
@@ -1580,7 +1646,8 @@ program
     }
   });
 
-if (import.meta.url === `file://${process.argv[1]}` || process.argv[1]?.endsWith('cli.js')) {
+const invokedPath = process.argv[1] ? pathToFileURL(process.argv[1]).href : '';
+if (import.meta.url === invokedPath || process.argv[1]?.endsWith('cli.js') || process.argv[1]?.endsWith('cli.ts')) {
   if (shouldAcquireInstanceLease(process.argv.slice(2))) {
     const instanceLease = acquireInstanceLease();
     if (instanceLease.mode === 'readonly') {
