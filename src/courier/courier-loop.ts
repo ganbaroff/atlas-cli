@@ -23,6 +23,7 @@ import {
   CHATGPT_BROWSER_REVIEWER_ADAPTER_ID,
   reviewWithChatGpt,
   type ChatGptReviewResult,
+  type ChatGptVerdict,
   ChatGptBrowserReviewerError,
   type ChatGptBrowserDriver,
 } from '../hands/chatgpt-browser-reviewer-adapter.js';
@@ -55,6 +56,28 @@ export type CourierTimelineEvent = {
   detail: string;
 };
 
+/**
+ * Reviewer/verifier decoupling contract (CEO mandate). The deterministic spine-verifier
+ * is the sole authority for completion; the ChatGPT reviewer is advisory-only and can
+ * never turn a deterministic REJECT into a success, nor can its unavailability turn a
+ * deterministic success into an incomplete/failed result.
+ */
+export type DeterministicVerdict = { verified: boolean; reason: string; verifierId: string };
+
+export type ReviewerStatus =
+  | 'ADVISORY_ACCEPT'
+  | 'ADVISORY_REPAIR_REQUESTED'
+  | 'ADVISORY_REJECT'
+  | 'ADVISORY_UNAVAILABLE'
+  | 'MALFORMED_REVIEW'
+  | 'NOT_ATTEMPTED';
+
+export type CourierFinalStatus =
+  | 'VERIFIED_WITH_ADVISORY_ACCEPT'
+  | 'VERIFIED_WITH_ADVISORY_REPAIR_APPLIED'
+  | 'VERIFIED_WITHOUT_ADVISORY_REVIEW'
+  | 'REJECT';
+
 export type CourierReceipt = {
   proofId: string;
   originalGoal: string;
@@ -84,6 +107,26 @@ export type CourierReceipt = {
   finalDiff: string;
   finalDiffHash: string;
   tests: { command: string; exitCode: number; outputHash: string; output: string };
+  /**
+   * Deterministic spine-verifier verdict — the ONLY thing that authorizes completion.
+   * Always computed before any reviewer call, whenever executor evidence was collected.
+   * Null only when no executor evidence was ever collected (early fail path).
+   */
+  deterministicVerdict: DeterministicVerdict | null;
+  /** What happened to the advisory ChatGPT reviewer — never gates the verdict. */
+  reviewerStatus: ReviewerStatus;
+  /** Human-readable advisory note from the reviewer (or the failure reason). Never authoritative. */
+  reviewerAdvice: string | null;
+  /** The single authoritative outcome, derived ONLY from deterministicVerdict + bounded repair. */
+  finalStatus: CourierFinalStatus;
+  /** Count of bounded repair iterations actually re-executed (cap: config.maxRepairCycles). */
+  repairsApplied: number;
+  /** The exact frozen EvidencePack the deterministic verifier ran against. */
+  evidencePack: EvidencePack | null;
+  /**
+   * Legacy field — back-compat for existing receipts/scripts. Always populated FROM
+   * deterministicVerdict; no caller/reviewer can set this independently.
+   */
   verifierResult: { verified: boolean; reason: string; verifierId: string };
   errors: string[];
   yusifCourierActions: string[];
@@ -352,17 +395,21 @@ export async function runCourierLoop(config: CourierLoopConfig): Promise<Courier
   let iterationCount = 0;
   let lastCursor: CursorHeadlessRunResult | null = null;
   let sessionId: string | undefined;
-  let lastReview: ChatGptReviewResult | null = null;
 
   const cursorRunner = config.cursorRunner ?? runCursorHeadless;
   const chatgptReviewer = config.chatgptReviewer ?? reviewWithChatGpt;
 
-  const runOnce = async (prompt: string, resume?: string): Promise<'continue' | 'stop'> => {
+  type ExecOutcome =
+    | { kind: 'ok'; pack: EvidencePack; diff: string; testExitCode: number; testOutput: string }
+    | { kind: 'stop' };
+
+  /** Executor phase only: launch Cursor, collect independent evidence. No reviewer call here. */
+  const runExecutorAndCollect = async (prompt: string, resume?: string): Promise<ExecOutcome> => {
     iterationCount += 1;
     push('cursor-launch', `iteration=${iterationCount}; resume=${resume ?? 'new'}`);
     if (config.skipLiveCursor) {
       errors.push('skipLiveCursor');
-      return 'stop';
+      return { kind: 'stop' };
     }
     try {
       lastCursor = await cursorRunner({
@@ -379,7 +426,7 @@ export async function runCourierLoop(config: CourierLoopConfig): Promise<Courier
       });
       if (lastCursor.forceUsed) {
         errors.push('FORCE_USED');
-        return 'stop';
+        return { kind: 'stop' };
       }
       sessionId = lastCursor.sessionId ?? sessionId;
       cursorSessions.push({
@@ -396,24 +443,22 @@ export async function runCourierLoop(config: CourierLoopConfig): Promise<Courier
       if (err instanceof CursorHeadlessError) {
         errors.push(`${err.code}:${err.message}`);
         push('cursor-error', err.code);
-        if (err.code === 'AUTH') {
-          return 'stop';
-        }
-        return 'stop';
+        return { kind: 'stop' };
       }
       errors.push(String(err));
-      return 'stop';
+      return { kind: 'stop' };
     }
 
     const afterFiles = listFilesRecursive(workspace);
     const outside = detectOutsideWorktreeWrites(workspace, beforeFiles, afterFiles);
     if (outside.length) {
       errors.push(`outside-worktree:${outside.join(',')}`);
-      return 'stop';
+      return { kind: 'stop' };
     }
 
     const test = runCaptured('npm', ['test'], workspace);
-    push('evidence', `testExit=${test.exitCode}; diffBytes=${gitDiff(workspace).length}`);
+    const diff = gitDiff(workspace);
+    push('evidence', `testExit=${test.exitCode}; diffBytes=${diff.length}`);
 
     const pack = collectIndependentEvidence({
       taskId: 'tsk_courier_001',
@@ -422,13 +467,38 @@ export async function runCourierLoop(config: CourierLoopConfig): Promise<Courier
       test: { command: 'npm test', exitCode: test.exitCode, output: test.output },
     });
 
+    return { kind: 'ok', pack, diff, testExitCode: test.exitCode, testOutput: test.output };
+  };
+
+  /** Deterministic verification — ALWAYS run against exactly the collected pack, never a rebuilt one. */
+  const runDeterministicVerify = (pack: EvidencePack): DeterministicVerdict => {
+    const project = buildCourierProjectContract(workspace);
+    const verified = verifyEvidencePack(pack, { project });
+    return { verified: verified.verified, reason: verified.reason, verifierId: verified.verifierId };
+  };
+
+  type ReviewOutcome = {
+    status: ReviewerStatus;
+    advice: string | null;
+    verdict: ChatGptVerdict | null;
+    repairInstruction: string | null;
+    responseHash?: string;
+  };
+
+  /** Advisory-only reviewer call. Never mutates or re-hashes the pack passed in. */
+  const runReviewer = async (
+    pack: EvidencePack,
+    diff: string,
+    testOutput: string,
+    priorResponseHash?: string,
+  ): Promise<ReviewOutcome> => {
     if (config.skipLiveChatgpt) {
       errors.push('skipLiveChatgpt');
-      return 'stop';
+      return { status: 'NOT_ATTEMPTED', advice: null, verdict: null, repairInstruction: null };
     }
-
+    let review: ChatGptReviewResult;
     try {
-      lastReview = await chatgptReviewer({
+      review = await chatgptReviewer({
         profileDir: config.browserProfileDir,
         evidenceDir: config.evidenceDir,
         startUrl: config.chatgptStartUrl,
@@ -436,57 +506,103 @@ export async function runCourierLoop(config: CourierLoopConfig): Promise<Courier
         request: {
           goal,
           allowedScope: ['src/counter.js', 'test/counter.test.js'],
-          diff: gitDiff(workspace),
-          testEvidence: test.output.slice(0, 8000),
+          diff,
+          testEvidence: testOutput.slice(0, 8000),
           effectProofsJson: JSON.stringify(pack.effectProofs),
           contractNotes: 'Public interface nextCount(n) must remain. Disposable only.',
         },
-        priorResponseHash: lastReview?.responseHash,
+        priorResponseHash,
         driver: config.chatgptDriver,
         headless: false,
         browserKind: (process.env.ATLAS_CHATGPT_BROWSER as 'chrome' | 'comet' | 'chromium') || 'comet',
         waitForManualLoginMs: 10 * 60_000,
       });
-      chatgptReviews.push({
-        verdict: lastReview.verdict,
-        submittedMessageHash: lastReview.submittedMessageHash,
-        responseHash: lastReview.responseHash,
-        screenshotPath: lastReview.screenshotPath,
-        loginRequired: lastReview.loginRequired,
-      });
-      push('chatgpt-review', `verdict=${lastReview.verdict}; login=${lastReview.loginRequired}`);
-      if (lastReview.loginRequired) {
-        errors.push('CHATGPT_LOGIN_REQUIRED');
-        return 'stop';
-      }
     } catch (err) {
+      // Reviewer browser crash/timeout/generation failure — ADVISORY only. Never turns a
+      // deterministically valid pack into "incomplete": the caller already has (or will
+      // compute) the deterministic verdict independent of this outcome.
       if (err instanceof ChatGptBrowserReviewerError) {
         errors.push(`${err.code}:${err.message}`);
         push('chatgpt-error', err.code);
-        return 'stop';
+        return { status: 'ADVISORY_UNAVAILABLE', advice: err.message, verdict: null, repairInstruction: null };
       }
       errors.push(String(err));
-      return 'stop';
+      return {
+        status: 'ADVISORY_UNAVAILABLE',
+        advice: err instanceof Error ? err.message : String(err),
+        verdict: null,
+        repairInstruction: null,
+      };
     }
 
-    if (lastReview.verdict === 'ACCEPT') return 'stop';
-    if (lastReview.verdict === 'REJECT') {
+    chatgptReviews.push({
+      verdict: review.verdict,
+      submittedMessageHash: review.submittedMessageHash,
+      responseHash: review.responseHash,
+      screenshotPath: review.screenshotPath,
+      loginRequired: review.loginRequired,
+    });
+    push('chatgpt-review', `verdict=${review.verdict}; login=${review.loginRequired}`);
+
+    // Identity independence (defense in depth): an executor cannot also be the reviewer.
+    if (lastCursor && lastCursor.adapterId === review.adapterId) {
+      errors.push('IDENTITY_COLLISION');
+      return {
+        status: 'ADVISORY_UNAVAILABLE',
+        advice: 'executor and reviewer identities are the same',
+        verdict: null,
+        repairInstruction: null,
+        responseHash: review.responseHash,
+      };
+    }
+
+    if (review.loginRequired) {
+      errors.push('CHATGPT_LOGIN_REQUIRED');
+      return {
+        status: 'ADVISORY_UNAVAILABLE',
+        advice: 'login required',
+        verdict: null,
+        repairInstruction: null,
+        responseHash: review.responseHash,
+      };
+    }
+    if (review.verdict === null) {
+      errors.push('MISSING_VERDICT');
+      return {
+        status: 'MALFORMED_REVIEW',
+        advice: review.responseText || null,
+        verdict: null,
+        repairInstruction: null,
+        responseHash: review.responseHash,
+      };
+    }
+    if (review.verdict === 'ACCEPT') {
+      return {
+        status: 'ADVISORY_ACCEPT',
+        advice: review.responseText || null,
+        verdict: 'ACCEPT',
+        repairInstruction: null,
+        responseHash: review.responseHash,
+      };
+    }
+    if (review.verdict === 'REJECT') {
       errors.push('REVIEWER_REJECT');
-      return 'stop';
+      return {
+        status: 'ADVISORY_REJECT',
+        advice: review.responseText || null,
+        verdict: 'REJECT',
+        repairInstruction: null,
+        responseHash: review.responseHash,
+      };
     }
-    if (lastReview.verdict === 'REPAIR') {
-      if (iterationCount > maxRepair) {
-        errors.push('SECOND_REPAIR_FORBIDDEN');
-        return 'stop';
-      }
-      const instruction = lastReview.repairInstruction ?? 'Apply bounded repair within allowed scope.';
-      feedbackToCursor.push(instruction);
-      push('feedback-to-cursor', instruction.slice(0, 200));
-      // continue to repair iteration via caller
-      return 'continue';
-    }
-    errors.push('MISSING_VERDICT');
-    return 'stop';
+    // REPAIR
+    return {
+      status: 'ADVISORY_REPAIR_REQUESTED',
+      advice: review.repairInstruction ?? review.responseText ?? null,
+      verdict: 'REPAIR',
+      repairInstruction: review.repairInstruction,
+      responseHash: review.responseHash,
+    };
   };
 
   const firstPrompt = [
@@ -496,77 +612,88 @@ export async function runCourierLoop(config: CourierLoopConfig): Promise<Courier
     'Do not use network. Do not touch files outside this workspace.',
   ].join('\n');
 
-  let cont = await runOnce(firstPrompt);
-  if (cont === 'continue' && lastReview?.verdict === 'REPAIR') {
-    if (iterationCount >= maxRepair + 1) {
-      errors.push('SECOND_REPAIR_FORBIDDEN');
-    } else {
+  let evidencePack: EvidencePack | null = null;
+  let deterministicVerdict: DeterministicVerdict | null = null;
+  let reviewerStatus: ReviewerStatus = 'NOT_ATTEMPTED';
+  let reviewerAdvice: string | null = null;
+  let repairsApplied = 0;
+  let finalDiff = '';
+  let finalTestExitCode = 1;
+  let finalTestOutput = '';
+
+  const outcome = await runExecutorAndCollect(firstPrompt);
+
+  if (outcome.kind === 'ok') {
+    evidencePack = outcome.pack;
+    finalDiff = outcome.diff;
+    finalTestExitCode = outcome.testExitCode;
+    finalTestOutput = outcome.testOutput;
+    // Rule 1: deterministic verification runs BEFORE any reviewer call, whenever executor
+    // evidence was collected — regardless of what the reviewer later says.
+    deterministicVerdict = runDeterministicVerify(outcome.pack);
+
+    let review = await runReviewer(outcome.pack, outcome.diff, outcome.testOutput);
+    reviewerStatus = review.status;
+    reviewerAdvice = review.advice;
+    let priorHash = review.responseHash;
+
+    // Rule 3+4: at most one bounded repair, only after a deterministic result exists;
+    // after the repair, re-run collection + deterministic verification. A second repair
+    // request (repairsApplied already at cap) is refused — no third executor invocation.
+    while (review.verdict === 'REPAIR' && repairsApplied < maxRepair) {
+      const instruction = review.repairInstruction ?? 'Apply bounded repair within allowed scope.';
+      feedbackToCursor.push(instruction);
+      push('feedback-to-cursor', instruction.slice(0, 200));
+
       const repairPrompt = [
         'REPAIR from independent reviewer (Atlas courier). Apply exactly this bounded instruction:',
-        lastReview.repairInstruction ?? '',
+        instruction,
         'Do not expand scope.',
       ].join('\n');
-      cont = await runOnce(repairPrompt, sessionId);
-      if (cont === 'continue') {
-        errors.push('SECOND_REPAIR_FORBIDDEN');
+
+      const repairOutcome = await runExecutorAndCollect(repairPrompt, sessionId);
+      repairsApplied += 1;
+
+      if (repairOutcome.kind !== 'ok') {
+        // Executor failed mid-repair — nothing new to verify; keep the last known
+        // deterministic verdict/pack and stop.
+        break;
       }
+
+      evidencePack = repairOutcome.pack;
+      finalDiff = repairOutcome.diff;
+      finalTestExitCode = repairOutcome.testExitCode;
+      finalTestOutput = repairOutcome.testOutput;
+      deterministicVerdict = runDeterministicVerify(repairOutcome.pack);
+
+      review = await runReviewer(repairOutcome.pack, repairOutcome.diff, repairOutcome.testOutput, priorHash);
+      reviewerStatus = review.status;
+      reviewerAdvice = review.advice;
+      priorHash = review.responseHash;
+    }
+
+    if (review.verdict === 'REPAIR' && repairsApplied >= maxRepair) {
+      errors.push('SECOND_REPAIR_FORBIDDEN');
     }
   }
 
-  // Final independent verification
-  const finalTest = runCaptured('npm', ['test'], workspace);
-  const finalDiff = gitDiff(workspace);
+  // Only deterministic verified:true ever authorizes completion. The legacy verifierResult
+  // field is populated FROM the deterministic verdict — no caller/reviewer can set it.
+  const verifierResult: DeterministicVerdict = deterministicVerdict ?? {
+    verified: false,
+    reason: 'incomplete',
+    verifierId: 'spine-verifier',
+  };
+
+  const finalStatus: CourierFinalStatus = !verifierResult.verified
+    ? 'REJECT'
+    : repairsApplied > 0
+      ? 'VERIFIED_WITH_ADVISORY_REPAIR_APPLIED'
+      : reviewerStatus === 'ADVISORY_ACCEPT' || reviewerStatus === 'ADVISORY_REJECT'
+        ? 'VERIFIED_WITH_ADVISORY_ACCEPT'
+        : 'VERIFIED_WITHOUT_ADVISORY_REVIEW';
+
   const finalDiffHash = sha256(finalDiff || 'EMPTY_DIFF');
-  let verifierResult = { verified: false, reason: 'incomplete', verifierId: 'spine-verifier' };
-
-  // Reviewer verdict (ACCEPT/REPAIR/REJECT) is recorded above in chatgptReviews as an
-  // ADVISORY signal only — it gates whether the courier even attempts final verification
-  // (no point verifying mid-repair-cycle work), but it can never itself produce a
-  // verified:true receipt. The deterministic spine-verifier's returned result, built from
-  // the ORIGINALLY collected evidence (no substitution — a failed cursor command simply
-  // remains in commandsRun and the verifier's own checkCommandList rejects it), is the
-  // only gate for verifierResult below.
-  if (lastCursor && finalTest.exitCode === 0 && lastReview?.verdict === 'ACCEPT') {
-    try {
-      const pack = collectIndependentEvidence({
-        taskId: 'tsk_courier_001',
-        workspace,
-        cursor: lastCursor,
-        test: { command: 'npm test', exitCode: finalTest.exitCode, output: finalTest.output },
-      });
-      const project = buildCourierProjectContract(workspace);
-      const verified = verifyEvidencePack(pack, { project });
-      verifierResult = { verified: verified.verified, reason: verified.reason, verifierId: verified.verifierId };
-      if (CURSOR_HEADLESS_ADAPTER_ID === CHATGPT_BROWSER_REVIEWER_ADAPTER_ID) {
-        verifierResult = {
-          verified: false,
-          reason: 'executor and reviewer identities collide',
-          verifierId: verified.verifierId,
-        };
-      }
-      // identity independence check (executor vs reviewer transport)
-      if (lastCursor.adapterId === lastReview.adapterId) {
-        verifierResult = {
-          verified: false,
-          reason: 'executor and reviewer identities are the same',
-          verifierId: verified.verifierId,
-        };
-        errors.push('IDENTITY_COLLISION');
-      }
-    } catch (err) {
-      verifierResult = {
-        verified: false,
-        reason: err instanceof Error ? err.message : String(err),
-        verifierId: 'spine-verifier',
-      };
-      errors.push(verifierResult.reason);
-    }
-  } else {
-    if (lastCursor?.adapterId && lastReview?.adapterId && lastCursor.adapterId === lastReview.adapterId) {
-      errors.push('IDENTITY_COLLISION');
-    }
-  }
-
   const stopped = !verifierResult.verified;
   const goRepairReject: CourierReceipt['goRepairReject'] = verifierResult.verified
     ? 'GO'
@@ -586,10 +713,16 @@ export async function runCourierLoop(config: CourierLoopConfig): Promise<Courier
     finalDiffHash,
     tests: {
       command: 'npm test',
-      exitCode: finalTest.exitCode,
-      outputHash: sha256(finalTest.output),
-      output: finalTest.output.slice(0, 4000),
+      exitCode: finalTestExitCode,
+      outputHash: sha256(finalTestOutput),
+      output: finalTestOutput.slice(0, 4000),
     },
+    deterministicVerdict,
+    reviewerStatus,
+    reviewerAdvice,
+    finalStatus,
+    repairsApplied,
+    evidencePack,
     verifierResult,
     errors,
     yusifCourierActions,
@@ -625,6 +758,12 @@ function failReceipt(partial: {
     finalDiff: '',
     finalDiffHash: sha256(''),
     tests: { command: 'npm test', exitCode: 1, outputHash: sha256(''), output: '' },
+    deterministicVerdict: null,
+    reviewerStatus: 'NOT_ATTEMPTED',
+    reviewerAdvice: null,
+    finalStatus: 'REJECT',
+    repairsApplied: 0,
+    evidencePack: null,
     verifierResult: { verified: false, reason: partial.stopReason, verifierId: 'spine-verifier' },
     errors: partial.errors,
     yusifCourierActions: partial.yusifCourierActions,
