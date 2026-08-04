@@ -10,6 +10,7 @@ import {
   resolveProjectPath,
   getProjectById,
   withRegistryOverrides,
+  normalizeAtlasPath,
   type AtlasGoalContract,
   type FsEntryProbe,
   type PathProbe,
@@ -445,5 +446,9 @@ describe('atlas project resolution v0', () => {
         evidenceReferences: ['e'],
       }),
     ).toThrow(/canonicalPath: null/i);
+  });
+
+  it('18. Windows path normalization: C:\\… versus c:/…', () => {
+    expect(normalizeAtlasPath('C:\\Projects\\ANUS')).toBe(normalizeAtlasPath('c:/Projects/ANUS'));
   });
 });

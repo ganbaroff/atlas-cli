@@ -605,6 +605,50 @@ goalCmd
     }
   });
 
+goalCmd
+  .command('context')
+  .description(
+    'CEO message → Goal Intake → Project Resolution → Context Assembly (read-only; no planning/exec)',
+  )
+  .requiredOption('--message <text>', 'CEO message / goal')
+  .option('--json', 'Emit only a single JSON envelope on stdout')
+  .option('--budget <bytes>', 'Context budget in bytes', '64000')
+  .action(async (opts) => {
+    try {
+      const { runGoalContext } = await import('./atlas/context-assembly/pipeline.js');
+      const budget = parseInt(String(opts.budget), 10);
+      const result = runGoalContext({
+        message: opts.message,
+        assemble: {
+          budgetBytes: Number.isFinite(budget) && budget > 0 ? budget : 64_000,
+        },
+      });
+      const { envelope } = result;
+
+      if (opts.json) {
+        console.log(JSON.stringify(envelope));
+      } else {
+        console.log(
+          [
+            `finalStatus=${envelope.finalStatus}`,
+            `project=${envelope.goalContract.selectedProject.projectId}`,
+            `execReady=${envelope.projectExecutionReady}`,
+            `readOnlyTarget=${envelope.readOnlyTargetReady}`,
+            `budget=${envelope.contextBudgetUsed}/${envelope.contextBudgetBytes}`,
+            `sources=${envelope.selectedSources.length}`,
+            `next=${envelope.recommendedNextAction}`,
+          ].join(' '),
+        );
+      }
+
+      process.exit(result.exitCode);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error(JSON.stringify({ error: message }));
+      process.exitCode = 1;
+    }
+  });
+
 const taskCmd = program
   .command('task')
   .description('exec-graph (EB-0) task management');
