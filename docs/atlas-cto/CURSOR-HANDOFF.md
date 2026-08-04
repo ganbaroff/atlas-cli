@@ -1,68 +1,81 @@
 # Cursor Handoff
 
-> Standing end-of-session ritual. Replaced each session. Cursor seat — Integronix Git canon creation (offline only).
+> Standing end-of-session ritual. Replaced each session. Cursor seat.
 
 ## 1. Date, branch, HEAD
 
 - Date: 2026-08-05
 - Branch: `codex/atlas-cost-router-design`
-- HEAD before this handoff commit: run `git log -1 --oneline` after commit
+- HEAD before this handoff commit:
 
-## 2. Files changed this session — one line each
+```
+$ git log -1 --oneline
+b2ce138 chore: cursor handoff
+```
 
-Integronix (separate repo `C:\Projects\INTEGRONIX`, not this commit):
+## 2. What changed this session — files + one line each
 
-- Import commit `420f7ff` — deploy-v2 baseline (178 permitted files; tag `source-deploy-v2-import-2026-08-05`)
-- Docs commit `bead38f` — provenance + runtime surfaces
-- Handoff commit `e08fffe` — `docs/CURSOR-HANDOFF.md` + validation transcript
+**This turn (Planning & Worker Orchestration v0 design):** no repository files modified. Design delivered in chat only.
 
-ANUS (this repository):
+**Earlier same arc (already on branch, not re-done this turn):**
 
-- `src/atlas/goal-intake/project-registry.ts` — Integronix → `C:\Projects\INTEGRONIX` active git canon; archive retained as alternative
-- `src/atlas/goal-intake/resolve-project.ts` — Integronix-only: explicit canon + archive → READY (not conflict)
-- `src/atlas/context-assembly/assemble.ts` — Integronix Git READY ≠ projectExecutionReady while deploy/production-write forbidden
-- `src/__tests__/project-resolution.test.ts` — archive-only still BLOCKED; new 12b READY+archive
+- `src/atlas/goal-intake/project-registry.ts` — Integronix canon `C:\Projects\INTEGRONIX`; archive alternative; deploy/implementation gates in knownFacts (`1d74ee4`)
+- `src/atlas/goal-intake/resolve-project.ts` — Integronix-only: registry canon + archive → READY
+- `src/atlas/context-assembly/assemble.ts` — Integronix Git READY ≠ `projectExecutionReady` while deploy/production-write forbidden
+- `src/__tests__/project-resolution.test.ts` — archive-only BLOCKED; 12b READY+archive
 - `src/__tests__/cli-goal-resolve.test.ts` — Integronix READY exit 0
-- `src/__tests__/cli-goal-context.test.ts` — audit READY_TO_PLAN; execReady false; path INTEGRONIX
+- `src/__tests__/cli-goal-context.test.ts` — RO audit READY_TO_PLAN; execReady false
 - `docs/atlas-cto/EXAMPLE-PROJECT-RESOLUTION-INTEGRONIX.json` — READY example + gate distinctions
-- `docs/atlas-cto/CURSOR-HANDOFF.md` — this file
+- External repo `C:\Projects\INTEGRONIX` — import `420f7ff`, provenance `bead38f`, handoff `e08fffe`, tag `source-deploy-v2-import-2026-08-05`
 
-## 3. Real validation output
+## 3. Receipts — real output
+
+Focused tests from Integronix registry commit session (still HEAD parent `1d74ee4` / handoff `b2ce138`):
 
 ```
 $ node node_modules/vitest/vitest.mjs run src/__tests__/project-resolution.test.ts \
   src/__tests__/cli-goal-resolve.test.ts src/__tests__/cli-goal-context.test.ts \
   src/__tests__/context-assembly.test.ts
-Test Files  4 passed (4)
-Tests  64 passed (64)
 
+ ✓ src/__tests__/cli-goal-resolve.test.ts (11 tests)
+ ✓ src/__tests__/cli-goal-context.test.ts (13 tests)
+ Test Files  4 passed (4)
+      Tests  64 passed (64)
+ Duration  32.43s
+```
+
+Planning design turn: no vitest/tsc run (no code). Status:
+
+```
+$ git status -sb
+## codex/atlas-cost-router-design
+```
+
+Integronix canon (external):
+
+```
 $ git -C C:\Projects\INTEGRONIX log --oneline
 e08fffe chore: cursor handoff
 bead38f docs: add production provenance and runtime surfaces
 420f7ff chore: import deploy-v2 source baseline
-
-$ git -C C:\Projects\INTEGRONIX status -sb
-## main
-
-Import verify: matched=178 excluded=4 secret_scan=PASS
-tracked_files(after docs)=184+ at handoff tip
 ```
 
-## 4. Known risks and broken items
+## 4. Risks / broken things you know about
 
-- Production untouched; tip still `a116b17e` — canon is reconstructed, not byte-identical
-- Proof Pack / deploy / DNS / D1 writes still forbidden
-- Dashboard rollback untested
-- Archive path still exists; must not be treated as canon
+- Integronix Git canon is reconstructed — not byte-identical to production `a116b17e`
+- Production deploy / DNS / D1 write / Proof Pack still CEO-gated
+- Dashboard Pages rollback untested
+- Planning & Orchestration v0 is **design only** — no `PlanContract` code, no `atlas goal plan` CLI yet
+- Cost Router not resumed (per brief)
 
-## 5. Next three steps
+## 5. Next 3 steps
 
-1. CEO receipt on Integronix Git canon + ANUS registry update
-2. If accepted: isolated worktree for content/Proof Pack (still NEEDS_APPROVAL until GO)
-3. Separate CEO GO before any Cloudflare Pages deploy
+1. CEO receipt on Integronix Git canon + registry (`1d74ee4`) and/or Planning v0 design
+2. If Planning approved: implement minimum `PlanContract` + `atlas goal plan --message --json` (synthesize only; no execute)
+3. Proof Pack / write work only in isolated worktree after separate CEO GO
 
-## 6. CEO/orchestrator blockers
+## 6. Blockers that need CEO or the orchestrator chat
 
 - Accept/reject `C:\Projects\INTEGRONIX` as sole Git authority
-- Authorize implementation wave / Proof Pack
-- Authorize any production deploy or rollback test
+- Accept/reject Planning & Worker Orchestration v0 design (or change scope)
+- Authorize any implementation of `atlas goal plan` / Proof Pack / Cloudflare deploy
