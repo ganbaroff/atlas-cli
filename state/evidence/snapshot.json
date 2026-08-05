@@ -1,0 +1,1116 @@
+{
+  "claims": [
+    {
+      "claimId": "clm_c3a6abd05c814acf",
+      "claim": "{\"kind\":\"learning-nba-decision\",\"idempotencyKey\":\"idem_http_sigmoid_1\",\"decisionId\":\"dec_a8e67ff8e3d34093\",\"learnerId\":\"123\",\"concept\":\"sigmoid\",\"masterySnapshot\":0.35,\"decision\":{\"action\":\"VISUAL_EXPLANATION\",\"difficulty\":\"BEGINNER\",\"reason\":\"Повторяющаяся ошибка в понимании вероятности\",\"decisionScore\":0.78,\"alternatives\":[\"GRILL_ME\",\"FLASHCARDS\"],\"requiresHumanReview\":false,\"decisionId\":\"dec_a8e67ff8e3d34093\"},\"goalId\":\"gol_c977f2ee4ce0400990105f9b954c22e0\"}",
+      "type": "narrative",
+      "path": "learning://idem_http_sigmoid_1",
+      "confidence": 0,
+      "source": "learning-nba",
+      "sourceRef": "dec_a8e67ff8e3d34093",
+      "ts": "2026-07-25T20:51:48.971Z"
+    },
+    {
+      "claimId": "clm_48b8322550064446",
+      "claim": "{\"kind\":\"learning-nba-decision\",\"idempotencyKey\":\"idem_http_sigmoid_retry\",\"decisionId\":\"dec_71713984656a4ba4\",\"learnerId\":\"123\",\"concept\":\"sigmoid\",\"masterySnapshot\":0.35,\"decision\":{\"action\":\"VISUAL_EXPLANATION\",\"difficulty\":\"BEGINNER\",\"reason\":\"Повторяющаяся ошибка в понимании вероятности\",\"decisionScore\":0.78,\"alternatives\":[\"GRILL_ME\",\"FLASHCARDS\"],\"requiresHumanReview\":false,\"decisionId\":\"dec_71713984656a4ba4\"},\"goalId\":\"gol_6508b22c70bc4fee88673bcddf8df5cb\"}",
+      "type": "narrative",
+      "path": "learning://idem_http_sigmoid_retry",
+      "confidence": 0,
+      "source": "learning-nba",
+      "sourceRef": "dec_71713984656a4ba4",
+      "ts": "2026-07-25T20:51:48.996Z"
+    },
+    {
+      "claimId": "clm_e48f0dc066cd4ac7",
+      "claim": "{\"kind\":\"learning-outcome\",\"idempotencyKey\":\"idem_http_outcome_1\",\"decisionCorrelationId\":\"idem_http_sigmoid_1\",\"learnerId\":\"123\",\"concept\":\"sigmoid\",\"completed\":true,\"correct\":true,\"responseTimeSec\":12}",
+      "type": "narrative",
+      "path": "learning://outcome/idem_http_outcome_1",
+      "confidence": 0,
+      "source": "learning-nba",
+      "sourceRef": "idem_http_sigmoid_1",
+      "ts": "2026-07-25T20:51:49.020Z"
+    },
+    {
+      "claimId": "clm_2dea3d95fa474be5",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_bb979056e82f41b28b50ddf1cf2e3f79\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":41}",
+      "type": "narrative",
+      "path": "goal://gol_bb979056e82f41b28b50ddf1cf2e3f79",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_bb979056e82f41b28b50ddf1cf2e3f79",
+      "ts": "2026-07-25T20:52:37.053Z"
+    },
+    {
+      "claimId": "clm_5b45823f19ba45ea",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_248133d661514a2cb3a0a4357fc297b7\",\"status\":\"escalated\",\"handId\":\"browser-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":33}",
+      "type": "narrative",
+      "path": "goal://gol_248133d661514a2cb3a0a4357fc297b7",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_248133d661514a2cb3a0a4357fc297b7",
+      "ts": "2026-07-25T20:52:37.128Z"
+    },
+    {
+      "claimId": "clm_8a80796d40824ac6",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_6a272fc2cc0e441aa7bb1937ad4b3aa6\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":12}",
+      "type": "narrative",
+      "path": "goal://gol_6a272fc2cc0e441aa7bb1937ad4b3aa6",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_6a272fc2cc0e441aa7bb1937ad4b3aa6",
+      "ts": "2026-07-25T20:52:37.242Z"
+    },
+    {
+      "claimId": "clm_bf623598be2445b1",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_11ee18d1a5824da5b9286e19cd28a1c3\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":21}",
+      "type": "narrative",
+      "path": "goal://gol_11ee18d1a5824da5b9286e19cd28a1c3",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_11ee18d1a5824da5b9286e19cd28a1c3",
+      "ts": "2026-07-25T20:52:37.305Z"
+    },
+    {
+      "claimId": "clm_ff80703208bf4a93",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_11ee18d1a5824da5b9286e19cd28a1c3\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":1}",
+      "type": "narrative",
+      "path": "goal://gol_11ee18d1a5824da5b9286e19cd28a1c3",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_11ee18d1a5824da5b9286e19cd28a1c3",
+      "ts": "2026-07-25T20:52:37.314Z"
+    },
+    {
+      "claimId": "clm_b4e3de19fd1a4415",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_fc46006212344e4797a0456d2b75686e\",\"status\":\"failed\",\"handId\":\"browser-foreground\",\"tasksTotal\":0,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":0,\"wallTimeMs\":4}",
+      "type": "narrative",
+      "path": "goal://gol_fc46006212344e4797a0456d2b75686e",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_fc46006212344e4797a0456d2b75686e",
+      "ts": "2026-07-25T20:52:37.511Z"
+    },
+    {
+      "claimId": "clm_43148b5295334cf4",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_1ef9fed8a6b04141ab55958ad9c832ab\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":54}",
+      "type": "narrative",
+      "path": "goal://gol_1ef9fed8a6b04141ab55958ad9c832ab",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_1ef9fed8a6b04141ab55958ad9c832ab",
+      "ts": "2026-07-25T20:52:38.022Z"
+    },
+    {
+      "claimId": "clm_4d8c4cd70f224f85",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_1ef9fed8a6b04141ab55958ad9c832ab\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":15}",
+      "type": "narrative",
+      "path": "goal://gol_1ef9fed8a6b04141ab55958ad9c832ab",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_1ef9fed8a6b04141ab55958ad9c832ab",
+      "ts": "2026-07-25T20:52:39.871Z"
+    },
+    {
+      "claimId": "clm_987d7c058d484d49",
+      "claim": "{\"kind\":\"learning-nba-decision\",\"idempotencyKey\":\"idem_http_sigmoid_1\",\"decisionId\":\"dec_07171f0787b04cbf\",\"learnerId\":\"123\",\"concept\":\"sigmoid\",\"masterySnapshot\":0.35,\"decision\":{\"action\":\"VISUAL_EXPLANATION\",\"difficulty\":\"BEGINNER\",\"reason\":\"Повторяющаяся ошибка в понимании вероятности\",\"decisionScore\":0.78,\"alternatives\":[\"GRILL_ME\",\"FLASHCARDS\"],\"requiresHumanReview\":false,\"decisionId\":\"dec_07171f0787b04cbf\"},\"goalId\":\"gol_57a10258036745918b7f442c76f81b7d\"}",
+      "type": "narrative",
+      "path": "learning://idem_http_sigmoid_1",
+      "confidence": 0,
+      "source": "learning-nba",
+      "sourceRef": "dec_07171f0787b04cbf",
+      "ts": "2026-07-25T20:52:42.224Z"
+    },
+    {
+      "claimId": "clm_2cc91aaaedee44fb",
+      "claim": "{\"kind\":\"learning-nba-decision\",\"idempotencyKey\":\"idem_http_sigmoid_retry\",\"decisionId\":\"dec_3772b03120414bfe\",\"learnerId\":\"123\",\"concept\":\"sigmoid\",\"masterySnapshot\":0.35,\"decision\":{\"action\":\"VISUAL_EXPLANATION\",\"difficulty\":\"BEGINNER\",\"reason\":\"Повторяющаяся ошибка в понимании вероятности\",\"decisionScore\":0.78,\"alternatives\":[\"GRILL_ME\",\"FLASHCARDS\"],\"requiresHumanReview\":false,\"decisionId\":\"dec_3772b03120414bfe\"},\"goalId\":\"gol_5a4b85f4f2114629883b5b3151be8369\"}",
+      "type": "narrative",
+      "path": "learning://idem_http_sigmoid_retry",
+      "confidence": 0,
+      "source": "learning-nba",
+      "sourceRef": "dec_3772b03120414bfe",
+      "ts": "2026-07-25T20:52:42.279Z"
+    },
+    {
+      "claimId": "clm_78e72a36d386484f",
+      "claim": "{\"kind\":\"learning-outcome\",\"idempotencyKey\":\"idem_http_outcome_1\",\"decisionCorrelationId\":\"idem_http_sigmoid_1\",\"learnerId\":\"123\",\"concept\":\"sigmoid\",\"completed\":true,\"correct\":true,\"responseTimeSec\":12}",
+      "type": "narrative",
+      "path": "learning://outcome/idem_http_outcome_1",
+      "confidence": 0,
+      "source": "learning-nba",
+      "sourceRef": "idem_http_sigmoid_1",
+      "ts": "2026-07-25T20:52:42.326Z"
+    },
+    {
+      "claimId": "clm_15155e740c0649f4",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_1eee09a5cd434442a885224e06f203cb\",\"status\":\"completed\",\"handId\":\"browser-foreground\",\"tasksTotal\":1,\"tasksVerified\":1,\"tasksFailed\":0,\"tasksEscalated\":0,\"wallTimeMs\":5280}",
+      "type": "narrative",
+      "path": "goal://gol_1eee09a5cd434442a885224e06f203cb",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_1eee09a5cd434442a885224e06f203cb",
+      "ts": "2026-07-25T20:52:45.887Z"
+    },
+    {
+      "claimId": "clm_b132f29ca7204cc1",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_f77d8c90880c4dddb215db99a949b801\",\"status\":\"completed\",\"handId\":\"browser-foreground\",\"tasksTotal\":1,\"tasksVerified\":1,\"tasksFailed\":0,\"tasksEscalated\":0,\"wallTimeMs\":4343}",
+      "type": "narrative",
+      "path": "goal://gol_f77d8c90880c4dddb215db99a949b801",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_f77d8c90880c4dddb215db99a949b801",
+      "ts": "2026-07-25T20:52:46.042Z"
+    },
+    {
+      "claimId": "clm_ce03c06ae2da40ab",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_f77d8c90880c4dddb215db99a949b801\",\"status\":\"completed\",\"handId\":\"browser-foreground\",\"tasksTotal\":1,\"tasksVerified\":1,\"tasksFailed\":0,\"tasksEscalated\":0,\"wallTimeMs\":35}",
+      "type": "narrative",
+      "path": "goal://gol_f77d8c90880c4dddb215db99a949b801",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_f77d8c90880c4dddb215db99a949b801",
+      "ts": "2026-07-25T20:52:48.309Z"
+    },
+    {
+      "claimId": "clm_47d18ca53bd444dc",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_50bb3644ebae4faa99656fad3e725033\",\"status\":\"failed\",\"handId\":\"browser-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":1,\"tasksEscalated\":0,\"wallTimeMs\":2775}",
+      "type": "narrative",
+      "path": "goal://gol_50bb3644ebae4faa99656fad3e725033",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_50bb3644ebae4faa99656fad3e725033",
+      "ts": "2026-07-25T20:52:48.688Z"
+    },
+    {
+      "claimId": "clm_cfcd45d6db3c42e3",
+      "claim": "{\"kind\":\"learning-nba-decision\",\"idempotencyKey\":\"idem_concurrent_abc\",\"decisionId\":\"dec_03d5b139582244aa\",\"learnerId\":\"123\",\"concept\":\"sigmoid\",\"masterySnapshot\":0.35,\"decision\":{\"action\":\"VISUAL_EXPLANATION\",\"difficulty\":\"BEGINNER\",\"reason\":\"Повторяющаяся ошибка в понимании вероятности\",\"decisionScore\":0.78,\"alternatives\":[\"GRILL_ME\",\"FLASHCARDS\"],\"requiresHumanReview\":false,\"decisionId\":\"dec_03d5b139582244aa\"},\"goalId\":\"gol_41969cd4e40f48c69caf3ebbd404e187\"}",
+      "type": "narrative",
+      "path": "learning://idem_concurrent_abc",
+      "confidence": 0,
+      "source": "learning-nba",
+      "sourceRef": "dec_03d5b139582244aa",
+      "ts": "2026-07-25T22:37:39.505Z"
+    },
+    {
+      "claimId": "clm_473aba2358374e0d",
+      "claim": "{\"kind\":\"learning-nba-decision\",\"idempotencyKey\":\"idem_restart_xyz\",\"decisionId\":\"dec_d2c2c75b45d5473f\",\"learnerId\":\"123\",\"concept\":\"sigmoid\",\"masterySnapshot\":0.35,\"decision\":{\"action\":\"VISUAL_EXPLANATION\",\"difficulty\":\"BEGINNER\",\"reason\":\"Повторяющаяся ошибка в понимании вероятности\",\"decisionScore\":0.78,\"alternatives\":[\"GRILL_ME\",\"FLASHCARDS\"],\"requiresHumanReview\":false,\"decisionId\":\"dec_d2c2c75b45d5473f\"},\"goalId\":\"gol_99c0fd5f624e42e199a449a17dd863a5\"}",
+      "type": "narrative",
+      "path": "learning://idem_restart_xyz",
+      "confidence": 0,
+      "source": "learning-nba",
+      "sourceRef": "dec_d2c2c75b45d5473f",
+      "ts": "2026-07-25T22:37:39.532Z"
+    },
+    {
+      "claimId": "clm_4026d43fa9f546c1",
+      "claim": "{\"kind\":\"learning-nba-decision\",\"idempotencyKey\":\"idem_http_sigmoid_1\",\"decisionId\":\"dec_f5b99fb85db34b9c\",\"learnerId\":\"123\",\"concept\":\"sigmoid\",\"masterySnapshot\":0.35,\"decision\":{\"action\":\"VISUAL_EXPLANATION\",\"difficulty\":\"BEGINNER\",\"reason\":\"Повторяющаяся ошибка в понимании вероятности\",\"decisionScore\":0.78,\"alternatives\":[\"GRILL_ME\",\"FLASHCARDS\"],\"requiresHumanReview\":false,\"decisionId\":\"dec_f5b99fb85db34b9c\"},\"goalId\":\"gol_75da5db0ede9490fb8dc663516cdaf78\"}",
+      "type": "narrative",
+      "path": "learning://idem_http_sigmoid_1",
+      "confidence": 0,
+      "source": "learning-nba",
+      "sourceRef": "dec_f5b99fb85db34b9c",
+      "ts": "2026-07-25T22:37:39.621Z"
+    },
+    {
+      "claimId": "clm_d422d1374d5d4a05",
+      "claim": "{\"kind\":\"learning-nba-decision\",\"idempotencyKey\":\"idem_header_envelope_only\",\"decisionId\":\"dec_573403fefb3b4969\",\"learnerId\":\"123\",\"concept\":\"sigmoid\",\"masterySnapshot\":0.35,\"decision\":{\"action\":\"VISUAL_EXPLANATION\",\"difficulty\":\"BEGINNER\",\"reason\":\"Повторяющаяся ошибка в понимании вероятности\",\"decisionScore\":0.78,\"alternatives\":[\"GRILL_ME\",\"FLASHCARDS\"],\"requiresHumanReview\":false,\"decisionId\":\"dec_573403fefb3b4969\"},\"goalId\":\"gol_7b9a0c559bcb410a806507a4febe47f6\"}",
+      "type": "narrative",
+      "path": "learning://idem_header_envelope_only",
+      "confidence": 0,
+      "source": "learning-nba",
+      "sourceRef": "dec_573403fefb3b4969",
+      "ts": "2026-07-25T22:37:39.644Z"
+    },
+    {
+      "claimId": "clm_5d95518195de446b",
+      "claim": "{\"kind\":\"learning-nba-decision\",\"idempotencyKey\":\"idem_http_sigmoid_retry\",\"decisionId\":\"dec_70795bc5dc5c4765\",\"learnerId\":\"123\",\"concept\":\"sigmoid\",\"masterySnapshot\":0.35,\"decision\":{\"action\":\"VISUAL_EXPLANATION\",\"difficulty\":\"BEGINNER\",\"reason\":\"Повторяющаяся ошибка в понимании вероятности\",\"decisionScore\":0.78,\"alternatives\":[\"GRILL_ME\",\"FLASHCARDS\"],\"requiresHumanReview\":false,\"decisionId\":\"dec_70795bc5dc5c4765\"},\"goalId\":\"gol_c97cf83731b14dd587db162f1260e13c\"}",
+      "type": "narrative",
+      "path": "learning://idem_http_sigmoid_retry",
+      "confidence": 0,
+      "source": "learning-nba",
+      "sourceRef": "dec_70795bc5dc5c4765",
+      "ts": "2026-07-25T22:37:39.656Z"
+    },
+    {
+      "claimId": "clm_cc57c6c5bb24407e",
+      "claim": "{\"kind\":\"learning-outcome\",\"idempotencyKey\":\"idem_http_outcome_1\",\"decisionCorrelationId\":\"idem_http_sigmoid_1\",\"learnerId\":\"123\",\"concept\":\"sigmoid\",\"completed\":true,\"correct\":true,\"responseTimeSec\":12}",
+      "type": "narrative",
+      "path": "learning://outcome/idem_http_outcome_1",
+      "confidence": 0,
+      "source": "learning-nba",
+      "sourceRef": "idem_http_sigmoid_1",
+      "ts": "2026-07-25T22:37:39.690Z"
+    },
+    {
+      "claimId": "clm_371db85c57dc4987",
+      "claim": "{\"kind\":\"learning-nba-decision\",\"idempotencyKey\":\"idem_concurrent_abc\",\"decisionId\":\"dec_4bc615023c85467c\",\"learnerId\":\"123\",\"concept\":\"sigmoid\",\"masterySnapshot\":0.35,\"decision\":{\"action\":\"VISUAL_EXPLANATION\",\"difficulty\":\"BEGINNER\",\"reason\":\"Повторяющаяся ошибка в понимании вероятности\",\"decisionScore\":0.78,\"alternatives\":[\"GRILL_ME\",\"FLASHCARDS\"],\"requiresHumanReview\":false,\"decisionId\":\"dec_4bc615023c85467c\"},\"goalId\":\"gol_15a4c82b2fcf4fc59b76210fbbf57824\"}",
+      "type": "narrative",
+      "path": "learning://idem_concurrent_abc",
+      "confidence": 0,
+      "source": "learning-nba",
+      "sourceRef": "dec_4bc615023c85467c",
+      "ts": "2026-07-25T22:38:08.352Z"
+    },
+    {
+      "claimId": "clm_9ac6c326765c48de",
+      "claim": "{\"kind\":\"learning-nba-decision\",\"idempotencyKey\":\"idem_restart_xyz\",\"decisionId\":\"dec_e2cd98fdabcd4c14\",\"learnerId\":\"123\",\"concept\":\"sigmoid\",\"masterySnapshot\":0.35,\"decision\":{\"action\":\"VISUAL_EXPLANATION\",\"difficulty\":\"BEGINNER\",\"reason\":\"Повторяющаяся ошибка в понимании вероятности\",\"decisionScore\":0.78,\"alternatives\":[\"GRILL_ME\",\"FLASHCARDS\"],\"requiresHumanReview\":false,\"decisionId\":\"dec_e2cd98fdabcd4c14\"},\"goalId\":\"gol_ee5a6fe2e23941218c97f4e05914fc5b\"}",
+      "type": "narrative",
+      "path": "learning://idem_restart_xyz",
+      "confidence": 0,
+      "source": "learning-nba",
+      "sourceRef": "dec_e2cd98fdabcd4c14",
+      "ts": "2026-07-25T22:38:08.369Z"
+    },
+    {
+      "claimId": "clm_cf07ff96df704fa9",
+      "claim": "{\"kind\":\"learning-nba-decision\",\"idempotencyKey\":\"idem_header_envelope_only\",\"decisionId\":\"dec_7f1e7cad24564c8e\",\"learnerId\":\"123\",\"concept\":\"sigmoid\",\"masterySnapshot\":0.35,\"decision\":{\"action\":\"VISUAL_EXPLANATION\",\"difficulty\":\"BEGINNER\",\"reason\":\"Повторяющаяся ошибка в понимании вероятности\",\"decisionScore\":0.78,\"alternatives\":[\"GRILL_ME\",\"FLASHCARDS\"],\"requiresHumanReview\":false,\"decisionId\":\"dec_7f1e7cad24564c8e\"},\"goalId\":\"gol_cac151a53c29474cb70b832654272c0b\"}",
+      "type": "narrative",
+      "path": "learning://idem_header_envelope_only",
+      "confidence": 0,
+      "source": "learning-nba",
+      "sourceRef": "dec_7f1e7cad24564c8e",
+      "ts": "2026-07-25T22:38:08.450Z"
+    },
+    {
+      "claimId": "clm_4ccd1591ce634b07",
+      "claim": "{\"kind\":\"learning-nba-decision\",\"idempotencyKey\":\"idem_http_sigmoid_1\",\"decisionId\":\"dec_7a88cdd7f17d4a7c\",\"learnerId\":\"123\",\"concept\":\"sigmoid\",\"masterySnapshot\":0.35,\"decision\":{\"action\":\"VISUAL_EXPLANATION\",\"difficulty\":\"BEGINNER\",\"reason\":\"Повторяющаяся ошибка в понимании вероятности\",\"decisionScore\":0.78,\"alternatives\":[\"GRILL_ME\",\"FLASHCARDS\"],\"requiresHumanReview\":false,\"decisionId\":\"dec_7a88cdd7f17d4a7c\"},\"goalId\":\"gol_635a8c6e72914447a23c4177f6799ac5\"}",
+      "type": "narrative",
+      "path": "learning://idem_http_sigmoid_1",
+      "confidence": 0,
+      "source": "learning-nba",
+      "sourceRef": "dec_7a88cdd7f17d4a7c",
+      "ts": "2026-07-25T22:38:08.452Z"
+    },
+    {
+      "claimId": "clm_13d65329113346ae",
+      "claim": "{\"kind\":\"learning-nba-decision\",\"idempotencyKey\":\"idem_http_sigmoid_retry\",\"decisionId\":\"dec_f6ddeb65b4404f5f\",\"learnerId\":\"123\",\"concept\":\"sigmoid\",\"masterySnapshot\":0.35,\"decision\":{\"action\":\"VISUAL_EXPLANATION\",\"difficulty\":\"BEGINNER\",\"reason\":\"Повторяющаяся ошибка в понимании вероятности\",\"decisionScore\":0.78,\"alternatives\":[\"GRILL_ME\",\"FLASHCARDS\"],\"requiresHumanReview\":false,\"decisionId\":\"dec_f6ddeb65b4404f5f\"},\"goalId\":\"gol_6d0ed7ebdd08400aa31a4198db3f22a6\"}",
+      "type": "narrative",
+      "path": "learning://idem_http_sigmoid_retry",
+      "confidence": 0,
+      "source": "learning-nba",
+      "sourceRef": "dec_f6ddeb65b4404f5f",
+      "ts": "2026-07-25T22:38:08.485Z"
+    },
+    {
+      "claimId": "clm_a9e9c20ec9b944a5",
+      "claim": "{\"kind\":\"learning-outcome\",\"idempotencyKey\":\"idem_http_outcome_1\",\"decisionCorrelationId\":\"idem_http_sigmoid_1\",\"learnerId\":\"123\",\"concept\":\"sigmoid\",\"completed\":true,\"correct\":true,\"responseTimeSec\":12}",
+      "type": "narrative",
+      "path": "learning://outcome/idem_http_outcome_1",
+      "confidence": 0,
+      "source": "learning-nba",
+      "sourceRef": "idem_http_sigmoid_1",
+      "ts": "2026-07-25T22:38:08.524Z"
+    },
+    {
+      "claimId": "clm_9f5e9b04447d4ff8",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_e995f6ea9fa0406691aafab8cfc60ba2\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":26}",
+      "type": "narrative",
+      "path": "goal://gol_e995f6ea9fa0406691aafab8cfc60ba2",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_e995f6ea9fa0406691aafab8cfc60ba2",
+      "ts": "2026-07-25T23:05:53.274Z"
+    },
+    {
+      "claimId": "clm_23a4bd3b6dd24c67",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_e37b0003c5b340ea8fea9fd056428c50\",\"status\":\"escalated\",\"handId\":\"browser-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":22}",
+      "type": "narrative",
+      "path": "goal://gol_e37b0003c5b340ea8fea9fd056428c50",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_e37b0003c5b340ea8fea9fd056428c50",
+      "ts": "2026-07-25T23:05:53.361Z"
+    },
+    {
+      "claimId": "clm_66901c3e11eb4577",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_808413d7871145c996a4d61f15feb372\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":31}",
+      "type": "narrative",
+      "path": "goal://gol_808413d7871145c996a4d61f15feb372",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_808413d7871145c996a4d61f15feb372",
+      "ts": "2026-07-25T23:05:53.653Z"
+    },
+    {
+      "claimId": "clm_83ef09b361144cfc",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_42abcfb1070742a8b97f6f354fa46a53\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":21}",
+      "type": "narrative",
+      "path": "goal://gol_42abcfb1070742a8b97f6f354fa46a53",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_42abcfb1070742a8b97f6f354fa46a53",
+      "ts": "2026-07-25T23:05:53.731Z"
+    },
+    {
+      "claimId": "clm_c9c903563df14ee5",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_42abcfb1070742a8b97f6f354fa46a53\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":2}",
+      "type": "narrative",
+      "path": "goal://gol_42abcfb1070742a8b97f6f354fa46a53",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_42abcfb1070742a8b97f6f354fa46a53",
+      "ts": "2026-07-25T23:05:53.746Z"
+    },
+    {
+      "claimId": "clm_17dca4c0535544ba",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_0beacf7174eb4931aa228e9dddafc70f\",\"status\":\"failed\",\"handId\":\"browser-foreground\",\"tasksTotal\":0,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":0,\"wallTimeMs\":4}",
+      "type": "narrative",
+      "path": "goal://gol_0beacf7174eb4931aa228e9dddafc70f",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_0beacf7174eb4931aa228e9dddafc70f",
+      "ts": "2026-07-25T23:05:53.958Z"
+    },
+    {
+      "claimId": "clm_e1260e56fe7f47e9",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_a69eb8e83ba644c7b232ab8aa95ee131\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":40}",
+      "type": "narrative",
+      "path": "goal://gol_a69eb8e83ba644c7b232ab8aa95ee131",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_a69eb8e83ba644c7b232ab8aa95ee131",
+      "ts": "2026-07-25T23:05:54.019Z"
+    },
+    {
+      "claimId": "clm_8c17ca6c36304ab8",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_a69eb8e83ba644c7b232ab8aa95ee131\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":18}",
+      "type": "narrative",
+      "path": "goal://gol_a69eb8e83ba644c7b232ab8aa95ee131",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_a69eb8e83ba644c7b232ab8aa95ee131",
+      "ts": "2026-07-25T23:05:56.018Z"
+    },
+    {
+      "claimId": "clm_1da8adb4d6e64e52",
+      "claim": "{\"kind\":\"learning-nba-decision\",\"idempotencyKey\":\"idem_http_sigmoid_1\",\"decisionId\":\"dec_84620a2fdac8421c\",\"learnerId\":\"123\",\"concept\":\"sigmoid\",\"masterySnapshot\":0.35,\"decision\":{\"action\":\"VISUAL_EXPLANATION\",\"difficulty\":\"BEGINNER\",\"reason\":\"Повторяющаяся ошибка в понимании вероятности\",\"decisionScore\":0.78,\"alternatives\":[\"GRILL_ME\",\"FLASHCARDS\"],\"requiresHumanReview\":false,\"decisionId\":\"dec_84620a2fdac8421c\"},\"goalId\":\"gol_f78f4fde626e45a8ac35c0b9c6728c30\"}",
+      "type": "narrative",
+      "path": "learning://idem_http_sigmoid_1",
+      "confidence": 0,
+      "source": "learning-nba",
+      "sourceRef": "dec_84620a2fdac8421c",
+      "ts": "2026-07-25T23:05:58.190Z"
+    },
+    {
+      "claimId": "clm_43e71b17ed5d449f",
+      "claim": "{\"kind\":\"learning-nba-decision\",\"idempotencyKey\":\"idem_http_sigmoid_retry\",\"decisionId\":\"dec_0ddb8e02ffc047aa\",\"learnerId\":\"123\",\"concept\":\"sigmoid\",\"masterySnapshot\":0.35,\"decision\":{\"action\":\"VISUAL_EXPLANATION\",\"difficulty\":\"BEGINNER\",\"reason\":\"Повторяющаяся ошибка в понимании вероятности\",\"decisionScore\":0.78,\"alternatives\":[\"GRILL_ME\",\"FLASHCARDS\"],\"requiresHumanReview\":false,\"decisionId\":\"dec_0ddb8e02ffc047aa\"},\"goalId\":\"gol_9219c53f2aa548babb7b8b45cccb26a7\"}",
+      "type": "narrative",
+      "path": "learning://idem_http_sigmoid_retry",
+      "confidence": 0,
+      "source": "learning-nba",
+      "sourceRef": "dec_0ddb8e02ffc047aa",
+      "ts": "2026-07-25T23:05:58.247Z"
+    },
+    {
+      "claimId": "clm_240b84566be44f2b",
+      "claim": "{\"kind\":\"learning-outcome\",\"idempotencyKey\":\"idem_http_outcome_1\",\"decisionCorrelationId\":\"idem_http_sigmoid_1\",\"learnerId\":\"123\",\"concept\":\"sigmoid\",\"completed\":true,\"correct\":true,\"responseTimeSec\":12}",
+      "type": "narrative",
+      "path": "learning://outcome/idem_http_outcome_1",
+      "confidence": 0,
+      "source": "learning-nba",
+      "sourceRef": "idem_http_sigmoid_1",
+      "ts": "2026-07-25T23:05:58.298Z"
+    },
+    {
+      "claimId": "clm_d0ce4062a34a44db",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_6f122d1fdc744ddba21a8c27cc80166a\",\"status\":\"completed\",\"handId\":\"browser-foreground\",\"tasksTotal\":1,\"tasksVerified\":1,\"tasksFailed\":0,\"tasksEscalated\":0,\"wallTimeMs\":3195}",
+      "type": "narrative",
+      "path": "goal://gol_6f122d1fdc744ddba21a8c27cc80166a",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_6f122d1fdc744ddba21a8c27cc80166a",
+      "ts": "2026-07-25T23:06:00.948Z"
+    },
+    {
+      "claimId": "clm_d81f7c8110b74e87",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_3659b8d3232e4b3dbe871ea65411fddc\",\"status\":\"completed\",\"handId\":\"browser-foreground\",\"tasksTotal\":1,\"tasksVerified\":1,\"tasksFailed\":0,\"tasksEscalated\":0,\"wallTimeMs\":5117}",
+      "type": "narrative",
+      "path": "goal://gol_3659b8d3232e4b3dbe871ea65411fddc",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_3659b8d3232e4b3dbe871ea65411fddc",
+      "ts": "2026-07-25T23:06:02.542Z"
+    },
+    {
+      "claimId": "clm_0e4a80c871244bc7",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_6f122d1fdc744ddba21a8c27cc80166a\",\"status\":\"completed\",\"handId\":\"browser-foreground\",\"tasksTotal\":1,\"tasksVerified\":1,\"tasksFailed\":0,\"tasksEscalated\":0,\"wallTimeMs\":15}",
+      "type": "narrative",
+      "path": "goal://gol_6f122d1fdc744ddba21a8c27cc80166a",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_6f122d1fdc744ddba21a8c27cc80166a",
+      "ts": "2026-07-25T23:06:03.453Z"
+    },
+    {
+      "claimId": "clm_cf288e5a6d8f498a",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_3ef9955df9ed45a58e29315738835144\",\"status\":\"failed\",\"handId\":\"browser-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":1,\"tasksEscalated\":0,\"wallTimeMs\":2819}",
+      "type": "narrative",
+      "path": "goal://gol_3ef9955df9ed45a58e29315738835144",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_3ef9955df9ed45a58e29315738835144",
+      "ts": "2026-07-25T23:06:05.386Z"
+    },
+    {
+      "claimId": "clm_b4b6f113459b429d",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_03526771ca1c44958a1ad7120801c621\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":27}",
+      "type": "narrative",
+      "path": "goal://gol_03526771ca1c44958a1ad7120801c621",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_03526771ca1c44958a1ad7120801c621",
+      "ts": "2026-07-25T23:47:36.863Z"
+    },
+    {
+      "claimId": "clm_144cb6f4c8cd4eb0",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_8e9caff19511415c99fdae9a1376e26b\",\"status\":\"escalated\",\"handId\":\"browser-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":16}",
+      "type": "narrative",
+      "path": "goal://gol_8e9caff19511415c99fdae9a1376e26b",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_8e9caff19511415c99fdae9a1376e26b",
+      "ts": "2026-07-25T23:47:36.921Z"
+    },
+    {
+      "claimId": "clm_8a72d3f998ca457c",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_9fc354196dc24b5d93a0621fd785d0b1\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":12}",
+      "type": "narrative",
+      "path": "goal://gol_9fc354196dc24b5d93a0621fd785d0b1",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_9fc354196dc24b5d93a0621fd785d0b1",
+      "ts": "2026-07-25T23:47:37.053Z"
+    },
+    {
+      "claimId": "clm_a81800b6c2954116",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_bd7b2330490d4f56ad337c827b01c062\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":20}",
+      "type": "narrative",
+      "path": "goal://gol_bd7b2330490d4f56ad337c827b01c062",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_bd7b2330490d4f56ad337c827b01c062",
+      "ts": "2026-07-25T23:47:37.119Z"
+    },
+    {
+      "claimId": "clm_e5bfc1ac17344f9e",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_bd7b2330490d4f56ad337c827b01c062\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":1}",
+      "type": "narrative",
+      "path": "goal://gol_bd7b2330490d4f56ad337c827b01c062",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_bd7b2330490d4f56ad337c827b01c062",
+      "ts": "2026-07-25T23:47:37.134Z"
+    },
+    {
+      "claimId": "clm_9c92f2a261374f8b",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_b0ce128e9ec34e0ca9e4b49282c1264f\",\"status\":\"failed\",\"handId\":\"browser-foreground\",\"tasksTotal\":0,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":0,\"wallTimeMs\":2}",
+      "type": "narrative",
+      "path": "goal://gol_b0ce128e9ec34e0ca9e4b49282c1264f",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_b0ce128e9ec34e0ca9e4b49282c1264f",
+      "ts": "2026-07-25T23:47:37.354Z"
+    },
+    {
+      "claimId": "clm_a066957dd8dc4cab",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_e877d26054b64102ae3d997d4bfa7a32\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":31}",
+      "type": "narrative",
+      "path": "goal://gol_e877d26054b64102ae3d997d4bfa7a32",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_e877d26054b64102ae3d997d4bfa7a32",
+      "ts": "2026-07-25T23:47:37.591Z"
+    },
+    {
+      "claimId": "clm_afae2f9de90b4165",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_e877d26054b64102ae3d997d4bfa7a32\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":13}",
+      "type": "narrative",
+      "path": "goal://gol_e877d26054b64102ae3d997d4bfa7a32",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_e877d26054b64102ae3d997d4bfa7a32",
+      "ts": "2026-07-25T23:47:40.033Z"
+    },
+    {
+      "claimId": "clm_1615535cfec047ab",
+      "claim": "{\"kind\":\"learning-nba-decision\",\"idempotencyKey\":\"idem_http_sigmoid_1\",\"decisionId\":\"dec_ad1107d0b47347d5\",\"learnerId\":\"123\",\"concept\":\"sigmoid\",\"masterySnapshot\":0.35,\"decision\":{\"action\":\"VISUAL_EXPLANATION\",\"difficulty\":\"BEGINNER\",\"reason\":\"Повторяющаяся ошибка в понимании вероятности\",\"decisionScore\":0.78,\"alternatives\":[\"GRILL_ME\",\"FLASHCARDS\"],\"requiresHumanReview\":false,\"decisionId\":\"dec_ad1107d0b47347d5\"},\"goalId\":\"gol_bc0795e87a2c4ca1bea0611132c5da3a\"}",
+      "type": "narrative",
+      "path": "learning://idem_http_sigmoid_1",
+      "confidence": 0,
+      "source": "learning-nba",
+      "sourceRef": "dec_ad1107d0b47347d5",
+      "ts": "2026-07-25T23:47:43.140Z"
+    },
+    {
+      "claimId": "clm_f15855fd59a34b10",
+      "claim": "{\"kind\":\"learning-nba-decision\",\"idempotencyKey\":\"idem_http_sigmoid_retry\",\"decisionId\":\"dec_90616028c28744fe\",\"learnerId\":\"123\",\"concept\":\"sigmoid\",\"masterySnapshot\":0.35,\"decision\":{\"action\":\"VISUAL_EXPLANATION\",\"difficulty\":\"BEGINNER\",\"reason\":\"Повторяющаяся ошибка в понимании вероятности\",\"decisionScore\":0.78,\"alternatives\":[\"GRILL_ME\",\"FLASHCARDS\"],\"requiresHumanReview\":false,\"decisionId\":\"dec_90616028c28744fe\"},\"goalId\":\"gol_de68cd0988cf42ddba6783758ed97e35\"}",
+      "type": "narrative",
+      "path": "learning://idem_http_sigmoid_retry",
+      "confidence": 0,
+      "source": "learning-nba",
+      "sourceRef": "dec_90616028c28744fe",
+      "ts": "2026-07-25T23:47:43.191Z"
+    },
+    {
+      "claimId": "clm_bf03a503853d409d",
+      "claim": "{\"kind\":\"learning-outcome\",\"idempotencyKey\":\"idem_http_outcome_1\",\"decisionCorrelationId\":\"idem_http_sigmoid_1\",\"learnerId\":\"123\",\"concept\":\"sigmoid\",\"completed\":true,\"correct\":true,\"responseTimeSec\":12}",
+      "type": "narrative",
+      "path": "learning://outcome/idem_http_outcome_1",
+      "confidence": 0,
+      "source": "learning-nba",
+      "sourceRef": "idem_http_sigmoid_1",
+      "ts": "2026-07-25T23:47:43.297Z"
+    },
+    {
+      "claimId": "clm_6d88a01628d542e0",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_d16e5006e9b54feb9054526011bdf6fe\",\"status\":\"completed\",\"handId\":\"browser-foreground\",\"tasksTotal\":1,\"tasksVerified\":1,\"tasksFailed\":0,\"tasksEscalated\":0,\"wallTimeMs\":4602}",
+      "type": "narrative",
+      "path": "goal://gol_d16e5006e9b54feb9054526011bdf6fe",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_d16e5006e9b54feb9054526011bdf6fe",
+      "ts": "2026-07-25T23:47:50.634Z"
+    },
+    {
+      "claimId": "clm_e7a62024fc214ec2",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_0090e79afc3d45ad96aa224778ed2f2c\",\"status\":\"completed\",\"handId\":\"browser-foreground\",\"tasksTotal\":1,\"tasksVerified\":1,\"tasksFailed\":0,\"tasksEscalated\":0,\"wallTimeMs\":9985}",
+      "type": "narrative",
+      "path": "goal://gol_0090e79afc3d45ad96aa224778ed2f2c",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_0090e79afc3d45ad96aa224778ed2f2c",
+      "ts": "2026-07-25T23:47:52.127Z"
+    },
+    {
+      "claimId": "clm_e5e807d1627f4003",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_d0b9c666cd3448309153f5e2d55f2fbd\",\"status\":\"failed\",\"handId\":\"browser-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":1,\"tasksEscalated\":0,\"wallTimeMs\":1559}",
+      "type": "narrative",
+      "path": "goal://gol_d0b9c666cd3448309153f5e2d55f2fbd",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_d0b9c666cd3448309153f5e2d55f2fbd",
+      "ts": "2026-07-25T23:47:52.208Z"
+    },
+    {
+      "claimId": "clm_d80b0f25fab24986",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_0090e79afc3d45ad96aa224778ed2f2c\",\"status\":\"completed\",\"handId\":\"browser-foreground\",\"tasksTotal\":1,\"tasksVerified\":1,\"tasksFailed\":0,\"tasksEscalated\":0,\"wallTimeMs\":12}",
+      "type": "narrative",
+      "path": "goal://gol_0090e79afc3d45ad96aa224778ed2f2c",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_0090e79afc3d45ad96aa224778ed2f2c",
+      "ts": "2026-07-25T23:47:53.480Z"
+    },
+    {
+      "claimId": "clm_56a797b6772e41f3",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_4f1bd450a6af4c62b1902636ad1f54f3\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":12}",
+      "type": "narrative",
+      "path": "goal://gol_4f1bd450a6af4c62b1902636ad1f54f3",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_4f1bd450a6af4c62b1902636ad1f54f3",
+      "ts": "2026-07-26T10:51:44.567Z"
+    },
+    {
+      "claimId": "clm_309b6b0ec18f4a45",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_2e0a605955634444bc862d136534782d\",\"status\":\"escalated\",\"handId\":\"browser-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":8}",
+      "type": "narrative",
+      "path": "goal://gol_2e0a605955634444bc862d136534782d",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_2e0a605955634444bc862d136534782d",
+      "ts": "2026-07-26T10:51:44.591Z"
+    },
+    {
+      "claimId": "clm_46610625bcc04961",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_5ea8cd174a0d4a128605db877da8d1a4\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":7}",
+      "type": "narrative",
+      "path": "goal://gol_5ea8cd174a0d4a128605db877da8d1a4",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_5ea8cd174a0d4a128605db877da8d1a4",
+      "ts": "2026-07-26T10:51:44.649Z"
+    },
+    {
+      "claimId": "clm_5b932cf26d1d462e",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_aca9fea661964b66a3d7785a3278df24\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":8}",
+      "type": "narrative",
+      "path": "goal://gol_aca9fea661964b66a3d7785a3278df24",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_aca9fea661964b66a3d7785a3278df24",
+      "ts": "2026-07-26T10:51:44.678Z"
+    },
+    {
+      "claimId": "clm_fe26b8dc87e743d3",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_aca9fea661964b66a3d7785a3278df24\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":1}",
+      "type": "narrative",
+      "path": "goal://gol_aca9fea661964b66a3d7785a3278df24",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_aca9fea661964b66a3d7785a3278df24",
+      "ts": "2026-07-26T10:51:44.689Z"
+    },
+    {
+      "claimId": "clm_13a8b645552148b0",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_afc12e3c9c6e4b72a6e5932ec61c8d8b\",\"status\":\"failed\",\"handId\":\"browser-foreground\",\"tasksTotal\":0,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":0,\"wallTimeMs\":3}",
+      "type": "narrative",
+      "path": "goal://gol_afc12e3c9c6e4b72a6e5932ec61c8d8b",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_afc12e3c9c6e4b72a6e5932ec61c8d8b",
+      "ts": "2026-07-26T10:51:44.778Z"
+    },
+    {
+      "claimId": "clm_a4d33adad16c4804",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_71010e157f234877a5f35f89296d1918\",\"status\":\"completed\",\"handId\":\"browser-foreground\",\"tasksTotal\":1,\"tasksVerified\":1,\"tasksFailed\":0,\"tasksEscalated\":0,\"wallTimeMs\":463}",
+      "type": "narrative",
+      "path": "goal://gol_71010e157f234877a5f35f89296d1918",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_71010e157f234877a5f35f89296d1918",
+      "ts": "2026-07-26T10:51:46.692Z"
+    },
+    {
+      "claimId": "clm_096f3984728d4418",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_161018db56e247e0a3691f4c57a5b435\",\"status\":\"failed\",\"handId\":\"browser-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":1,\"tasksEscalated\":0,\"wallTimeMs\":497}",
+      "type": "narrative",
+      "path": "goal://gol_161018db56e247e0a3691f4c57a5b435",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_161018db56e247e0a3691f4c57a5b435",
+      "ts": "2026-07-26T10:51:47.204Z"
+    },
+    {
+      "claimId": "clm_d5c290b324ed4006",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_c26b6b78dff14b629b4f6c33acc299d5\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":16}",
+      "type": "narrative",
+      "path": "goal://gol_c26b6b78dff14b629b4f6c33acc299d5",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_c26b6b78dff14b629b4f6c33acc299d5",
+      "ts": "2026-07-26T10:51:57.297Z"
+    },
+    {
+      "claimId": "clm_6d5b241387e44beb",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_c26b6b78dff14b629b4f6c33acc299d5\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":10}",
+      "type": "narrative",
+      "path": "goal://gol_c26b6b78dff14b629b4f6c33acc299d5",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_c26b6b78dff14b629b4f6c33acc299d5",
+      "ts": "2026-07-26T10:51:58.156Z"
+    },
+    {
+      "claimId": "clm_42775a6aa68d4dac",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_0a9dd5b4ef4f4d60a90b6eb66ded2a54\",\"status\":\"completed\",\"handId\":\"browser-foreground\",\"tasksTotal\":1,\"tasksVerified\":1,\"tasksFailed\":0,\"tasksEscalated\":0,\"wallTimeMs\":1351}",
+      "type": "narrative",
+      "path": "goal://gol_0a9dd5b4ef4f4d60a90b6eb66ded2a54",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_0a9dd5b4ef4f4d60a90b6eb66ded2a54",
+      "ts": "2026-07-26T10:52:00.376Z"
+    },
+    {
+      "claimId": "clm_12dc7b0a65e44d71",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_0a9dd5b4ef4f4d60a90b6eb66ded2a54\",\"status\":\"completed\",\"handId\":\"browser-foreground\",\"tasksTotal\":1,\"tasksVerified\":1,\"tasksFailed\":0,\"tasksEscalated\":0,\"wallTimeMs\":10}",
+      "type": "narrative",
+      "path": "goal://gol_0a9dd5b4ef4f4d60a90b6eb66ded2a54",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_0a9dd5b4ef4f4d60a90b6eb66ded2a54",
+      "ts": "2026-07-26T10:52:01.503Z"
+    },
+    {
+      "claimId": "clm_e95dc6bda1fabbba",
+      "claim": "{\"kind\":\"learning-nba-decision\",\"idempotencyKey\":\"idem_http_sigmoid_1\",\"decisionId\":\"dec_ecbf481737dee68b\",\"learnerId\":\"123\",\"concept\":\"sigmoid\",\"masterySnapshot\":0.35,\"decision\":{\"action\":\"VISUAL_EXPLANATION\",\"difficulty\":\"BEGINNER\",\"reason\":\"Повторяющаяся ошибка в понимании вероятности\",\"decisionScore\":0.78,\"alternatives\":[\"GRILL_ME\",\"FLASHCARDS\"],\"requiresHumanReview\":false,\"decisionId\":\"dec_ecbf481737dee68b\"},\"goalId\":\"gol_0de6eefeea028fa0\"}",
+      "type": "narrative",
+      "path": "learning://idem_http_sigmoid_1",
+      "confidence": 0,
+      "source": "learning-nba",
+      "sourceRef": "dec_ecbf481737dee68b",
+      "ts": "2026-07-26T10:53:23.427Z"
+    },
+    {
+      "claimId": "clm_c2a28ef9695345b4",
+      "claim": "{\"kind\":\"learning-nba-decision\",\"idempotencyKey\":\"idem_http_sigmoid_retry\",\"decisionId\":\"dec_9c0d0b3db404ebd0\",\"learnerId\":\"123\",\"concept\":\"sigmoid\",\"masterySnapshot\":0.35,\"decision\":{\"action\":\"VISUAL_EXPLANATION\",\"difficulty\":\"BEGINNER\",\"reason\":\"Повторяющаяся ошибка в понимании вероятности\",\"decisionScore\":0.78,\"alternatives\":[\"GRILL_ME\",\"FLASHCARDS\"],\"requiresHumanReview\":false,\"decisionId\":\"dec_9c0d0b3db404ebd0\"},\"goalId\":\"gol_acbe331563b4c777\"}",
+      "type": "narrative",
+      "path": "learning://idem_http_sigmoid_retry",
+      "confidence": 0,
+      "source": "learning-nba",
+      "sourceRef": "dec_9c0d0b3db404ebd0",
+      "ts": "2026-07-26T10:53:23.460Z"
+    },
+    {
+      "claimId": "clm_53119198881e1b04",
+      "claim": "{\"kind\":\"learning-outcome\",\"idempotencyKey\":\"idem_http_outcome_1\",\"decisionCorrelationId\":\"idem_http_sigmoid_1\",\"learnerId\":\"123\",\"concept\":\"sigmoid\",\"completed\":true,\"correct\":true,\"responseTimeSec\":12}",
+      "type": "narrative",
+      "path": "learning://outcome/idem_http_outcome_1",
+      "confidence": 0,
+      "source": "learning-nba",
+      "sourceRef": "idem_http_sigmoid_1",
+      "ts": "2026-07-26T10:53:23.494Z"
+    },
+    {
+      "claimId": "clm_d5820833df7c4db6",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_0dc13f30b95a45c9817fba5aef103532\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":13}",
+      "type": "narrative",
+      "path": "goal://gol_0dc13f30b95a45c9817fba5aef103532",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_0dc13f30b95a45c9817fba5aef103532",
+      "ts": "2026-07-26T11:09:05.472Z"
+    },
+    {
+      "claimId": "clm_8716e6547d784bee",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_4e08553ceb4c4666a071642337a739d8\",\"status\":\"escalated\",\"handId\":\"browser-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":11}",
+      "type": "narrative",
+      "path": "goal://gol_4e08553ceb4c4666a071642337a739d8",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_4e08553ceb4c4666a071642337a739d8",
+      "ts": "2026-07-26T11:09:05.501Z"
+    },
+    {
+      "claimId": "clm_ba70d670221f4f24",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_244a84b6e28e479295932e9c20d38e2e\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":9}",
+      "type": "narrative",
+      "path": "goal://gol_244a84b6e28e479295932e9c20d38e2e",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_244a84b6e28e479295932e9c20d38e2e",
+      "ts": "2026-07-26T11:09:05.573Z"
+    },
+    {
+      "claimId": "clm_46edfa18f3614daf",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_15568e9c2139416fb0a944f3ee55c1e7\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":8}",
+      "type": "narrative",
+      "path": "goal://gol_15568e9c2139416fb0a944f3ee55c1e7",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_15568e9c2139416fb0a944f3ee55c1e7",
+      "ts": "2026-07-26T11:09:05.601Z"
+    },
+    {
+      "claimId": "clm_168a3701039e492b",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_15568e9c2139416fb0a944f3ee55c1e7\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":0}",
+      "type": "narrative",
+      "path": "goal://gol_15568e9c2139416fb0a944f3ee55c1e7",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_15568e9c2139416fb0a944f3ee55c1e7",
+      "ts": "2026-07-26T11:09:05.609Z"
+    },
+    {
+      "claimId": "clm_4fa7b12a00b44a94",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_afea1ac1599c46529b06107bac4dfaee\",\"status\":\"failed\",\"handId\":\"browser-foreground\",\"tasksTotal\":0,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":0,\"wallTimeMs\":3}",
+      "type": "narrative",
+      "path": "goal://gol_afea1ac1599c46529b06107bac4dfaee",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_afea1ac1599c46529b06107bac4dfaee",
+      "ts": "2026-07-26T11:09:05.693Z"
+    },
+    {
+      "claimId": "clm_1ce860caa41645ea",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_d8d39b36ac16406f844a7494aa799db3\",\"status\":\"completed\",\"handId\":\"browser-foreground\",\"tasksTotal\":1,\"tasksVerified\":1,\"tasksFailed\":0,\"tasksEscalated\":0,\"wallTimeMs\":476}",
+      "type": "narrative",
+      "path": "goal://gol_d8d39b36ac16406f844a7494aa799db3",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_d8d39b36ac16406f844a7494aa799db3",
+      "ts": "2026-07-26T11:09:07.358Z"
+    },
+    {
+      "claimId": "clm_c15ec5c6168b4702",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_6b11a5af646a422193b7fd7b63bf5187\",\"status\":\"failed\",\"handId\":\"browser-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":1,\"tasksEscalated\":0,\"wallTimeMs\":422}",
+      "type": "narrative",
+      "path": "goal://gol_6b11a5af646a422193b7fd7b63bf5187",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_6b11a5af646a422193b7fd7b63bf5187",
+      "ts": "2026-07-26T11:09:07.795Z"
+    },
+    {
+      "claimId": "clm_ae7991577f0946c9",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_ba364391d8e9422da180a6fa18cf85fe\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":15}",
+      "type": "narrative",
+      "path": "goal://gol_ba364391d8e9422da180a6fa18cf85fe",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_ba364391d8e9422da180a6fa18cf85fe",
+      "ts": "2026-07-26T11:09:17.754Z"
+    },
+    {
+      "claimId": "clm_27c8a92be02b4672",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_ba364391d8e9422da180a6fa18cf85fe\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":11}",
+      "type": "narrative",
+      "path": "goal://gol_ba364391d8e9422da180a6fa18cf85fe",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_ba364391d8e9422da180a6fa18cf85fe",
+      "ts": "2026-07-26T11:09:18.573Z"
+    },
+    {
+      "claimId": "clm_692254fc9e3043aa",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_760f92525ccd41d2b153692c241ebd57\",\"status\":\"completed\",\"handId\":\"browser-foreground\",\"tasksTotal\":1,\"tasksVerified\":1,\"tasksFailed\":0,\"tasksEscalated\":0,\"wallTimeMs\":1060}",
+      "type": "narrative",
+      "path": "goal://gol_760f92525ccd41d2b153692c241ebd57",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_760f92525ccd41d2b153692c241ebd57",
+      "ts": "2026-07-26T11:09:20.330Z"
+    },
+    {
+      "claimId": "clm_df775c68a5624712",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_760f92525ccd41d2b153692c241ebd57\",\"status\":\"completed\",\"handId\":\"browser-foreground\",\"tasksTotal\":1,\"tasksVerified\":1,\"tasksFailed\":0,\"tasksEscalated\":0,\"wallTimeMs\":10}",
+      "type": "narrative",
+      "path": "goal://gol_760f92525ccd41d2b153692c241ebd57",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_760f92525ccd41d2b153692c241ebd57",
+      "ts": "2026-07-26T11:09:21.234Z"
+    },
+    {
+      "claimId": "clm_45d0b3bddd9c44d3",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_ffa80e37520d44feb52c6651dd020058\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":27}",
+      "type": "narrative",
+      "path": "goal://gol_ffa80e37520d44feb52c6651dd020058",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_ffa80e37520d44feb52c6651dd020058",
+      "ts": "2026-07-26T11:35:42.951Z"
+    },
+    {
+      "claimId": "clm_ef34f70a49ea4aef",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_d46198e69d8e48efbdbadc945eb0cb56\",\"status\":\"escalated\",\"handId\":\"browser-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":17}",
+      "type": "narrative",
+      "path": "goal://gol_d46198e69d8e48efbdbadc945eb0cb56",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_d46198e69d8e48efbdbadc945eb0cb56",
+      "ts": "2026-07-26T11:35:42.997Z"
+    },
+    {
+      "claimId": "clm_cdf10f9162014357",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_93a547d17e5f4a3b9b1fb9bcf2afe382\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":10}",
+      "type": "narrative",
+      "path": "goal://gol_93a547d17e5f4a3b9b1fb9bcf2afe382",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_93a547d17e5f4a3b9b1fb9bcf2afe382",
+      "ts": "2026-07-26T11:35:43.082Z"
+    },
+    {
+      "claimId": "clm_1ec7f0f37d1a47f8",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_bc4d4e19a929460ba0806b3a3d25744a\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":9}",
+      "type": "narrative",
+      "path": "goal://gol_bc4d4e19a929460ba0806b3a3d25744a",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_bc4d4e19a929460ba0806b3a3d25744a",
+      "ts": "2026-07-26T11:35:43.114Z"
+    },
+    {
+      "claimId": "clm_09358ed5b9ca4ca6",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_bc4d4e19a929460ba0806b3a3d25744a\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":1}",
+      "type": "narrative",
+      "path": "goal://gol_bc4d4e19a929460ba0806b3a3d25744a",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_bc4d4e19a929460ba0806b3a3d25744a",
+      "ts": "2026-07-26T11:35:43.125Z"
+    },
+    {
+      "claimId": "clm_40aa4128a4fa49d5",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_01cc6d77aa79418ab06cc8873ab58d5c\",\"status\":\"failed\",\"handId\":\"browser-foreground\",\"tasksTotal\":0,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":0,\"wallTimeMs\":2}",
+      "type": "narrative",
+      "path": "goal://gol_01cc6d77aa79418ab06cc8873ab58d5c",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_01cc6d77aa79418ab06cc8873ab58d5c",
+      "ts": "2026-07-26T11:35:43.230Z"
+    },
+    {
+      "claimId": "clm_45d967453b8e4543",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_a0198fdbbdf14314b5e22e3f5f10bdcd\",\"status\":\"completed\",\"handId\":\"browser-foreground\",\"tasksTotal\":1,\"tasksVerified\":1,\"tasksFailed\":0,\"tasksEscalated\":0,\"wallTimeMs\":405}",
+      "type": "narrative",
+      "path": "goal://gol_a0198fdbbdf14314b5e22e3f5f10bdcd",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_a0198fdbbdf14314b5e22e3f5f10bdcd",
+      "ts": "2026-07-26T11:35:44.781Z"
+    },
+    {
+      "claimId": "clm_531ab1c09aae4a15",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_d07e697a571b4e7e8a80fb3dcfe4774e\",\"status\":\"failed\",\"handId\":\"browser-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":1,\"tasksEscalated\":0,\"wallTimeMs\":433}",
+      "type": "narrative",
+      "path": "goal://gol_d07e697a571b4e7e8a80fb3dcfe4774e",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_d07e697a571b4e7e8a80fb3dcfe4774e",
+      "ts": "2026-07-26T11:35:45.229Z"
+    },
+    {
+      "claimId": "clm_3b488afc44f94a72",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_41f208208a17485b90b878e2faf17f76\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":16}",
+      "type": "narrative",
+      "path": "goal://gol_41f208208a17485b90b878e2faf17f76",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_41f208208a17485b90b878e2faf17f76",
+      "ts": "2026-07-26T11:35:54.719Z"
+    },
+    {
+      "claimId": "clm_cb59a3754de24dd1",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_41f208208a17485b90b878e2faf17f76\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":13}",
+      "type": "narrative",
+      "path": "goal://gol_41f208208a17485b90b878e2faf17f76",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_41f208208a17485b90b878e2faf17f76",
+      "ts": "2026-07-26T11:35:55.529Z"
+    },
+    {
+      "claimId": "clm_7585df1aa4b140f5",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_da40a8b30d4b4e8f9847f879b19826dd\",\"status\":\"completed\",\"handId\":\"browser-foreground\",\"tasksTotal\":1,\"tasksVerified\":1,\"tasksFailed\":0,\"tasksEscalated\":0,\"wallTimeMs\":1109}",
+      "type": "narrative",
+      "path": "goal://gol_da40a8b30d4b4e8f9847f879b19826dd",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_da40a8b30d4b4e8f9847f879b19826dd",
+      "ts": "2026-07-26T11:35:57.413Z"
+    },
+    {
+      "claimId": "clm_7c7ee30fad7d432d",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_da40a8b30d4b4e8f9847f879b19826dd\",\"status\":\"completed\",\"handId\":\"browser-foreground\",\"tasksTotal\":1,\"tasksVerified\":1,\"tasksFailed\":0,\"tasksEscalated\":0,\"wallTimeMs\":8}",
+      "type": "narrative",
+      "path": "goal://gol_da40a8b30d4b4e8f9847f879b19826dd",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_da40a8b30d4b4e8f9847f879b19826dd",
+      "ts": "2026-07-26T11:35:58.289Z"
+    },
+    {
+      "claimId": "clm_698fa2e138044d65",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_e4fa4d6d5094456397460d164240e5a1\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":20}",
+      "type": "narrative",
+      "path": "goal://gol_e4fa4d6d5094456397460d164240e5a1",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_e4fa4d6d5094456397460d164240e5a1",
+      "ts": "2026-07-26T12:40:04.217Z"
+    },
+    {
+      "claimId": "clm_2f16f9af54fb4fc0",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_15a667e13b9f4d5a91ae9ac119c48ae9\",\"status\":\"escalated\",\"handId\":\"browser-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":13}",
+      "type": "narrative",
+      "path": "goal://gol_15a667e13b9f4d5a91ae9ac119c48ae9",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_15a667e13b9f4d5a91ae9ac119c48ae9",
+      "ts": "2026-07-26T12:40:04.253Z"
+    },
+    {
+      "claimId": "clm_f18d07fd69cb41ac",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_c673c42a96d64519b1f1e584a9e8c70a\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":12}",
+      "type": "narrative",
+      "path": "goal://gol_c673c42a96d64519b1f1e584a9e8c70a",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_c673c42a96d64519b1f1e584a9e8c70a",
+      "ts": "2026-07-26T12:40:04.342Z"
+    },
+    {
+      "claimId": "clm_20b92ac5652c4152",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_bfd6870ea9a747eab843b3dac62aaa84\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":12}",
+      "type": "narrative",
+      "path": "goal://gol_bfd6870ea9a747eab843b3dac62aaa84",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_bfd6870ea9a747eab843b3dac62aaa84",
+      "ts": "2026-07-26T12:40:04.385Z"
+    },
+    {
+      "claimId": "clm_e049af4324594b58",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_bfd6870ea9a747eab843b3dac62aaa84\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":1}",
+      "type": "narrative",
+      "path": "goal://gol_bfd6870ea9a747eab843b3dac62aaa84",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_bfd6870ea9a747eab843b3dac62aaa84",
+      "ts": "2026-07-26T12:40:04.398Z"
+    },
+    {
+      "claimId": "clm_5b6f23d7d7c54813",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_cc9caa79ccb84fdcacd0a8e09aa6ce33\",\"status\":\"failed\",\"handId\":\"browser-foreground\",\"tasksTotal\":0,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":0,\"wallTimeMs\":3}",
+      "type": "narrative",
+      "path": "goal://gol_cc9caa79ccb84fdcacd0a8e09aa6ce33",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_cc9caa79ccb84fdcacd0a8e09aa6ce33",
+      "ts": "2026-07-26T12:40:04.523Z"
+    },
+    {
+      "claimId": "clm_3861a16f4d654b49",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_73051d2f005545e2b5bbe93a3f61f878\",\"status\":\"completed\",\"handId\":\"browser-foreground\",\"tasksTotal\":1,\"tasksVerified\":1,\"tasksFailed\":0,\"tasksEscalated\":0,\"wallTimeMs\":467}",
+      "type": "narrative",
+      "path": "goal://gol_73051d2f005545e2b5bbe93a3f61f878",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_73051d2f005545e2b5bbe93a3f61f878",
+      "ts": "2026-07-26T12:40:06.642Z"
+    },
+    {
+      "claimId": "clm_9cdf0c27647848e6",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_428da36080d54726b0661eb789878555\",\"status\":\"failed\",\"handId\":\"browser-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":1,\"tasksEscalated\":0,\"wallTimeMs\":486}",
+      "type": "narrative",
+      "path": "goal://gol_428da36080d54726b0661eb789878555",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_428da36080d54726b0661eb789878555",
+      "ts": "2026-07-26T12:40:07.146Z"
+    },
+    {
+      "claimId": "clm_cd5327e41e634447",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_9a14cd540d1b4f37905dea041ecbce63\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":17}",
+      "type": "narrative",
+      "path": "goal://gol_9a14cd540d1b4f37905dea041ecbce63",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_9a14cd540d1b4f37905dea041ecbce63",
+      "ts": "2026-07-26T12:40:17.221Z"
+    },
+    {
+      "claimId": "clm_1012ff7cf74a43b6",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_9a14cd540d1b4f37905dea041ecbce63\",\"status\":\"escalated\",\"handId\":\"sonnet-foreground\",\"tasksTotal\":1,\"tasksVerified\":0,\"tasksFailed\":0,\"tasksEscalated\":1,\"wallTimeMs\":9}",
+      "type": "narrative",
+      "path": "goal://gol_9a14cd540d1b4f37905dea041ecbce63",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_9a14cd540d1b4f37905dea041ecbce63",
+      "ts": "2026-07-26T12:40:18.048Z"
+    },
+    {
+      "claimId": "clm_4b14c56fadd2493c",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_65fc09ba8a6b42e09d248713af44f662\",\"status\":\"completed\",\"handId\":\"browser-foreground\",\"tasksTotal\":1,\"tasksVerified\":1,\"tasksFailed\":0,\"tasksEscalated\":0,\"wallTimeMs\":1044}",
+      "type": "narrative",
+      "path": "goal://gol_65fc09ba8a6b42e09d248713af44f662",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_65fc09ba8a6b42e09d248713af44f662",
+      "ts": "2026-07-26T12:40:19.874Z"
+    },
+    {
+      "claimId": "clm_d2f3a5c8012b47cb",
+      "claim": "{\"kind\":\"goal-terminal\",\"goalId\":\"gol_65fc09ba8a6b42e09d248713af44f662\",\"status\":\"completed\",\"handId\":\"browser-foreground\",\"tasksTotal\":1,\"tasksVerified\":1,\"tasksFailed\":0,\"tasksEscalated\":0,\"wallTimeMs\":11}",
+      "type": "narrative",
+      "path": "goal://gol_65fc09ba8a6b42e09d248713af44f662",
+      "confidence": 0,
+      "source": "goal-runner",
+      "sourceRef": "gol_65fc09ba8a6b42e09d248713af44f662",
+      "ts": "2026-07-26T12:40:20.665Z"
+    }
+  ],
+  "lastEntryHash": "0ae9d9c3702600a5c675870e2a7389ce79b09088d669fdefd62c0b9e3294ec00",
+  "count": 111
+}
