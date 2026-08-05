@@ -187,7 +187,7 @@ class HealthOut(BaseModel):
     taskAuthority: bool = False
     engines: dict[str, Any] = Field(default_factory=dict)
     cloudFallbackOrder: list[str] = Field(
-        default_factory=lambda: ["nvidia-riva-nim", "azure-speech-f0"]
+        default_factory=lambda: ["groq", "google-cloud", "gemini"]
     )
     sensitiveDefaultLocalOnly: bool = True
     peakRssMb: float = 0.0
@@ -427,7 +427,8 @@ async def push_to_talk(
 
 @app.post("/cloud-policy", response_model=CloudPolicyOut)
 def cloud_policy(body: CloudPolicyIn) -> CloudPolicyOut:
-    order = ["nvidia-riva-nim", "azure-speech-f0"]
+    # Free-first STT ladder (client enforces OpenAI LAST). Sensitive = local only.
+    order = ["groq", "google-cloud", "gemini"]
     if body.sensitive:
         return CloudPolicyOut(
             allowCloud=False,
@@ -436,7 +437,7 @@ def cloud_policy(body: CloudPolicyIn) -> CloudPolicyOut:
         )
     return CloudPolicyOut(
         allowCloud=True,
-        reason="non-sensitive may use cloud fallback order",
+        reason="non-sensitive may use free-first cloud ladder (OpenAI last, client-side)",
         order=order,
     )
 

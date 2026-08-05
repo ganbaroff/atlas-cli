@@ -209,11 +209,12 @@ export async function closeOwnedNotepad(ownership: ProcessOwnership): Promise<{
         };
       }
     } catch {
-      /* fall through to pid kill only if window close failed hard */
+      /* HWND close did not return JSON — continue to fail-closed path (no PID kill). */
     }
   }
 
-  // Last resort: only kill if process name looks like notepad AND we still own the hwnd binding
+  // Fail-closed: never kill a shared Win11 Notepad process by PID.
+  // Only HWND/tab close is allowed; if the window is already gone, treat as cleaned.
   const script = resolveHelper('notepad-verify-pid.ps1');
   if (script) {
     const r = await runPs(script, ['-TargetPid', String(ownership.pid)]);

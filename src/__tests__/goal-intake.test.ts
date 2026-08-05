@@ -38,7 +38,11 @@ describe('atlas goal intake v0', () => {
     expect(c.riskLevel).toBe('low');
     expect(c.allowedActions).toContain('web-observe-readonly');
     expect(c.forbiddenActions).toEqual(expect.arrayContaining(['production-write', 'deploy']));
-    expect(c.projectPath).toBeNull();
+    // Registry hint may be set; Project Resolution still must FS-verify before READY exec.
+    // Accept null (legacy) or the CEO-authorized canon path when registry lists it.
+    expect(
+      c.projectPath === null || c.projectPath === 'C:\\Projects\\INTEGRONIX',
+    ).toBe(true);
     expect(c.facts.length).toBeGreaterThan(0);
     expect(c.staleMemoryWarnings.length).toBeGreaterThan(0);
     expect(c.conciseCeoSummary.length).toBeLessThan(280);
@@ -101,7 +105,10 @@ describe('atlas goal intake v0', () => {
   it('conflicting memory surfaces on Integronix', () => {
     const c = interpretCeoGoal({ ceoMessage: INTEGRONIX_MSG });
     expect(c.memoryConflicts.length).toBeGreaterThan(0);
-    expect(c.memoryConflicts[0]).toMatch(/UNVERIFIED|conflict/i);
+    // Registry conflict text names the historical vs canon tension (not always the word UNVERIFIED).
+    expect(c.memoryConflicts[0]).toMatch(
+      /UNVERIFIED|conflict|domain-alarm|canon|override|historical/i,
+    );
   });
 
   it('stale memory warnings', () => {

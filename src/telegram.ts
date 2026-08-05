@@ -714,7 +714,7 @@ bot.on('text', async (ctx) => {
 bot.on('voice', async (ctx) => {
   try {
     const link = await ctx.telegram.getFileLink(ctx.message.voice.file_id);
-    const { text, engine, local } = await transcribeVoiceUrl(link.href);
+    const { text, engine, local } = await transcribeVoiceUrl(link.href, { sensitive: true });
     if (text.startsWith('[')) { await ctx.reply(text); return; }
     await ctx.reply(`[voice${local ? '' : ':cloud'}:${engine}] ${text}`);
     const reply = await ask(ctx.chat.id, text);
