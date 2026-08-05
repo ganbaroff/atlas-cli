@@ -8,7 +8,7 @@
 // → "No models available" + operator crash. See breadcrumb 2026-06-26 15:30.
 import { config } from 'dotenv';
 import { fileURLToPath } from 'node:url';
-import { dirname, resolve } from 'node:path';
+import { dirname, resolve, join } from 'node:path';
 
 const ANUS_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 // .env optional — on Railway env vars come from dashboard, not file
@@ -17,9 +17,7 @@ const envPath = resolve(ANUS_ROOT, '.env');
 if (existsSync(envPath)) config({ path: envPath });
 import { Telegraf } from 'telegraf';
 import { Agent } from '@mastra/core/agent';
-import { readFileSync, writeFileSync, unlinkSync } from 'node:fs';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { transcribeVoiceUrl, ocrImageBytes } from './atlas/telegram-capability.js';
 import { summarizeReplyGate } from './atlas/reply-gates.js';
 import { deliverReply } from './atlas/reply-delivery.js';
 import { extractTurnEvidence, type TurnEvidenceSource } from './atlas/turn-evidence.js';
@@ -345,30 +343,7 @@ async function ask(chatId: number, text: string): Promise<string> {
   return finalReply;
 }
 
-// ── Voice transcription — graceful fallback ─────────────────────────
-async function transcribe(fileUrl: string): Promise<string> {
-  const apiKey = process.env['OPENAI_API_KEY'];
-  if (!apiKey) return '[voice unavailable — no OpenAI key]';
-
-  const tmp = join(tmpdir(), `voice_${Date.now()}.ogg`);
-  try {
-    const res = await fetch(fileUrl);
-    writeFileSync(tmp, Buffer.from(await res.arrayBuffer()));
-    const form = new FormData();
-    form.append('file', new Blob([readFileSync(tmp)], { type: 'audio/ogg' }), 'voice.ogg');
-    form.append('model', 'whisper-1');
-    const wr = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-      method: 'POST', headers: { Authorization: `Bearer ${apiKey}` }, body: form,
-    });
-    if (!wr.ok) return `[voice error: ${wr.status} — key may be expired]`;
-    const data = (await wr.json()) as { text?: string };
-    return data.text?.trim() || '[empty transcription]';
-  } catch (e) {
-    return `[voice failed: ${e instanceof Error ? e.message : String(e)}]`;
-  } finally {
-    try { unlinkSync(tmp); } catch { /* */ }
-  }
-}
+// ── Voice transcription — local adapter first (ADR-0010), OpenAI fallback ──
 
 // ── Telegram message splitting (4096 char limit) ───────────────────
 const TG_LIMIT = 4096;
@@ -739,14 +714,39 @@ bot.on('text', async (ctx) => {
 bot.on('voice', async (ctx) => {
   try {
     const link = await ctx.telegram.getFileLink(ctx.message.voice.file_id);
-    const text = await transcribe(link.href);
+    const { text, engine, local } = await transcribeVoiceUrl(link.href);
     if (text.startsWith('[')) { await ctx.reply(text); return; }
-    await ctx.reply(`[voice] ${text}`);
+    await ctx.reply(`[voice${local ? '' : ':cloud'}:${engine}] ${text}`);
     const reply = await ask(ctx.chat.id, text);
     await ctx.reply(reply);
   } catch (e) {
     console.error('[voice error]', e);
     await ctx.reply('Ошибка голосового сообщения. Попробуй текстом.');
+  }
+});
+
+bot.on('photo', async (ctx) => {
+  try {
+    const photos = ctx.message.photo;
+    const best = photos[photos.length - 1];
+    const link = await ctx.telegram.getFileLink(best.file_id);
+    const res = await fetch(link.href);
+    const buf = Buffer.from(await res.arrayBuffer());
+    const ocr = await ocrImageBytes(buf, 'photo.jpg');
+    if (!ocr) {
+      await ctx.reply('[ocr unavailable — start docs adapter on :8766]');
+      return;
+    }
+    const preview = ocr.text.length > 3500 ? `${ocr.text.slice(0, 3500)}…` : ocr.text;
+    await ctx.reply(`[ocr:${ocr.engine}]\n${preview}`);
+    const reply = await ask(
+      ctx.chat.id,
+      `CEO sent a document photo. OCR (${ocr.engine}):\n${ocr.text.slice(0, 4000)}`,
+    );
+    await ctx.reply(reply);
+  } catch (e) {
+    console.error('[photo ocr error]', e);
+    await ctx.reply('Ошибка распознавания фото. Попробуй текстом.');
   }
 });
 

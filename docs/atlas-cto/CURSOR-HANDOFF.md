@@ -54,7 +54,7 @@ $ POST /tts text=Доброе утро → 200 audio/wav (~91KB)
 
 ## 5. Next 3 steps
 
-1. Wire Telegram / morning-report + document ingest to call adapters (still no second brain)
+1. ~~Wire Telegram / morning-report + document ingest to call adapters~~ — **voice + photo OCR wired** (`telegram-capability.ts`); morning briefing still text-only
 2. Optional: CUDA torch + real VRAM evidence for V10/O08 on RTX 5060 8GB
 3. Deduplicate HF cache revisions if reclaiming disk toward ≤5GB without override
 

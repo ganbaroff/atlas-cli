@@ -23,7 +23,7 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
 APP_NAME = "atlas-voice-adapter"
-APP_VERSION = "0.1.1"
+APP_VERSION = "0.1.2"
 CACHE_DIR = Path(os.environ.get("ATLAS_VOICE_CACHE", Path(__file__).resolve().parent / ".cache"))
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 LOG = logging.getLogger("atlas.voice")
@@ -85,7 +85,8 @@ def _track_rss() -> None:
         _peak_rss_mb = cur
 
 
-def _read_wav_mono_16k(data: bytes) -> tuple[np.ndarray, int]:
+def _read_audio_mono_16k(data: bytes) -> tuple[np.ndarray, int]:
+    """Decode WAV/OGG/FLAC (libsndfile) and resample to mono 16 kHz."""
     audio, sr = sf.read(io.BytesIO(data), always_2d=False)
     if getattr(audio, "ndim", 1) > 1:
         audio = np.mean(audio, axis=1)
@@ -98,6 +99,16 @@ def _read_wav_mono_16k(data: bytes) -> tuple[np.ndarray, int]:
         audio = np.interp(x_new, x_old, audio).astype(np.float32)
         sr = 16000
     return audio, sr
+
+
+def _read_wav_mono_16k(data: bytes) -> tuple[np.ndarray, int]:
+    return _read_audio_mono_16k(data)
+
+
+def _write_wav_bytes(audio: np.ndarray, sr: int) -> bytes:
+    buf = io.BytesIO()
+    sf.write(buf, audio, sr, format="WAV")
+    return buf.getvalue()
 
 
 def load_gigaam():
@@ -275,8 +286,10 @@ async def stt(
 
 def _stt_gigaam(raw: bytes) -> str:
     model = load_gigaam()
+    audio, sr = _read_audio_mono_16k(raw)
+    wav_bytes = _write_wav_bytes(audio, sr)
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-        tmp.write(raw)
+        tmp.write(wav_bytes)
         path = tmp.name
     try:
         result = model.recognize(path)
@@ -292,7 +305,7 @@ def _stt_gigaam(raw: bytes) -> str:
 
 def _stt_whisper(raw: bytes) -> str:
     model = load_whisper()
-    audio, _sr = _read_wav_mono_16k(raw)
+    audio, _sr = _read_audio_mono_16k(raw)
     segments, _info = model.transcribe(audio, language="ru")
     parts = [seg.text for seg in segments]
     return " ".join(p.strip() for p in parts if p and p.strip())
@@ -301,7 +314,7 @@ def _stt_whisper(raw: bytes) -> str:
 @app.post("/vad", response_model=VadOut)
 async def vad(file: UploadFile = File(...)) -> VadOut:
     raw = await file.read()
-    audio, sr = _read_wav_mono_16k(raw)
+    audio, sr = _read_audio_mono_16k(raw)
     model = load_vad()
     import torch
     from silero_vad import get_speech_timestamps
