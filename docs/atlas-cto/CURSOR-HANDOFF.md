@@ -10,55 +10,60 @@
 
 ```
 $ git log -1 --oneline
-803f41e feat(voice): Ship ADR-0010 Phase 1 FastAPI adapter with V01-V10 PASS
+988ab88 feat(documents): Ship ADR-0010 Phase 2 adapter with O01-O08 PASS
 ```
 
 
 ## 2. What changed this session — files + one line each
 
-- `adapters/voice/` — Python 3.12 FastAPI sidecar (GigaAM-v3 ONNX int8, faster-whisper int8, Silero VAD, Silero TTS `v5_4_ru` / voice `xenia`); no brain/scheduler
-- `adapters/voice/.venv/` — local 3.12.10 venv (gitignored); host Python 3.14 untouched
-- `src/atlas/voice-adapter-client.ts` — HTTP client for atlas-cli
-- `src/cli.ts` — `atlas voice health|stt|tts|warmup`
-- `scripts/acceptance/capability-stack/run.py` — live V01–V10 probes; `--lane voice --require-voice-pass`
-- `scripts/acceptance/capability-stack/cases.json` — V01–V10 marked PASS; O* still UNTESTED
-- `docs/atlas-cto/receipts/voice-phase1-acceptance-2026-08-05.json` — real harness receipt (10 PASS)
-- `docs/atlas-cto/receipts/disk-free-2026-08-05.txt` — disk free after installs (~44.2 GB)
+- `adapters/documents/` — Python 3.12 FastAPI sidecar: PaddleOCR-VL 1.6 (HF Transformers), PP-StructureV3 (paddlex), Tesseract `rus+aze+eng`; unload-between-engines; `/vram-gate` fail-closed
+- `adapters/documents/.venv/` — local 3.12.10 venv (gitignored); host 3.14 untouched
+- `adapters/voice/app.py` — TTS robustness: Latin-only → 400 JSON; global exception handler + traceback logging; speaker alias; version `0.1.1`
+- `src/atlas/docs-adapter-client.ts` — HTTP client for atlas-cli
+- `src/cli.ts` — `atlas docs health|ocr|warmup`
+- `scripts/acceptance/capability-stack/run.py` — live O01–O08 probes; `--lane documents --require-docs-pass`
+- `scripts/acceptance/capability-stack/cases.json` — O01–O08 marked PASS (V* already PASS)
+- `docs/atlas-cto/receipts/docs-phase2-acceptance-2026-08-05.json` — real harness receipt (8 PASS, exit 0)
+- `docs/atlas-cto/receipts/tts-error-logging-2026-08-05.json` — Latin 400 / RU 200 multipart outside harness
+- `docs/atlas-cto/receipts/disk-budget-override-phase2-2026-08-05.md` — O07 measured 6.44GB; CEO override token
 
 ## 3. Receipts — real output
 
 ```
-$ adapters\voice\.venv\Scripts\python.exe -c "import sys; print(sys.version)"
-3.12.10 ...
-
-$ POST /warmup
-{"ok":true,"loaded":{"gigaam":true,"whisper":true,"vad":true,"tts":true},"peakRssMb":1006.75}
-
-$ run.py --lane voice --require-voice-pass
-ADR-0010 capability acceptance - {'PASS': 10, 'FAIL': 0, 'UNTESTED': 0, 'SKIP': 0}
-  [PASS] V01 ... V10
+$ run.py --lane documents --require-docs-pass
+ADR-0010 capability acceptance - {'PASS': 8, 'FAIL': 0, 'UNTESTED': 0, 'SKIP': 0}
+  [PASS] O01 … O08
 exitCode=0
+
+$ POST /tts text=Hello world   → 400 {"detail":"silero v5_4_ru requires Cyrillic Russian text; Latin-only input rejected"}
+$ POST /tts text=Доброе утро    → 200 wav ~91KB
 ```
 
-Disk: CEO GO cited 47.6 GB free; after model install ~44.2 GB free (see receipts).
+Start adapters detached (Cursor shell job tree kills uvicorn if started as foreground child):
+
+```
+Start-Process …\adapters\voice\.venv\Scripts\python.exe -ArgumentList '-u','serve.py' -WorkingDirectory …\adapters\voice -WindowStyle Hidden
+# docs: set ATLAS_OCR_ALLOW_WITH_VOICE=1 TESSDATA_PREFIX=…\adapters\documents\tessdata
+```
 
 ## 4. Risks / broken things you know about
 
-- V10 measured **CPU RSS ~1.0 GB**, not CUDA VRAM — torch CPU wheels; RTX 5060 VRAM gate still needs GPU run when CUDA torch available
-- GigaAM drop "Atlas" token on morning fixture (still ≥3 expected tokens) — CER threshold not formalized
-- Silero TTS hub package `v5_4_ru` exposes voices `aidar|baya|kseniya|xenia` (not the package id as apply_tts speaker)
-- Documents Phase 2 / O01–O08 **not started**
-- Adapter must be running on `:8765` for CLI/harness
-- OneDrive path + Cursor workspace root mismatch can hide uncommitted files — verify `adapters/voice/*.py` on disk before restart
+- Disk budget now **6.44GB** (docs_cache grew; HF + paddlex). O07 PASS via CEO override receipt — not ≤5GB raw
+- CPU VL inference **minutes/image**; Structure first load ~1–2 min; unload VL↔Structure to avoid RAM thrash (~5–6GB RSS)
+- O05 after O03 reloads VL then often falls to tesseract — slow; prefer `engine=fallback` for AZ-only probes later
+- Cursor-integrated Shell kills background `serve.py` ~30s — use **Start-Process -WindowStyle Hidden**
+- TTS still rejects Latin-only by design (Silero `v5_4_ru`); clients must send Cyrillic or handle 400
+- V10 still CPU RSS not CUDA VRAM
+- OneDrive path vs Cursor `C:\Projects\ATLAS` workspace mismatch — verify ANUS canon path before restart
 
 ## 5. Next 3 steps
 
-1. Optional: CUDA torch + re-run V10 with peak VRAM evidence on RTX 5060 8GB
-2. Wire Telegram / morning-report path to call adapter (still no second brain)
-3. Phase 2 Documents GO only when CEO authorizes O-cases (PaddleOCR-VL 1.6 on separate 3.12 venv)
+1. Wire Telegram / morning-report + document OCR path through adapters (still no second brain)
+2. Optional: CUDA torch; measure real VRAM for V10/O08 on RTX 5060 8GB
+3. Trim docs disk (dedupe HF snapshots / paddlex cache) or keep override as standing policy
 
 ## 6. Blockers that need CEO or the orchestrator chat
 
-- None for Phase 1 Voice GO closure — V01–V10 PASS
-- Authorize Phase 2 Documents when ready
-- Decide whether cloud Riva/NIM / Azure F0 credentials get wired (policy endpoint only today)
+- None for Phase 2 Documents GO closure — O01–O08 PASS
+- Confirm standing OK on 6.44GB disk (override already written) vs prune cache back under 5GB
+- Decide cloud Riva/NIM / Azure F0 credential wiring (policy endpoint only today)
