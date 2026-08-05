@@ -1507,6 +1507,75 @@ voiceCmd
     }
   });
 
+// --- Documents adapter client (ADR-0010 Phase 2) — HTTP only, no brain ---
+
+const docsCmd = program
+  .command('docs')
+  .description('Local documents FastAPI adapter client (OCR/tables); not a brain');
+
+docsCmd
+  .command('health')
+  .description('GET /health on documents adapter')
+  .option('--url <base>', 'Adapter base URL', process.env.ATLAS_DOCS_URL ?? 'http://127.0.0.1:8766')
+  .option('--json', 'JSON output')
+  .action(async (opts: { url: string; json?: boolean }) => {
+    const { docsHealth } = await import('./atlas/docs-adapter-client.js');
+    try {
+      const h = await docsHealth(opts.url);
+      if (opts.json) console.log(JSON.stringify(h, null, 2));
+      else {
+        console.log(
+          `docs adapter ok=${h.ok} role=${h.role} brain=${h.brain} scheduler=${h.scheduler} python=${h.python ?? '?'}`,
+        );
+      }
+      if (h.brain || h.scheduler || h.taskAuthority) process.exitCode = 1;
+    } catch (e: any) {
+      console.error(`ERROR: ${e.message ?? e}`);
+      process.exitCode = 1;
+    }
+  });
+
+docsCmd
+  .command('ocr')
+  .description('POST /ocr — OCR an image')
+  .requiredOption('--file <path>', 'Image path')
+  .option('--engine <name>', 'primary|fallback|auto', 'auto')
+  .option('--url <base>', 'Adapter base URL', process.env.ATLAS_DOCS_URL ?? 'http://127.0.0.1:8766')
+  .option('--json', 'JSON output')
+  .action(async (opts: { file: string; engine: string; url: string; json?: boolean }) => {
+    const { docsOcr } = await import('./atlas/docs-adapter-client.js');
+    try {
+      const r = await docsOcr({
+        filePath: opts.file,
+        engine: opts.engine as 'primary' | 'fallback' | 'auto',
+        baseUrl: opts.url,
+      });
+      if (opts.json) console.log(JSON.stringify(r, null, 2));
+      else console.log(`${r.engine}: ${r.text}`);
+    } catch (e: any) {
+      console.error(`ERROR: ${e.message ?? e}`);
+      process.exitCode = 1;
+    }
+  });
+
+docsCmd
+  .command('warmup')
+  .description('POST /warmup — load OCR models (may download)')
+  .option('--engines <list>', 'Comma list', 'vl,structure')
+  .option('--url <base>', 'Adapter base URL', process.env.ATLAS_DOCS_URL ?? 'http://127.0.0.1:8766')
+  .option('--json', 'JSON output')
+  .action(async (opts: { engines: string; url: string; json?: boolean }) => {
+    const { docsWarmup } = await import('./atlas/docs-adapter-client.js');
+    try {
+      const r = await docsWarmup(opts.engines, opts.url);
+      if (opts.json) console.log(JSON.stringify(r, null, 2));
+      else console.log(JSON.stringify(r));
+    } catch (e: any) {
+      console.error(`ERROR: ${e.message ?? e}`);
+      process.exitCode = 1;
+    }
+  });
+
 // --- Supervised Assist (M7) ---
 
 const assistCmd = program

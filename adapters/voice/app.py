@@ -6,29 +6,56 @@ No scheduler. No brain. No exec-graph writes. Called by atlas-cli over HTTP.
 from __future__ import annotations
 
 import io
+import logging
 import os
+import re
 import tempfile
 import time
+import traceback
 import wave
 from pathlib import Path
 from typing import Any, Literal
 
 import numpy as np
 import soundfile as sf
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import Response
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel, Field
 
 APP_NAME = "atlas-voice-adapter"
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.1.1"
 CACHE_DIR = Path(os.environ.get("ATLAS_VOICE_CACHE", Path(__file__).resolve().parent / ".cache"))
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
+LOG = logging.getLogger("atlas.voice")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+)
 
 app = FastAPI(
     title=APP_NAME,
     version=APP_VERSION,
     description="Local STT/VAD/TTS adapter for atlas-cli. Not a brain.",
 )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    """Never return bare Starlette 500 text — log traceback + JSON detail."""
+    if isinstance(exc, HTTPException):
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+    tb = traceback.format_exc()
+    LOG.error("unhandled %s %s\n%s", request.method, request.url.path, tb)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "ok": False,
+            "error": type(exc).__name__,
+            "detail": str(exc) or repr(exc),
+            "path": request.url.path,
+            "traceback": tb.splitlines()[-12:],
+        },
+    )
 
 _gigaam = None
 _whisper = None
@@ -300,22 +327,63 @@ async def tts(
 ) -> Response:
     if not text.strip():
         raise HTTPException(400, "empty text")
-    if speaker != SILERO_MODEL_SPEAKER:
-        raise HTTPException(400, f"only {SILERO_MODEL_SPEAKER} model package allowed in Phase 1")
-    model, sample_rate = load_tts()
+
+    # Accept common client mistake: speaker=<voice-id> instead of model package.
+    known_voices = {"aidar", "baya", "kseniya", "xenia"}
+    model_package = speaker
     voice_id = voice or SILERO_DEFAULT_VOICE
-    if _tts_voices and voice_id not in _tts_voices:
-        raise HTTPException(400, f"voice must be one of {_tts_voices}")
+    if speaker in known_voices:
+        voice_id = speaker
+        model_package = SILERO_MODEL_SPEAKER
+    if model_package != SILERO_MODEL_SPEAKER:
+        raise HTTPException(
+            400,
+            f"only {SILERO_MODEL_SPEAKER} model package allowed (or pass voice id as speaker)",
+        )
+
+    # Reject before model load — Silero v5_4_ru raises bare ValueError on Latin-only text,
+    # and cold load is expensive / crash-prone under dual-adapter torch pressure.
+    if not re.search(r"[А-Яа-яЁё]", text):
+        raise HTTPException(
+            400,
+            "silero v5_4_ru requires Cyrillic Russian text; Latin-only input rejected",
+        )
+
     try:
-        audio = model.apply_tts(text=text, speaker=voice_id, sample_rate=sample_rate)
-    except TypeError:
-        audio = model.apply_tts(text, speaker=voice_id, sample_rate=sample_rate)
+        model, sample_rate = load_tts()
+    except Exception as exc:
+        LOG.exception("tts model load failed")
+        raise HTTPException(503, f"tts load failed: {type(exc).__name__}: {exc}") from exc
+
+    voices = _tts_voices or list(known_voices)
+    if voice_id not in voices:
+        raise HTTPException(400, f"voice must be one of {voices}")
+
+    try:
+        try:
+            audio = model.apply_tts(text=text, speaker=voice_id, sample_rate=sample_rate)
+        except TypeError:
+            audio = model.apply_tts(text, speaker=voice_id, sample_rate=sample_rate)
+    except ValueError as exc:
+        LOG.exception("silero apply_tts ValueError text=%r", text[:120])
+        raise HTTPException(
+            400,
+            f"silero rejected text (unsupported symbols or empty after normalize): {exc or 'ValueError'}",
+        ) from exc
+    except Exception as exc:
+        LOG.exception("silero apply_tts failed text=%r", text[:120])
+        raise HTTPException(
+            500,
+            f"tts synthesize failed: {type(exc).__name__}: {exc or repr(exc)}",
+        ) from exc
 
     if hasattr(audio, "detach"):
         arr = audio.detach().cpu().numpy()
     else:
         arr = np.asarray(audio, dtype=np.float32)
     arr = np.asarray(arr, dtype=np.float32).reshape(-1)
+    if arr.size == 0:
+        raise HTTPException(500, "tts produced empty audio")
     pcm = np.clip(arr, -1.0, 1.0)
     pcm_i16 = (pcm * 32767.0).astype(np.int16)
     buf = io.BytesIO()

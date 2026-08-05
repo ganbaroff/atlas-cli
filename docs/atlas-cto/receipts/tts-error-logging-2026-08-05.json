@@ -1,0 +1,15 @@
+{
+  "ranAt": "2026-08-05T02:54:41.599645+00:00",
+  "fix": "global exception handler JSON+traceback; Latin-only precheck 400; Silero ValueError->400; speaker alias",
+  "rootCause": "Silero v5_4_ru ValueError on Latin-only; FastAPI bare 500 without traceback",
+  "latin": {
+    "status": 400,
+    "body": {
+      "detail": "silero v5_4_ru requires Cyrillic Russian text; Latin-only input rejected"
+    }
+  },
+  "ru": {
+    "status": 200,
+    "bytes": 91244
+  }
+}

@@ -1,0 +1,17 @@
+fastapi>=0.115
+uvicorn[standard]>=0.32
+python-multipart
+pillow
+numpy
+httpx
+psutil
+pytesseract
+transformers>=5.0.0
+accelerate
+sentencepiece
+protobuf
+torch
+torchvision
+paddlepaddle==3.2.1
+paddleocr[doc-parser]>=3.6.0
+paddlex[ocr]

@@ -1,0 +1,19 @@
+{
+  "latin": {
+    "status": 400,
+    "body": {
+      "detail": "silero v5_4_ru requires Cyrillic Russian text; Latin-only input rejected"
+    }
+  },
+  "ru": {
+    "status": 200,
+    "bytes": 91244
+  },
+  "version": "0.1.1",
+  "loaded": {
+    "gigaam": true,
+    "whisper": false,
+    "vad": true,
+    "tts": true
+  }
+}

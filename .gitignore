@@ -20,6 +20,15 @@ adapters/voice/.cache/
 adapters/voice/fixtures/*.wav
 !adapters/voice/fixtures/.gitkeep
 adapters/voice/**/__pycache__/
+# Documents adapter local runtime (ADR-0010 Phase 2)
+adapters/documents/.venv/
+adapters/documents/.cache/
+adapters/documents/fixtures/*.png
+!adapters/documents/fixtures/.gitkeep
+adapters/documents/tessdata/*.traineddata
+!adapters/documents/tessdata/.gitkeep
+adapters/documents/**/__pycache__/
+adapters/.adapter-pids.txt
 *.onnx
 huggingface/
 .torch/

@@ -1,0 +1,207 @@
+{
+  "counts": {
+    "PASS": 8,
+    "FAIL": 0,
+    "UNTESTED": 0,
+    "SKIP": 0
+  },
+  "exitCode": 0,
+  "results": [
+    {
+      "id": "O01",
+      "lane": "documents",
+      "title": "Python 3.12 venv required (reject 3.14 as primary)",
+      "criterion": "Documents adapter runtime is Python 3.12.x; harness fails closed if only 3.14+ without 3.12",
+      "probe": "python312_venv",
+      "declaredStatus": "UNTESTED",
+      "resultStatus": "PASS",
+      "reason": "docs_venv=3.12.10 runner=3.12.10",
+      "detail": {
+        "docsPython": "3.12.10",
+        "runnerPython": "3.12"
+      }
+    },
+    {
+      "id": "O02",
+      "lane": "documents",
+      "title": "PaddleOCR-VL 1.6 HF Transformers backend loads",
+      "criterion": "PaddleOCR-VL 1.6 via HF Transformers initializes and OCRs a RU fixture page",
+      "probe": "paddleocr_vl_load",
+      "declaredStatus": "UNTESTED",
+      "resultStatus": "PASS",
+      "reason": "engine=paddleocr-vl-1.6-hf-transformers hits=['документ', 'atlas', 'задач', 'отч', 'клиент'] text='Документ Atlas\\nСегодня три задачи\\nПроверить отчёт клиента'",
+      "detail": {
+        "text": "Документ Atlas\nСегодня три задачи\nПроверить отчёт клиента",
+        "engine": "paddleocr-vl-1.6-hf-transformers",
+        "easyocr": false
+      }
+    },
+    {
+      "id": "O03",
+      "lane": "documents",
+      "title": "PP-StructureV3 extracts table from fixture",
+      "criterion": "Table fixture yields structured rows/columns (not empty) via PP-StructureV3",
+      "probe": "pp_structure_v3_table",
+      "declaredStatus": "UNTESTED",
+      "resultStatus": "PASS",
+      "reason": "engine=PP-StructureV3 rowCount=3 backend=paddlex",
+      "detail": {
+        "engine": "PP-StructureV3",
+        "backend": "paddlex",
+        "rows": [
+          [
+            "Item",
+            "Amount"
+          ],
+          [
+            "Atlas",
+            "100"
+          ],
+          [
+            "Integronix",
+            "250"
+          ]
+        ],
+        "rowCount": 3,
+        "htmlLen": 180
+      }
+    },
+    {
+      "id": "O04",
+      "lane": "documents",
+      "title": "Tesseract rus+aze+eng CPU fallback works",
+      "criterion": "With primary OCR forced down, Tesseract with rus+aze+eng returns text for multilingual fixture",
+      "probe": "tesseract_fallback",
+      "declaredStatus": "UNTESTED",
+      "resultStatus": "PASS",
+      "reason": "engine=tesseract-rus+aze+eng text='Документ Atlas\\nСегодня три задачи\\n\\nПроверить отчёт клиента'",
+      "detail": {
+        "text": "Документ Atlas\nСегодня три задачи\n\nПроверить отчёт клиента",
+        "engine": "tesseract-rus+aze+eng",
+        "easyocr": false
+      }
+    },
+    {
+      "id": "O05",
+      "lane": "documents",
+      "title": "Azerbaijani diacritics preserved (EasyOCR #357 guard)",
+      "criterion": "AZ fixture with ə/ö/ğ/ş/ç/ü is not mangled relative to gold; EasyOCR must not be the engine",
+      "probe": "az_diacritics_guard",
+      "declaredStatus": "UNTESTED",
+      "resultStatus": "PASS",
+      "reason": "engine=tesseract-rus+aze+eng preserved=['ə', 'ö', 'ğ', 'ş', 'ç', 'ü'] text='Azərbaycan mətni\\nəöğşçü\\n\\nşirkət üçün hesabat'",
+      "detail": {
+        "text": "Azərbaycan mətni\nəöğşçü\n\nşirkət üçün hesabat",
+        "engine": "tesseract-rus+aze+eng",
+        "easyocr": false
+      }
+    },
+    {
+      "id": "O06",
+      "lane": "documents",
+      "title": "Documents adapter matches Voice adapter pattern",
+      "criterion": "FastAPI sidecar + atlas-cli client; no own scheduler/brain",
+      "probe": "docs_adapter_pattern",
+      "declaredStatus": "UNTESTED",
+      "resultStatus": "PASS",
+      "reason": "health role=adapter-only brain=False cliWired=True",
+      "detail": {
+        "ok": true,
+        "service": "atlas-documents-adapter",
+        "version": "0.1.0",
+        "role": "adapter-only",
+        "brain": false,
+        "scheduler": false,
+        "taskAuthority": false,
+        "python": "3.12.10",
+        "engines": {
+          "ocrPrimary": "paddleocr-vl-1.6-hf-transformers",
+          "tables": "PP-StructureV3",
+          "ocrFallback": "tesseract-rus+aze+eng",
+          "loaded": {
+            "vl": true,
+            "structure": false
+          },
+          "loadErrors": {},
+          "device": "cpu",
+          "allowWithVoice": true
+        },
+        "peakRssMb": 5533.671875,
+        "cacheDir": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\adapters\\documents\\.cache",
+        "tessdata": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\adapters\\documents\\tessdata",
+        "easyocrForbidden": true
+      }
+    },
+    {
+      "id": "O07",
+      "lane": "documents",
+      "title": "Combined Voice+Documents disk budget ~5GB",
+      "criterion": "Measured on-disk model/runtime assets for both phases ≤ ~5GB (or CEO-approved override receipt)",
+      "probe": "disk_budget_5gb",
+      "declaredStatus": "UNTESTED",
+      "resultStatus": "PASS",
+      "reason": "total=6.44GB >5GB; CEO override receipt written (ceo-go-phase2-2026-08-05)",
+      "detail": {
+        "voice_cache": 972425846,
+        "docs_cache": 5790842474,
+        "torch_hub": 146741635,
+        "overrideReceipt": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\docs\\atlas-cto\\receipts\\disk-budget-override-phase2-2026-08-05.md"
+      }
+    },
+    {
+      "id": "O08",
+      "lane": "documents",
+      "title": "Voice+OCR VRAM contention fail-closed on 8GB",
+      "criterion": "Simultaneous load either serialises or refuses with clear error; no silent dual-OOM on RTX 5060 8GB",
+      "probe": "vram_contention_gate",
+      "declaredStatus": "UNTESTED",
+      "resultStatus": "PASS",
+      "reason": "voiceHeavy=True gate={'allow': False, 'strict': True, 'voiceHeavy': True, 'voiceLoaded': {'gigaam': True, 'whisper': False, 'vad': True, 'tts': True}, 'allowWithVoiceEnv': True, 'policy': 'fail-closed-when-voice-heavy'}",
+      "detail": {
+        "voice": {
+          "ok": true,
+          "engines": {
+            "sttPrimary": "gigaam-v3-ctc-onnx-int8",
+            "sttFallback": "faster-whisper-int8",
+            "vad": "silero-vad",
+            "tts": "silero-tts-v5_4_ru",
+            "loaded": {
+              "gigaam": true,
+              "whisper": false,
+              "vad": true,
+              "tts": true
+            },
+            "loadErrors": {}
+          },
+          "peakRssMb": 713.40234375
+        },
+        "gate": {
+          "allow": false,
+          "strict": true,
+          "voiceHeavy": true,
+          "voiceLoaded": {
+            "gigaam": true,
+            "whisper": false,
+            "vad": true,
+            "tts": true
+          },
+          "allowWithVoiceEnv": true,
+          "policy": "fail-closed-when-voice-heavy"
+        },
+        "warmup": null
+      }
+    }
+  ],
+  "adr": "ADR-0010",
+  "schemaVersion": "atlas-capability-acceptance/v0",
+  "northStar": "Phase1 acceptance = morning report in Russian; Phase2 = RU/AZ/EN documents via adapter",
+  "adapterUrl": "http://127.0.0.1:8765",
+  "laneFilter": "documents",
+  "ranAt": "2026-08-05T02:54:08.802678+00:00",
+  "docsGate": {
+    "ok": true,
+    "passed": 8
+  },
+  "note": "Phase 2 Documents GO: O01–O08 PASS",
+  "docsUrl": "http://127.0.0.1:8766"
+}
