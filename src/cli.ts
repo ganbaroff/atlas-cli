@@ -1578,6 +1578,87 @@ docsCmd
 
 // --- Supervised Assist (M7) ---
 
+// --- Desktop Notepad vertical slice v0 (read-only proof) ---
+
+const desktopCmd = program
+  .command('desktop')
+  .description('Bounded Windows desktop control (Notepad v0 read-only proof)');
+
+desktopCmd
+  .command('notepad-proof')
+  .description('Run desktop Notepad vertical slice v0 (typed transcript by default)')
+  .option('--transcript <text>', 'Typed Russian command (skips microphone)')
+  .option('--audio <path>', 'WAV path for live voice STT (copied into quarantine)')
+  .option('--evidence-dir <path>', 'Quarantine evidence directory')
+  .option('--cross-check-ocr', 'Always cross-check UIA with OCR')
+  .option('--tamper-demo', 'After run, demonstrate sealed-receipt tamper REJECT')
+  .option('--json', 'JSON output')
+  .action(
+    async (opts: {
+      transcript?: string;
+      audio?: string;
+      evidenceDir?: string;
+      crossCheckOcr?: boolean;
+      tamperDemo?: boolean;
+      json?: boolean;
+    }) => {
+      const { runDesktopNotepadMission, demonstrateTamperReject, EXPECTED_PROOF_FIRST_LINE } =
+        await import('./atlas/desktop/mission.js');
+      const defaultTranscript =
+        opts.transcript ??
+        'Открой тестовый файл в Блокноте, прочитай первую строку и скажи её мне.';
+      try {
+        const result = await runDesktopNotepadMission({
+          transcript: opts.audio
+            ? undefined
+            : {
+                text: defaultTranscript,
+                confidence: 0.99,
+                audioHash: null,
+                source: 'typed',
+              },
+          audioPath: opts.audio,
+          evidenceDir: opts.evidenceDir,
+          crossCheckOcr: Boolean(opts.crossCheckOcr),
+          expectedFirstLine: EXPECTED_PROOF_FIRST_LINE,
+        });
+        let tamper: unknown = null;
+        if (opts.tamperDemo) {
+          const { join } = await import('node:path');
+          tamper = demonstrateTamperReject(join(result.evidenceDir, 'DESKTOP-RECEIPT.sealed.json'));
+        }
+        const out = {
+          status: result.status,
+          spokenText: result.spokenText,
+          evidencePath: result.evidencePath,
+          evidenceDir: result.evidenceDir,
+          verdict: result.evidence.verdict,
+          lineRead: result.evidence.lineRead,
+          ownership: result.evidence.ownership
+            ? {
+                pid: result.evidence.ownership.pid,
+                windowTitle: result.evidence.ownership.windowTitle,
+                windowHandle: result.evidence.ownership.windowHandle,
+              }
+            : null,
+          cleanup: result.evidence.cleanup,
+          tamper,
+        };
+        if (opts.json) console.log(JSON.stringify(out, null, 2));
+        else {
+          console.log(`desktop-notepad status=${result.status} reason=${result.evidence.verdict.reason}`);
+          console.log(`spoken=${result.spokenText ?? ''}`);
+          console.log(`evidence=${result.evidencePath}`);
+          if (tamper) console.log(`tamper=${JSON.stringify(tamper)}`);
+        }
+        if (result.status !== 'VERIFIED') process.exitCode = 2;
+      } catch (e: any) {
+        console.error(`ERROR: ${e.message ?? e}`);
+        process.exitCode = 1;
+      }
+    },
+  );
+
 const assistCmd = program
   .command('assist')
   .description('Supervised browser assist — CEO-approved answer pack fill');

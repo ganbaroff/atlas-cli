@@ -115,6 +115,19 @@ export const STATE_WRITER_INVENTORY: Readonly<
   'src/atlas/screen-capture.ts': [
     surface('ephemeral', 'temporary', 'screen images and throttle state are disposable captures'),
   ],
+  'src/atlas/desktop/mission.ts': [
+    surface(
+      'operational',
+      'explicit-proof-path',
+      'Notepad v0 evidence/fixture/TTS writes only under caller quarantine evidenceDir',
+    ),
+  ],
+  'src/atlas/telegram-capability.ts': [
+    surface('ephemeral', 'temporary', 'voice note download buffer deleted after local STT'),
+  ],
+  'src/atlas/voice-adapter-client.ts': [
+    surface('ephemeral', 'caller-target', 'TTS wav written to caller-selected outPath only'),
+  ],
   'src/atlas/shadow-rehearsal.ts': [
     surface('operational', 'explicit-proof-path', 'synthetic proof directory is caller-isolated'),
   ],
