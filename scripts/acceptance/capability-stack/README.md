@@ -14,7 +14,13 @@ O01–O08 **PASS** against live documents adapter (`:8766`). Receipt:
 
 TTS robustness (Latin → 400 JSON, not bare 500):
 
-`docs/atlas-cto/receipts/tts-error-logging-2026-08-05.json`
+`docs/atlas-cto/receipts/tts-robustness-2026-08-05.json`
+
+Disk override (measured ~6.44GB >5GB target):
+
+`docs/atlas-cto/receipts/disk-budget-override-phase2-2026-08-05.md`
+
+Notes: O05 probes **tesseract** `rus+aze+eng` (EasyOCR forbidden). Pre-warm VL before O02. Detach adapters from Cursor shells.
 
 ## Run
 

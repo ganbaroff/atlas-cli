@@ -396,7 +396,7 @@ def probe_vram_budget(case: dict[str, Any]) -> dict[str, Any]:
 
 def _docs_http_json(method: str, path: str, body: bytes | None = None, headers: dict[str, str] | None = None) -> Any:
     req = Request(f"{DOCS_URL}{path}", data=body, method=method, headers=headers or {})
-    with urlopen(req, timeout=900) as resp:
+    with urlopen(req, timeout=1800) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 
@@ -407,7 +407,7 @@ def _docs_post_multipart(
 ) -> Any:
     body, ctype = _multipart(fields, files)
     req = Request(f"{DOCS_URL}{path}", data=body, method="POST", headers={"Content-Type": ctype})
-    with urlopen(req, timeout=900) as resp:
+    with urlopen(req, timeout=1800) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 

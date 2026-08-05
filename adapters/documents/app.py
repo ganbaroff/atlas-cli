@@ -6,11 +6,13 @@ No scheduler. No brain. Called by atlas-cli over HTTP.
 
 from __future__ import annotations
 
+import asyncio
 import io
 import json
 import logging
 import os
 import traceback
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Literal
 from urllib.error import URLError
@@ -22,7 +24,7 @@ from pydantic import BaseModel, Field
 from PIL import Image, ImageDraw, ImageFont
 
 APP_NAME = "atlas-documents-adapter"
-APP_VERSION = "0.1.0"
+APP_VERSION = "0.1.1"
 ROOT = Path(__file__).resolve().parent
 CACHE_DIR = Path(os.environ.get("ATLAS_DOCS_CACHE", ROOT / ".cache"))
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -47,6 +49,21 @@ _structure_pipeline = None
 _peak_rss_mb = 0.0
 _load_errors: dict[str, str] = {}
 _device = "cpu"
+_HEAVY = ThreadPoolExecutor(max_workers=1, thread_name_prefix="docs-heavy")
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    tb = traceback.format_exc()
+    LOG.error("unhandled %s %s: %s\n%s", request.method, request.url.path, exc, tb)
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": type(exc).__name__,
+            "detail": str(exc) or repr(exc),
+            "traceback": tb.splitlines()[-12:],
+        },
+    )
 
 
 def _rss_mb() -> float:
@@ -260,7 +277,7 @@ def _vl_infer(image: Image.Image, task: str = "ocr") -> str:
     else:
         inputs = {k: (v.to(_device) if hasattr(v, "to") else v) for k, v in inputs.items()}
     with torch.inference_mode():
-        outputs = model.generate(**inputs, max_new_tokens=256)
+        outputs = model.generate(**inputs, max_new_tokens=128)
     in_len = inputs["input_ids"].shape[-1]
     text = processor.decode(outputs[0][in_len:], skip_special_tokens=True)
     return (text or "").strip()
@@ -369,36 +386,41 @@ async def ocr(
     raw = await file.read()
     if not raw:
         raise HTTPException(400, "empty image")
-    image = _read_image(raw)
-    used = "primary"
-    text = ""
-    if engine == "fallback" or (engine == "auto" and force_primary_fail):
-        used = "fallback"
-        text = _tesseract_ocr(image)
-    else:
-        try:
-            if force_primary_fail:
-                raise RuntimeError("forced primary failure")
-            text = _vl_infer(image, task=task)
-            used = "primary"
-        except HTTPException:
-            raise
-        except Exception as exc:
-            _load_errors["vl_last"] = f"{type(exc).__name__}: {exc}"
-            LOG.exception("primary OCR failed")
-            if engine == "primary":
-                raise HTTPException(503, f"primary OCR failed: {exc}") from exc
+    loop = asyncio.get_running_loop()
+
+    def _run() -> dict[str, Any]:
+        image = _read_image(raw)
+        used = "primary"
+        text = ""
+        if engine == "fallback" or (engine == "auto" and force_primary_fail):
             used = "fallback"
             text = _tesseract_ocr(image)
-    return {
-        "text": text,
-        "engine": (
-            "paddleocr-vl-1.6-hf-transformers"
-            if used == "primary"
-            else "tesseract-rus+aze+eng"
-        ),
-        "easyocr": False,
-    }
+        else:
+            try:
+                if force_primary_fail:
+                    raise RuntimeError("forced primary failure")
+                text = _vl_infer(image, task=task)
+                used = "primary"
+            except HTTPException:
+                raise
+            except Exception as exc:
+                _load_errors["vl_last"] = f"{type(exc).__name__}: {exc}"
+                LOG.exception("primary OCR failed")
+                if engine == "primary":
+                    raise HTTPException(503, f"primary OCR failed: {exc}") from exc
+                used = "fallback"
+                text = _tesseract_ocr(image)
+        return {
+            "text": text,
+            "engine": (
+                "paddleocr-vl-1.6-hf-transformers"
+                if used == "primary"
+                else "tesseract-rus+aze+eng"
+            ),
+            "easyocr": False,
+        }
+
+    return await loop.run_in_executor(_HEAVY, _run)
 
 
 @app.post("/table")
@@ -406,16 +428,21 @@ async def table(file: UploadFile = File(...)) -> dict[str, Any]:
     raw = await file.read()
     if not raw:
         raise HTTPException(400, "empty image")
-    try:
-        out = _structure_table(raw)
-    except HTTPException:
-        raise
-    except Exception as exc:
-        LOG.exception("PP-StructureV3 failed")
-        raise HTTPException(503, f"PP-StructureV3 failed: {exc}") from exc
-    if out.get("rowCount", 0) < 1:
-        raise HTTPException(500, "PP-StructureV3 returned empty table")
-    return out
+    loop = asyncio.get_running_loop()
+
+    def _run() -> dict[str, Any]:
+        try:
+            out = _structure_table(raw)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            LOG.exception("PP-StructureV3 failed")
+            raise HTTPException(503, f"PP-StructureV3 failed: {exc}") from exc
+        if out.get("rowCount", 0) < 1:
+            raise HTTPException(500, "PP-StructureV3 returned empty table")
+        return out
+
+    return await loop.run_in_executor(_HEAVY, _run)
 
 
 @app.post("/vram-gate")

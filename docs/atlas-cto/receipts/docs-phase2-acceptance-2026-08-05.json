@@ -13,7 +13,7 @@
       "title": "Python 3.12 venv required (reject 3.14 as primary)",
       "criterion": "Documents adapter runtime is Python 3.12.x; harness fails closed if only 3.14+ without 3.12",
       "probe": "python312_venv",
-      "declaredStatus": "UNTESTED",
+      "declaredStatus": "PASS",
       "resultStatus": "PASS",
       "reason": "docs_venv=3.12.10 runner=3.12.10",
       "detail": {
@@ -27,7 +27,7 @@
       "title": "PaddleOCR-VL 1.6 HF Transformers backend loads",
       "criterion": "PaddleOCR-VL 1.6 via HF Transformers initializes and OCRs a RU fixture page",
       "probe": "paddleocr_vl_load",
-      "declaredStatus": "UNTESTED",
+      "declaredStatus": "PASS",
       "resultStatus": "PASS",
       "reason": "engine=paddleocr-vl-1.6-hf-transformers hits=['документ', 'atlas', 'задач', 'отч', 'клиент'] text='Документ Atlas\\nСегодня три задачи\\nПроверить отчёт клиента'",
       "detail": {
@@ -42,7 +42,7 @@
       "title": "PP-StructureV3 extracts table from fixture",
       "criterion": "Table fixture yields structured rows/columns (not empty) via PP-StructureV3",
       "probe": "pp_structure_v3_table",
-      "declaredStatus": "UNTESTED",
+      "declaredStatus": "PASS",
       "resultStatus": "PASS",
       "reason": "engine=PP-StructureV3 rowCount=3 backend=paddlex",
       "detail": {
@@ -72,7 +72,7 @@
       "title": "Tesseract rus+aze+eng CPU fallback works",
       "criterion": "With primary OCR forced down, Tesseract with rus+aze+eng returns text for multilingual fixture",
       "probe": "tesseract_fallback",
-      "declaredStatus": "UNTESTED",
+      "declaredStatus": "PASS",
       "resultStatus": "PASS",
       "reason": "engine=tesseract-rus+aze+eng text='Документ Atlas\\nСегодня три задачи\\n\\nПроверить отчёт клиента'",
       "detail": {
@@ -87,9 +87,9 @@
       "title": "Azerbaijani diacritics preserved (EasyOCR #357 guard)",
       "criterion": "AZ fixture with ə/ö/ğ/ş/ç/ü is not mangled relative to gold; EasyOCR must not be the engine",
       "probe": "az_diacritics_guard",
-      "declaredStatus": "UNTESTED",
+      "declaredStatus": "PASS",
       "resultStatus": "PASS",
-      "reason": "engine=tesseract-rus+aze+eng preserved=['ə', 'ö', 'ğ', 'ş', 'ç', 'ü'] text='Azərbaycan mətni\\nəöğşçü\\n\\nşirkət üçün hesabat'",
+      "reason": "engine=tesseract-rus+aze+eng preserved=['ə', 'ö', 'ğ', 'ş', 'ç', 'ü']/['ə', 'ö', 'ğ', 'ş', 'ç', 'ü'] text='Azərbaycan mətni\\nəöğşçü\\n\\nşirkət üçün hesabat'",
       "detail": {
         "text": "Azərbaycan mətni\nəöğşçü\n\nşirkət üçün hesabat",
         "engine": "tesseract-rus+aze+eng",
@@ -102,13 +102,13 @@
       "title": "Documents adapter matches Voice adapter pattern",
       "criterion": "FastAPI sidecar + atlas-cli client; no own scheduler/brain",
       "probe": "docs_adapter_pattern",
-      "declaredStatus": "UNTESTED",
+      "declaredStatus": "PASS",
       "resultStatus": "PASS",
       "reason": "health role=adapter-only brain=False cliWired=True",
       "detail": {
         "ok": true,
         "service": "atlas-documents-adapter",
-        "version": "0.1.0",
+        "version": "0.1.1",
         "role": "adapter-only",
         "brain": false,
         "scheduler": false,
@@ -119,14 +119,14 @@
           "tables": "PP-StructureV3",
           "ocrFallback": "tesseract-rus+aze+eng",
           "loaded": {
-            "vl": true,
-            "structure": false
+            "vl": false,
+            "structure": true
           },
           "loadErrors": {},
           "device": "cpu",
           "allowWithVoice": true
         },
-        "peakRssMb": 5533.671875,
+        "peakRssMb": 5541.625,
         "cacheDir": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\adapters\\documents\\.cache",
         "tessdata": "C:\\Users\\user\\OneDrive\\Documents\\GitHub\\ANUS\\adapters\\documents\\tessdata",
         "easyocrForbidden": true
@@ -138,7 +138,7 @@
       "title": "Combined Voice+Documents disk budget ~5GB",
       "criterion": "Measured on-disk model/runtime assets for both phases ≤ ~5GB (or CEO-approved override receipt)",
       "probe": "disk_budget_5gb",
-      "declaredStatus": "UNTESTED",
+      "declaredStatus": "PASS",
       "resultStatus": "PASS",
       "reason": "total=6.44GB >5GB; CEO override receipt written (ceo-go-phase2-2026-08-05)",
       "detail": {
@@ -154,7 +154,7 @@
       "title": "Voice+OCR VRAM contention fail-closed on 8GB",
       "criterion": "Simultaneous load either serialises or refuses with clear error; no silent dual-OOM on RTX 5060 8GB",
       "probe": "vram_contention_gate",
-      "declaredStatus": "UNTESTED",
+      "declaredStatus": "PASS",
       "resultStatus": "PASS",
       "reason": "voiceHeavy=True gate={'allow': False, 'strict': True, 'voiceHeavy': True, 'voiceLoaded': {'gigaam': True, 'whisper': False, 'vad': True, 'tts': True}, 'allowWithVoiceEnv': True, 'policy': 'fail-closed-when-voice-heavy'}",
       "detail": {
@@ -197,7 +197,7 @@
   "northStar": "Phase1 acceptance = morning report in Russian; Phase2 = RU/AZ/EN documents via adapter",
   "adapterUrl": "http://127.0.0.1:8765",
   "laneFilter": "documents",
-  "ranAt": "2026-08-05T02:54:08.802678+00:00",
+  "ranAt": "2026-08-05T03:31:06.265307+00:00",
   "docsGate": {
     "ok": true,
     "passed": 8

@@ -28,6 +28,9 @@ adapters/documents/fixtures/*.png
 adapters/documents/tessdata/*.traineddata
 !adapters/documents/tessdata/.gitkeep
 adapters/documents/**/__pycache__/
+adapters/documents/serve*.log
+adapters/voice/serve*.log
+adapters/.adapter-pids.txt
 adapters/.adapter-pids.txt
 *.onnx
 huggingface/
