@@ -10,9 +10,10 @@
 
 ```
 $ git log -1 --oneline
-# (feat docs + TTS commit just below this handoff)
+dcaf9a6 fix(documents): Keep health live during OCR and refresh Phase 2 receipt
 ```
 
+Prior feat: `988ab88 feat(documents): Ship ADR-0010 Phase 2 adapter with O01-O08 PASS`
 
 ## 2. What changed this session — files + one line each
 
