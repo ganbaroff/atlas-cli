@@ -49,6 +49,10 @@ P0's blocking scope to the non-key items: the $980 Azure ownership question
 | DEBT-6 | Delete dead OpenManus path in `src/operator/action-lane.ts` (OpenManus rejected per `docs/REPO-ASSET-AUDIT.md`, not on disk) | ATLAS | OPEN |
 | DEBT-7 | Push `C:\Projects\_backup\volaura-mirror-2026-06-28.git` branches to origin, then reclaim 5.7GB (100 of 115 branches exist nowhere else — never delete first) | CEO/ATLAS | OPEN |
 | DEBT-8 | Fresh console check of Google billing `014883-4DBCC6-5D40F9` (data from 2026-06-10) | CEO-only | OPEN — **blocks P0** |
+| P1-DEBT-01 | Lease-to-mutation binding: `RepoWriterLease` acquisition and the executor mutation gate were two separate calls with no re-check in between | ATLAS | CLOSED — `codex/p1b-spend-cap` commit `671a6cb` (`runExecutorGateMutation()` in `executor-gate.ts`, re-validates lease+expiry+owner+repo-path fresh from disk immediately adjacent to the mutation callback) |
+| P1-DEBT-02 | Provider bypasses found during P1-B wave 1 spend-ledger work — direct paid provider calls that do not go through the spend gate: `src/atlas/telegram-capability.ts:89` (direct paid OpenAI Whisper fetch, ungated), `src/tools/surf.ts:227`, `src/atlas/emotion.ts:243`, `src/goal-runner/red-line.ts:292` | ATLAS | OPEN — out of allowed scope this wave |
+| P1-DEBT-03 | Spend module (`atlas/spend/*`) not yet wired into the real call path (`model-router.ts` / `mastra-agent.ts`) — cap/override enforcement exists but nothing calls it yet | ATLAS | OPEN |
+| P1-DEBT-04 | No automatic TTL detection of stale `RESERVED` spend records — a reservation whose provider call never resolves (crash, hang) stays counted against the cap until an operator manually calls `markPendingReconciliation`/`commit`/`release` | ATLAS | OPEN |
 
 ---
 

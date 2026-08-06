@@ -6,57 +6,76 @@
 
 - Date: 2026-08-06
 - Repo: `C:/Users/user/OneDrive/Documents/GitHub/ANUS`
-- Worktree: `.worktrees/p1a-work-orders`
-- Branch: `codex/p1a-work-orders`
+- Worktree: `.worktrees/p1b-spend-cap`
+- Branch: `codex/p1b-spend-cap`
 - HEAD after the wave-2 code commit:
 
 ```
 $ git log -1 --oneline
-ad5153f feat(work-order): RepoWriterLease + executor gate for P1-A wave 2
+671a6cb feat(spend): bounded CEO override, tamper rejection, lease-to-mutation binding (P1-DEBT-01)
 ```
 
-Started from wave-1 HEAD `45b303e` (signed work-order envelope + durable
-replay, 18/18 tests, orchestrator-verified). Not pushed. All work happened
-in this isolated worktree; no changes on any other branch or checkout.
+Started from wave-1 HEAD `a059a45` (restart-durable atomic spend ledger,
+21/21 tests, orchestrator-verified). Not pushed. All work happened in this
+isolated worktree; no changes on any other branch or checkout.
 
 ## 2. Files changed — one line each
 
-- `src/atlas/work-order/repo-writer-lock.ts` (NEW) — `RepoWriterLease`: per-repository single-writer mutual exclusion, reusing `instance-lease.ts`'s atomic-lock-file mechanism and the `instance-lease` state-root store (no new store); stale-lease takeover is never silent — `recoverStaleRepoWriterLease()` is a separate call that requires a non-empty reason and re-verifies expiry from disk; includes the pure `canonicalizeRepoPath()` (case/slash/trailing-separator/realpath-native normalization) with its own tests
-- `src/atlas/work-order/executor-gate.ts` (NEW) — `runExecutorGate()`: the single pre-mutation gate; proves signature, independent issuer/executor identity, replay, real git HEAD + real canonical repo path (never a caller claim), a held `RepoWriterLease`, path/action/command scope, and attempt/wall-clock budget, in that order (replay claimed last, deliberately, so an unrelated failure never burns the one-shot nonce); every REJECT is written as a deterministic evidence claim via the existing M8 ledger (`evidence/ledger.ts`), binding the exact work-order hash
-- `src/atlas/work-order/validate.ts` (MODIFIED) — carry-over fix: split the old nonce-consuming-on-every-call `validateWorkOrder()` into pure/repeatable `checkWorkOrderScope()` and one-shot `claimWorkOrder()`; `validateWorkOrder()` kept as a thin composition of the two for single-call callers
-- `src/atlas/work-order/index.ts` (MODIFIED) — exports the new split validate functions and every `repo-writer-lock.ts` / `executor-gate.ts` public symbol
-- `src/atlas/state-writer-inventory.ts` (MODIFIED) — registered `src/atlas/work-order/repo-writer-lock.ts` as `authoritative` against the `instance-lease` store (the only new fs-mutating production file this wave; `executor-gate.ts` does not import `node:fs` at all — it delegates every write to `repo-writer-lock.ts` and `evidence/ledger.ts`, both already registered)
-- `src/__tests__/work-order-envelope.test.ts` (MODIFIED) — re-pointed all 18 wave-1 tests from `validateWorkOrder()` to a local `validateAndClaim()` helper composing `checkWorkOrderScope()` + `claimWorkOrder()`; every original assertion is byte-identical, none weakened
-- `src/__tests__/work-order-gate.test.ts` (NEW) — 22 tests: `canonicalizeRepoPath` pure-function cases (5), `RepoWriterLease` behavior (7: second-writer refusal, cross-spelling one lock, release recorded, non-owner release refused, crashed-pid-not-silent, explicit stale recovery, pid+bootToken binding/heartbeat), `runExecutorGate` cases (9: valid mutation, out-of-scope-before-write, forbidden command class, lease-not-held, real-HEAD mismatch, issuer/executor substitution resistance, hash-bound receipt, tampered-receipt detection, no-signing-material-leak), and the Step-4 live bounded proof (1)
-- `docs/atlas-cto/CURSOR-HANDOFF.md` (this file, replaced)
+- `src/atlas/work-order/executor-gate.ts` (MODIFIED) — P1-DEBT-01 close: added `runExecutorGateMutation()`, a second gate taking the caller's `mutate()` callback directly; it re-validates lease ownership (workOrderId, missionId, executor identity, repo canonical path) **and** `leaseExpiresAt` (a check the original `runExecutorGate()` never had) freshly from disk via `getRepoWriterLeaseInfo()` as the last statement before invoking `mutate()`, so no caller-controlled code can run in the gap; also checks the caller-supplied `authorizedWorkOrderHash` against a fresh `hashPayload(signed)` to bind the mutation call to the exact envelope an earlier `runExecutorGate()` authorized. Added two new `ExecutorGateFailureReason` values: `lease_lost_before_mutation`, `work_order_hash_mismatch`. No `leaseHeld`-style boolean parameter exists anywhere — confirmed absent, not merely undocumented.
+- `src/atlas/spend/override.ts` (NEW) — bounded CEO spend-cap override: `CeoOverride`/`SignedCeoOverride` types, `signCeoOverride()`/`checkCeoOverrideSignature()` reusing `work-order/sign.ts`'s HMAC signer/verifier (no second signing key — same `ATLAS_WORK_ORDER_SIGNING_KEY`), and `resolveEffectiveDailyCapMinor()` which returns the unmodified base cap unless handed a validly-signed, unexpired, in-scope (mission/provider/work-order) override, in which case it adds *exactly* that override's declared amount. Pure module — no `node:fs`, no env reads, no reset/bypass/debug path of any kind (asserted by a source-scan test).
+- `src/atlas/spend/index.ts` (MODIFIED) — re-exports `override.ts`'s public surface (types + `signCeoOverride`/`checkCeoOverrideSignature`/`resolveEffectiveDailyCapMinor`/constants/errors).
+- `src/__tests__/spend-override-and-proof.test.ts` (NEW) — 23 tests: 2 source-scan tests proving override.ts has no bypass/debug/reset/env escape hatch; test 15 (5 cases) executor cannot reset its own spend; test 16 (3 cases) unsigned override rejected; test 17 (2 cases) expired override rejected; test 18 (4 cases) bounded override scope enforcement (mission/provider/amount); test 19 (1 case) receipt binds requestId+workOrderId+state hash; test 20 (1 case) tampered receipt deterministic REJECT; test 23 (4 cases) P1-DEBT-01 lease loss/replacement/expiry before mutation, plus the happy path; and the Task-4 live bounded proof (1 case, see §3).
+- `docs/atlas-cto/MISSION-BOARD.md` (MODIFIED) — added standing-debt rows P1-DEBT-01 (CLOSED, this commit) through P1-DEBT-04 (all OPEN, per the mission's exact wording and call sites).
+- `docs/atlas-cto/CURSOR-HANDOFF.md` (this file, replaced).
+
+Not touched, deliberately: `src/atlas/work-order/repo-writer-lock.ts`, `src/atlas/work-order/index.ts`, `src/atlas/work-order/types.ts`, `src/atlas/state-writer-inventory.ts` (override.ts imports no `node:fs`, so the structural writer-inventory sweep does not flag it — verified by `state-writer-inventory.test.ts` passing unchanged in the regression run below).
 
 ## 3. Receipts — exact commands, output, exit codes
 
 Focused, run TWICE:
 ```
-$ node node_modules/vitest/vitest.mjs run src/__tests__/work-order-envelope.test.ts src/__tests__/work-order-gate.test.ts
-Run 1: Test Files  2 passed (2) | Tests  40 passed (40) | exit 0
-Run 2: Test Files  2 passed (2) | Tests  40 passed (40) | exit 0
+$ node node_modules/vitest/vitest.mjs run src/__tests__/spend-durable.test.ts src/__tests__/spend-override-and-proof.test.ts
+Run 1: Test Files  2 passed (2) | Tests  44 passed (44) | exit 0
+Run 2: Test Files  2 passed (2) | Tests  44 passed (44) | exit 0
 ```
 Both runs printed the live-proof evidence pack path, e.g.:
-`[p1a-live-proof] evidence pack preserved at: C:\Users\user\.atlas\quarantine\evidence\p1a-live-2026-08-06T10-15-03-271Z-fac8b38c`
-(a fresh, differently-timestamped pack each run — both preserved on disk.)
+- Run 1: `C:\Users\user\.atlas\quarantine\evidence\p1b-live-2026-08-06T11-36-07-195Z-66c4391b`
+- Run 2: `C:\Users\user\.atlas\quarantine\evidence\p1b-live-2026-08-06T11-36-39-223Z-3088c6c1`
+
+(a fresh, differently-timestamped pack each run — both preserved on disk, both
+verified to contain all 11 expected claim kinds: `initial-state-hash`,
+`reservation-and-commit`, `restart-boundary`, `cap-decision`,
+`rejected-request`, `replay-evidence`, `tamper-evidence`,
+`final-ledger-total`, `work-order-gate-reject` (automatic, from the
+mutation-gate reject), `lease-to-mutation-binding`, `cleanup-result`.)
 
 Regression, run ONCE:
 ```
-$ node node_modules/vitest/vitest.mjs run src/__tests__/goal-intake.test.ts src/__tests__/project-resolution.test.ts src/__tests__/context-assembly.test.ts src/__tests__/state-writer-inventory.test.ts src/__tests__/courier-evidence-integrity.test.ts src/__tests__/courier-loop-negatives.test.ts
-Test Files  6 passed (6) | Tests  78 passed (78) | exit 0
+$ node node_modules/vitest/vitest.mjs run src/__tests__/work-order-envelope.test.ts src/__tests__/work-order-gate.test.ts src/__tests__/state-writer-inventory.test.ts src/__tests__/cost-router-classify.test.ts src/__tests__/cost-router-clearance.test.ts src/__tests__/cost-router-error-policy.test.ts src/__tests__/cost-router-m2d-integration.test.ts src/__tests__/cost-router-seam-boundary.test.ts src/__tests__/cost-router-state.test.ts src/__tests__/m6-spend-receipt.test.ts src/__tests__/model-router.test.ts src/__tests__/spend-policy.test.ts src/__tests__/spend-rehydrate.test.ts src/__tests__/spend-tracker.test.ts
+Test Files  14 passed (14) | Tests  175 passed (175) | exit 0
 ```
-`state-writer-inventory.test.ts` passing confirms the structural sweep accepts `repo-writer-lock.ts`'s registration and does NOT flag `executor-gate.ts` (it has no `node:fs` mutating call).
+`work-order-gate.test.ts` passing unchanged confirms `runExecutorGate()`
+itself was NOT modified — only a new sibling function was added.
+`state-writer-inventory.test.ts` passing confirms `override.ts` correctly
+needs no writer-inventory registration (it has no `node:fs` import at all).
 
 Full suite, run ONCE:
 ```
 $ node node_modules/vitest/vitest.mjs run
-Test Files  2 failed | 153 passed (155)
-     Tests  3 failed | 1529 passed | 12 skipped (1544)
+Test Files  2 failed | 155 passed (157)
+     Tests  3 failed | 1573 passed | 12 skipped (1588)
 exit 1
 ```
-Baseline after wave 1 was `1507 passed / 3 failed / 12 skipped / exit 1`. Delta: **+22 passed** (exactly the new `work-order-gate.test.ts` count), **0 new failures**, **skipped unchanged at 12**. The 3 failures are the SAME pre-existing ones as baseline — all `npx tsup` not found on this host's PATH inside vitest's child-process context (`src/__tests__/m10-install-lifecycle.test.ts` × 3: install/upgrade/rollback); `integration/e2e-binary.test.ts` fails its own `beforeAll` tsup build for the same reason and its 10 tests report skipped (included in the unchanged 12), not failed. Never called green while exit was 1 — reporting exit 1 here honestly, with the diff against baseline shown above as the acceptance evidence.
+Baseline at `a059a45` was `3 failed | 1550 passed | 12 skipped (1565)`, exit
+1. Delta: **+23 passed** (exactly the new `spend-override-and-proof.test.ts`
+count), **0 new failures**, **skipped unchanged at 12**. The 3 failures are
+the SAME pre-existing ones as baseline — `npx tsup` not found on this host's
+PATH inside vitest's child-process context (`m10-install-lifecycle.test.ts`
+× 3: install/upgrade/rollback); `integration/e2e-binary.test.ts` fails its
+own `beforeAll` tsup build for the same reason (its tests are inside the
+unchanged 12 skipped, not failed). Never called green while exit was 1 —
+reporting exit 1 here honestly, diff against baseline is the acceptance
+evidence.
 
 Typecheck:
 ```
@@ -66,23 +85,91 @@ src/__tests__/runner-health-no-claim.test.ts(396,77): error TS2352 ...
 src/courier/courier-loop.ts(549,23): error TS2367 ...
 exit code: 2
 ```
-Baseline was 3 pre-existing errors in these same two files. Count UNCHANGED (3 → 3), same files, same error codes. None of the wave-2 files (`repo-writer-lock.ts`, `executor-gate.ts`, `validate.ts`, `index.ts`, `state-writer-inventory.ts`, both test files) appear anywhere in the typecheck output.
+Baseline was 3 pre-existing errors in these same two files. Count UNCHANGED
+(3 → 3), same files, same error codes. None of this wave's files
+(`executor-gate.ts`, `override.ts`, `spend/index.ts`,
+`spend-override-and-proof.test.ts`) appear anywhere in the typecheck output.
+
+Commit:
+```
+$ git show --stat HEAD
+671a6cb feat(spend): bounded CEO override, tamper rejection, lease-to-mutation binding (P1-DEBT-01)
+ src/__tests__/spend-override-and-proof.test.ts | 1077 ++++++++++++++++++++++++
+ src/atlas/spend/index.ts                       |   21 +
+ src/atlas/spend/override.ts                    |  291 +++++++
+ src/atlas/work-order/executor-gate.ts          |  135 ++-
+ 4 files changed, 1523 insertions(+), 1 deletion(-)
+```
 
 ## 4. Known risks / broken items
 
-- `npx tsup` PATH resolution failure (pre-existing, out of this wave's allowed-files scope) still blocks `m10-install-lifecycle.test.ts` (×3) and `e2e-binary.test.ts`'s 10 skipped tests — same class of host issue prior sessions already logged; not touched here.
-- `runExecutorGate()`'s lease check (`getRepoWriterLeaseInfo`) is READ-ONLY by design — it verifies a lease is already held by the calling mission but does not acquire one itself. A caller that forgets to call `acquireRepoWriterLease()` first gets a clean `lease_not_held` REJECT (tested), but this is a two-call protocol (acquire, then gate-per-mutation) that the NEXT integration layer (courier/exec-graph wiring, explicitly out of this wave's scope) must get right — nothing in this wave enforces the ordering across process boundaries.
-- `RepoWriterLease`'s default TTL is 20 minutes with no automatic background heartbeat — a caller doing long-running work must call `heartbeatRepoWriterLease()` itself or the lease will silently go stale (recoverable only via the explicit `recoverStaleRepoWriterLease()` path, by design — see module header). Not wired into any scheduler yet.
-- `readRealGitHead()` in `executor-gate.ts` shells out to `git rev-parse` synchronously per gate call; fine for the current one-call-per-mutation usage pattern, would need batching/caching if a future caller re-checks scope at high frequency.
-- The live bounded proof writes real evidence packs to `$HOME/.atlas/quarantine/evidence/p1a-live-<timestamp>-<random>/` on every test run (by design, per the mission's Step 4) — these accumulate across CI/dev runs and are never auto-pruned by this wave. Left as-is per the "keep the evidence pack" instruction; a retention policy is a separate concern.
+- `runExecutorGateMutation()` closes the gap to ZERO JS ticks (the fresh
+  `getRepoWriterLeaseInfo()` read and the call to `mutate()` are consecutive
+  statements in one synchronous function — nothing caller-controlled can run
+  between them, and Node's single-threaded execution rules out same-process
+  interleaving). It does NOT close the gap to true cross-process atomicity: a
+  different OS process could, in principle, still mutate the lease file in
+  the microseconds between this function's read and the caller's own fs
+  write inside its `mutate()` callback. Full atomicity would require this
+  function to hold `repo-writer-lock.ts`'s own file lock across the caller's
+  arbitrary mutation — a bigger redesign this wave deliberately avoided
+  (`repo-writer-lock.ts` was out of the allowed-files scope). Residual risk,
+  not a known-broken item — no test in this repo could currently trigger it,
+  since nothing wires `runExecutorGateMutation()` into a real concurrent
+  execution path yet (P1-DEBT-03).
+- P1-B wave-1's `preflight.ts` (unmodified this wave) invokes the provider
+  port again on a REPLAYED request whose reservation had already reached
+  `COMMITTED` status via `runSpendPreflight()` specifically (not via plain
+  `reserve()`/`commit()`, which ARE fully idempotent and never double-charge
+  the ledger). The ledger itself is never double-charged either way — `
+  commit()`'s idempotency guarantees that — but a REAL provider adapter
+  sitting behind `invokeProvider` would receive a second, wasted call on
+  replay through the preflight path specifically. Observed while building
+  the Task-4 live proof (which deliberately used raw `reserve()`/`commit()`
+  for its replay step to avoid this, and used a hand-rolled
+  reserve-then-maybe-invoke helper elsewhere instead of `runSpendPreflight()`
+  to keep the fake-provider-invocation-count proof unambiguous). Not one of
+  the mission's four named debts; flagging here rather than inventing a
+  fifth unilaterally — recommend CEO/orchestrator decide whether this
+  becomes P1-DEBT-05 or folds into P1-DEBT-03's wiring work.
+- Standing risk carried over from P1-A wave 2 (CURSOR-HANDOFF.md history):
+  `RepoWriterLease`'s 20-minute default TTL has no automatic background
+  heartbeat; still not wired into any scheduler. Unrelated to this wave's
+  changes, still open.
+- `npx tsup` PATH resolution failure (pre-existing, out of this wave's
+  allowed-files scope) still blocks `m10-install-lifecycle.test.ts` (×3) and
+  `e2e-binary.test.ts`'s skipped tests — unchanged from baseline.
+- The Task-4 live-proof test writes a real evidence pack to
+  `$HOME/.atlas/quarantine/evidence/p1b-live-<timestamp>-<random>/` on every
+  run (by design). These accumulate and are not auto-pruned — same
+  accumulation pattern already flagged for the P1-A live proof; still no
+  retention policy.
 
 ## 5. Next three steps
 
-1. Orchestrator verification of P1-A wave 2 (this handoff) — confirm the split (`checkWorkOrderScope`/`claimWorkOrder`), `RepoWriterLease`, and `runExecutorGate` against the mission spec before anything wires into a real execution path.
-2. Next P1 item: restart-durable spend cap.
-3. Pause / PANIC — no further scope expansion in this worktree without a new mission.
+1. Orchestrator verification of P1-B wave 2 (this handoff) — confirm
+   `runExecutorGateMutation()`'s lease re-validation, the CEO override
+   boundary (`override.ts`), and the live bounded proof against the mission
+   spec before anything wires into a real execution path.
+2. Wire the spend module into the real call path — P1-DEBT-03
+   (`model-router.ts` / `mastra-agent.ts`), the largest open item left by
+   both P1-B waves; this is also where `runExecutorGateMutation()` gets its
+   first real (non-test) caller.
+3. Pause / PANIC — no further scope expansion in this worktree without a new
+   mission.
 
 ## 6. Blockers for CEO / orchestrator
 
-- None block closing this wave — both the carry-over fix and the wave-2 deliverables (lock primitive, executor gate, tests, live proof) are done and verified twice with real receipts above.
-- Open, non-blocking note: the two-call acquire-then-gate protocol (risk #2 above) needs an explicit design decision in whichever wave wires `runExecutorGate` into courier/exec-graph — not decided unilaterally here, since courier/exec-graph integration was explicitly forbidden scope for this wave.
+- None block closing this wave — Task 1 (P1-DEBT-01), Task 2/3 (CEO override
+  boundary + tests), and Task 4 (live bounded proof) are done and verified
+  twice (focused) plus once each (regression, full suite, typecheck) with
+  real receipts above, all showing zero regressions against the `a059a45`
+  baseline.
+- Open, non-blocking note: P1-DEBT-02 (four provider call sites that bypass
+  the spend gate entirely — `telegram-capability.ts:89`,
+  `tools/surf.ts:227`, `atlas/emotion.ts:243`, `goal-runner/red-line.ts:292`)
+  and P1-DEBT-03 (spend module not wired into the real call path at all yet)
+  mean the cap/override machinery built across both P1-B waves enforces
+  nothing in production today — it is fully built and tested in isolation,
+  not yet load-bearing. Recommend P1-DEBT-03 + P1-DEBT-02 become the next
+  scoped mission before any further spend-module feature work.
