@@ -58,7 +58,9 @@ export type ExecutorGateFailureReason =
   | WorkOrderValidationFailureReason
   | 'issuer_identity_mismatch'
   | 'lease_not_held'
-  | 'reality_check_failed';
+  | 'reality_check_failed'
+  | 'lease_lost_before_mutation'
+  | 'work_order_hash_mismatch';
 
 export type ExecutorGateVerdict =
   | { readonly ok: true; readonly workOrderHash: string }
@@ -216,4 +218,135 @@ export function runExecutorGate(request: ExecutorGateRequest): ExecutorGateVerdi
   if (!claim.ok) return reject(claim.reason);
 
   return { ok: true, workOrderHash: hashPayload(signed) };
+}
+
+// ── P1-DEBT-01 close (2026-08-06) — lease-to-mutation binding ─────────────
+//
+// The wave-2 handoff (CURSOR-HANDOFF.md, risk #2) already named this gap:
+// runExecutorGate() proves a lease is held AT THE MOMENT IT RUNS, but the
+// actual filesystem mutation is a SEPARATE call the caller makes afterwards.
+// Nothing structurally prevented the lease from being released, replaced by
+// another mission's stale-recovery, or (a pre-existing separate gap) simply
+// expiring in between — runExecutorGate()'s own lease check never compared
+// leaseExpiresAt against `now` at all, only `status === 'held'` and owner.
+//
+// runExecutorGateMutation() closes both gaps at once: it is the ONLY
+// sanctioned way to perform the mutation an authorized Work Order describes.
+// The caller passes the `mutate` callback itself, so the fresh, uncached
+// getRepoWriterLeaseInfo() read below and the call to `mutate()` are two
+// statements in the SAME synchronous function — no caller-controlled code
+// can run in the gap, and Node's single-threaded execution model means
+// nothing else in THIS process can interleave either. (A different OS
+// process could still, in principle, mutate the lease file in the
+// microseconds between this read and the caller's own fs write inside
+// `mutate()`; closing that residual window completely would require this
+// function to hold repo-writer-lock.ts's own file lock across the caller's
+// arbitrary mutation, which is the redesign this fix deliberately avoids —
+// see CURSOR-HANDOFF.md residual risks.)
+//
+// No `leaseHeld` boolean or any other caller-supplied "trust me" parameter
+// exists anywhere in this module — this function always re-derives the
+// answer itself, from disk, every time.
+
+export interface ExecutorGateMutationRequest {
+  /** The exact signed envelope that was authorized by an earlier runExecutorGate() call. */
+  readonly signed: SignedWorkOrder;
+  /** Independently-known identity of this executor process — NEVER derived from `signed`; re-checked here, not trusted from the earlier call. */
+  readonly expectedExecutorIdentity: string;
+  /** Filesystem path of the worktree the executor is actually standing in RIGHT NOW — re-derived, never cached from authorization time. */
+  readonly worktreeRoot: string;
+  /** Mission identity bound to the RepoWriterLease this executor must STILL hold. */
+  readonly missionId: string;
+  /** The workOrderHash returned by the runExecutorGate() call that authorized this mutation — binds this call to that exact authorization and refuses any attempt to swap in a different envelope between authorization and mutation. */
+  readonly authorizedWorkOrderHash: string;
+  /** Caller-selected evidence pack directory — REJECT claims are appended here, same as runExecutorGate(). */
+  readonly evidenceDir: string;
+  readonly now?: Date;
+}
+
+export type ExecutorGateMutationVerdict<T> =
+  | { readonly ok: true; readonly workOrderHash: string; readonly mutationResult: T }
+  | {
+      readonly ok: false;
+      readonly reason: ExecutorGateFailureReason;
+      readonly receiptClaimId: string;
+      readonly workOrderHash: string;
+    };
+
+/**
+ * Re-validate lease ownership from disk — workOrderId, missionId, executor
+ * identity, and repository canonical path, ALL checked against ground
+ * truth, plus (unlike runExecutorGate()'s own lease check) an explicit
+ * leaseExpiresAt comparison against `now` — and ONLY THEN call `mutate()`.
+ * Any failure returns before `mutate()` is ever invoked and leaves a
+ * deterministic REJECT receipt in the same evidence spine as
+ * runExecutorGate(). Call this once, immediately in place of the mutation
+ * itself — there is no other approved place to perform it.
+ */
+export function runExecutorGateMutation<T>(
+  request: ExecutorGateMutationRequest,
+  mutate: () => T,
+): ExecutorGateMutationVerdict<T> {
+  const { signed } = request;
+  const now = request.now ?? new Date();
+
+  const reject = (
+    reason: ExecutorGateFailureReason,
+    detail?: Record<string, unknown>,
+  ): ExecutorGateMutationVerdict<T> => {
+    const { claimId, workOrderHash } = emitRejectEvidence(signed, reason, request.evidenceDir, detail);
+    return { ok: false, reason, receiptClaimId: claimId, workOrderHash };
+  };
+
+  const currentHash = hashPayload(signed);
+  if (currentHash !== request.authorizedWorkOrderHash) {
+    return reject('work_order_hash_mismatch', {
+      authorizedWorkOrderHash: request.authorizedWorkOrderHash,
+      currentHash,
+    });
+  }
+
+  if (request.expectedExecutorIdentity !== signed.executorIdentity) {
+    return reject('wrong_executor_identity');
+  }
+
+  let realCanonicalPath: string;
+  try {
+    realCanonicalPath = canonicalizeRepoPath(request.worktreeRoot);
+  } catch (error) {
+    return reject('reality_check_failed', {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  // Fresh, uncached read — the very next statement is `mutate()`. Nothing
+  // caller-controlled runs between this line and the mutation it gates.
+  const lease = getRepoWriterLeaseInfo(request.worktreeRoot);
+  const leaseExpiresAtMs = lease ? Date.parse(lease.leaseExpiresAt) : NaN;
+  const leaseStillValid = (
+    !!lease
+    && lease.status === 'held'
+    && lease.owner.missionId === request.missionId
+    && lease.owner.workOrderId === signed.workOrderId
+    && lease.repoCanonicalPath === realCanonicalPath
+    && Number.isFinite(leaseExpiresAtMs)
+    && leaseExpiresAtMs > now.getTime()
+  );
+  if (!leaseStillValid) {
+    return reject('lease_lost_before_mutation', {
+      missionId: request.missionId,
+      workOrderId: signed.workOrderId,
+      leaseSnapshot: lease
+        ? {
+            status: lease.status,
+            owner: lease.owner,
+            repoCanonicalPath: lease.repoCanonicalPath,
+            leaseExpiresAt: lease.leaseExpiresAt,
+          }
+        : null,
+    });
+  }
+
+  const mutationResult = mutate();
+  return { ok: true, workOrderHash: currentHash, mutationResult };
 }

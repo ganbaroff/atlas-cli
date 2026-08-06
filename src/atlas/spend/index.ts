@@ -49,3 +49,24 @@ export type {
   SpendPreflightInput,
   SpendPreflightVerdict,
 } from './preflight.js';
+
+export {
+  CEO_OVERRIDE_SIGNATURE_ALGORITHM,
+  CEO_AUTHORITY_PREFIX,
+  CEO_OVERRIDE_CLOCK_SKEW_TOLERANCE_MS,
+  CeoOverrideSigningUnavailableError,
+  canonicalizeCeoOverride,
+  signCeoOverride,
+  checkCeoOverrideSignature,
+  resolveEffectiveDailyCapMinor,
+} from './override.js';
+export type {
+  CeoOverrideScope,
+  CeoOverride,
+  CeoOverrideIntegrity,
+  SignedCeoOverride,
+  CeoOverrideSignatureCheck,
+  CeoOverrideRejectReason,
+  ResolveEffectiveDailyCapInput,
+  ResolveEffectiveDailyCapResult,
+} from './override.js';
