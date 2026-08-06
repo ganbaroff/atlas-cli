@@ -27,6 +27,7 @@ export {
   commit,
   release,
   markPendingReconciliation,
+  claimProviderInvocation,
   getDailyTotal,
   verifyRecordIntegrity,
 } from './ledger.js';
@@ -39,6 +40,8 @@ export type {
   ReleaseResult,
   MarkPendingReconciliationInput,
   MarkPendingReconciliationResult,
+  ClaimProviderInvocationInput,
+  ClaimProviderInvocationResult,
   DailyTotalSnapshot,
 } from './ledger.js';
 

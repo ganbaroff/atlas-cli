@@ -1,5 +1,6 @@
 /**
- * atlas/spend/ledger.ts — the spend ledger transaction API (P1-B wave 1).
+ * atlas/spend/ledger.ts — the spend ledger transaction API (P1-B wave 1;
+ * provider-invocation idempotency added P1-B repair 2026-08-06).
  *
  * reserve() / commit() / release() / markPendingReconciliation() are all
  * IDEMPOTENT by requestId: replaying the same call after a crash, retry, or
@@ -9,18 +10,30 @@
  * racing past the cap (see money-invariants tests for the interleaving
  * proof).
  *
- * Day lookup for commit/release/markPendingReconciliation: a reservation's
- * accountingDay is not re-derived from "now" (a reservation created at
- * 23:59 and committed at 00:01 the next day must resolve against the SAME
- * day file it was reserved in, or the commit would silently vanish into an
- * empty new-day file). These calls therefore check `now`'s accounting day
- * first, then the immediately preceding day, and stop there — Work Orders
- * bound maxWallClockMs, so a reservation legitimately alive more than one
- * calendar day old is already a policy violation elsewhere, not a case this
- * ledger needs to search further back for.
+ * claimProviderInvocation() is the ADDITIONAL authority a caller MUST go
+ * through, under the same file lock, before ever invoking a real provider
+ * port — ledger-level idempotency (never double-charging the LEDGER) is not
+ * the same guarantee as invocation-level idempotency (never double-CALLING
+ * the provider). See preflight.ts for the caller that wires this in. The
+ * persisted `status` field (RESERVED -> INVOCATION_STARTED -> COMMITTED /
+ * RELEASED / REJECTED / PENDING_RECONCILIATION) is the SOLE authority for
+ * whether a provider call is permitted — there is no in-memory counter, Set,
+ * or caller-supplied flag anywhere in this module (see the source-scan test
+ * in spend-provider-idempotency.test.ts).
+ *
+ * Day lookup for commit/release/markPendingReconciliation/
+ * claimProviderInvocation: a reservation's accountingDay is not re-derived
+ * from "now" (a reservation created at 23:59 and committed at 00:01 the
+ * next day must resolve against the SAME day file it was reserved in, or
+ * the commit would silently vanish into an empty new-day file). These calls
+ * therefore check `now`'s accounting day first, then the immediately
+ * preceding day, and stop there — Work Orders bound maxWallClockMs, so a
+ * reservation legitimately alive more than one calendar day old is already
+ * a policy violation elsewhere, not a case this ledger needs to search
+ * further back for.
  */
 
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { assertWritable } from '../readonly-guard.js';
 import { computeAccountingDay, previousAccountingDay } from './accounting-day.js';
 import {
@@ -68,8 +81,15 @@ function computeDailyTotalMinor(records: Readonly<Record<string, SpendRecord>>):
   let total = 0;
   for (const record of Object.values(records)) {
     if (record.status === 'COMMITTED') total += record.committedMinor;
-    else if (record.status === 'RESERVED' || record.status === 'PENDING_RECONCILIATION') total += record.reservedMinor;
+    else if (
+      record.status === 'RESERVED'
+      || record.status === 'INVOCATION_STARTED'
+      || record.status === 'PENDING_RECONCILIATION'
+    ) total += record.reservedMinor;
     // RELEASED and REJECTED contribute 0 — funds returned / never taken.
+    // INVOCATION_STARTED is deliberately treated the same as RESERVED here:
+    // a provider call may be in flight (or may have already billed) and the
+    // worst case must stay counted against the cap until resolved.
   }
   return total;
 }
@@ -204,12 +224,125 @@ function locateRecord(requestId: string, now: Date, ianaTimezone: string, rootDi
   return undefined;
 }
 
+export interface ClaimProviderInvocationInput {
+  requestId: string;
+  now: Date;
+  ianaTimezone?: string;
+  rootDir?: string;
+  /**
+   * Identifies the process/boot/attempt making this claim. Audit trail
+   * only — never itself the dedup authority. Defaults to a fresh
+   * `pid:<pid>:<uuid>` token so two genuinely different callers never
+   * collide by accident even if neither supplies one.
+   */
+  claimToken?: string;
+}
+
+export type ClaimProviderInvocationResult =
+  /** Fresh claim: RESERVED -> INVOCATION_STARTED was durably written by THIS call. The caller — and only this caller — may now invoke the provider exactly once. */
+  | { ok: true; outcome: 'claimed'; record: SpendRecord }
+  /** Idempotent replay: the requestId is already COMMITTED. The provider must NOT be invoked again — use record.committedResult / record.committedMinor. */
+  | { ok: true; outcome: 'replay'; record: SpendRecord }
+  | { ok: false; reason: 'not_found' }
+  /** Another caller (this process or a different one) already holds the invocation claim and has not yet resolved it. Refuse — never a second invocation while this is outstanding. */
+  | { ok: false; reason: 'invocation_in_progress'; record: SpendRecord }
+  /** The outcome of a prior invocation attempt is unresolved (crash/uncertain). No automatic retry — an explicit reconciliation call (markPendingReconciliation / commit / release) is required first. */
+  | { ok: false; reason: 'pending_reconciliation'; record: SpendRecord }
+  /** RELEASED or REJECTED — a terminal state. The SAME requestId must never be recycled; a genuinely new attempt requires a NEW requestId. */
+  | { ok: false; reason: 'terminal'; record: SpendRecord }
+  /** The stored record's integrityHash does not match its own content — deterministic refusal, never served as a valid claim or replay. */
+  | { ok: false; reason: 'integrity_violation'; record: SpendRecord };
+
+function defaultInvocationClaimToken(): string {
+  return `pid:${process.pid}:${randomUUID()}`;
+}
+
+/**
+ * The core provider-invocation-idempotency fix (P1-B repair, 2026-08-06).
+ * MUST be called, and its result checked, BEFORE any real provider port is
+ * invoked — see preflight.ts. Runs entirely inside the SAME day-file lock
+ * reserve()/commit() use, so it serializes against concurrent duplicate
+ * callers exactly like the reservation cap does (see the concurrency proof
+ * in spend-provider-idempotency.test.ts).
+ *
+ * Sequence (matches the mission spec exactly): (1) load the durable record
+ * fresh from disk INSIDE the lock — never trust a pre-lock snapshot; (2)
+ * verify its integrity; (3) atomically compare-and-set RESERVED ->
+ * INVOCATION_STARTED, persisted with fsync+rename (writeDayFileAtomically)
+ * BEFORE this function returns control to the caller; (4) the caller may
+ * only invoke the provider AFTER this promise resolves with outcome
+ * 'claimed'; (5) any other observed status is refused, never silently
+ * retried or re-invoked.
+ */
+export async function claimProviderInvocation(
+  input: ClaimProviderInvocationInput,
+): Promise<ClaimProviderInvocationResult> {
+  assertWritable('spend.claimProviderInvocation');
+  assertRequestId(input.requestId);
+  const ianaTimezone = input.ianaTimezone ?? 'UTC';
+  const claimToken = input.claimToken ?? defaultInvocationClaimToken();
+
+  const located = locateRecord(input.requestId, input.now, ianaTimezone, input.rootDir);
+  if (!located) return { ok: false, reason: 'not_found' };
+
+  return withLedgerLock(located.filePath, () => {
+    // Re-read from disk INSIDE the lock — the `located` value above only
+    // tells us WHICH file to lock; the decision itself must use the freshest
+    // possible state, never a snapshot taken before the lock was held.
+    const dayFile = loadOrBootstrapDayFile(located.accountingDay, ianaTimezone, located.dayFile.dailyCapMinor, input.rootDir);
+    const current = dayFile.records[input.requestId];
+    if (!current) return { ok: false, reason: 'not_found' } as const;
+
+    if (!verifyRecordIntegrity(current)) {
+      return { ok: false, reason: 'integrity_violation', record: current } as const;
+    }
+
+    switch (current.status) {
+      case 'COMMITTED':
+        return { ok: true, outcome: 'replay', record: current } as const;
+      case 'INVOCATION_STARTED':
+        return { ok: false, reason: 'invocation_in_progress', record: current } as const;
+      case 'PENDING_RECONCILIATION':
+        return { ok: false, reason: 'pending_reconciliation', record: current } as const;
+      case 'RELEASED':
+      case 'REJECTED':
+        return { ok: false, reason: 'terminal', record: current } as const;
+      case 'RESERVED':
+        break;
+      default: {
+        const exhaustive: never = current.status;
+        throw new SpendValidationError(`claimProviderInvocation: unreachable status ${JSON.stringify(exhaustive)}`);
+      }
+    }
+
+    // current.status === 'RESERVED' — the ONLY status the invocation right
+    // can be claimed from. This CAS + durable write happens synchronously
+    // while the lock is held, so no other caller can observe an
+    // intermediate state.
+    const timestamp = input.now.toISOString();
+    const { integrityHash: _priorHash, ...currentWithoutHash } = current;
+    const claimed = sealRecord({
+      ...currentWithoutHash,
+      schemaVersion: SPEND_SCHEMA_VERSION,
+      timestamp,
+      status: 'INVOCATION_STARTED' as SpendStatus,
+      invocationClaimedAt: timestamp,
+      invocationClaimToken: claimToken,
+    });
+    const nextDayFile: SpendDayFile = { ...dayFile, records: { ...dayFile.records, [input.requestId]: claimed } };
+    writeDayFileAtomically(nextDayFile, input.rootDir);
+    return { ok: true, outcome: 'claimed', record: claimed } as const;
+  });
+}
+
 export interface CommitInput {
   requestId: string;
   actualMinor: number;
   now: Date;
   ianaTimezone?: string;
   rootDir?: string;
+  /** Optional: the provider's result payload, stored on the COMMITTED record so a later idempotent replay (claimProviderInvocation observing COMMITTED) can return it without re-invoking the provider. Must be JSON-serializable. */
+  resultForReplay?: unknown;
 }
 
 export type CommitResult =
@@ -235,7 +368,11 @@ export async function commit(input: CommitInput): Promise<CommitResult> {
     if (current.status === 'COMMITTED') {
       return { ok: true, record: current, idempotent: true } as const;
     }
-    if (current.status !== 'RESERVED' && current.status !== 'PENDING_RECONCILIATION') {
+    if (
+      current.status !== 'RESERVED'
+      && current.status !== 'INVOCATION_STARTED'
+      && current.status !== 'PENDING_RECONCILIATION'
+    ) {
       return { ok: false, reason: 'invalid_state', record: current } as const;
     }
 
@@ -247,8 +384,16 @@ export async function commit(input: CommitInput): Promise<CommitResult> {
     // leak a stale hash value into the NEW hash's own input, making the
     // record fail verifyRecordIntegrity() the moment it is read back.
     const { integrityHash: _priorHash, ...currentWithoutHash } = current;
+    // Only add `committedResult` when a real value was supplied — an
+    // explicit `undefined` key would round-trip differently through
+    // JSON.stringify (which drops undefined-valued keys) than the in-memory
+    // object that computed the integrity hash, breaking verifyRecordIntegrity
+    // on the very next read. See money-invariants notes in types.ts.
+    const resultField = input.resultForReplay !== undefined ? { committedResult: input.resultForReplay } : {};
     const committed = sealRecord({
       ...currentWithoutHash,
+      ...resultField,
+      schemaVersion: SPEND_SCHEMA_VERSION,
       committedMinor: input.actualMinor,
       reservedMinor: current.reservedMinor,
       timestamp,
@@ -301,6 +446,7 @@ export async function release(input: ReleaseInput): Promise<ReleaseResult> {
     const { integrityHash: _priorHash, ...currentWithoutHash } = current;
     const released = sealRecord({
       ...currentWithoutHash,
+      schemaVersion: SPEND_SCHEMA_VERSION,
       releasedMinor: current.reservedMinor,
       timestamp,
       status: 'RELEASED' as SpendStatus,
@@ -325,7 +471,17 @@ export type MarkPendingReconciliationResult =
   | { ok: false; reason: 'not_found' }
   | { ok: false; reason: 'invalid_state'; record: SpendRecord };
 
-/** Flip an in-flight reservation whose outcome is unknown (process died mid-call, ambiguous provider error, etc) to PENDING_RECONCILIATION. The reservedMinor amount stays counted against the cap (worst case) until an operator resolves it via commit()/release(). Never called automatically on a plain read — explicit only, see P1-B report residual risks. */
+/**
+ * Flip an in-flight reservation OR in-flight invocation claim whose outcome
+ * is unknown (process died mid-call, ambiguous provider error, an
+ * INVOCATION_STARTED claim whose owning process is confirmed gone, etc) to
+ * PENDING_RECONCILIATION. The reservedMinor amount stays counted against the
+ * cap (worst case: assume it WAS charged) until an operator resolves it via
+ * commit()/release(). Never called automatically on a plain read or on a
+ * plain claim refusal — explicit only. This is the ONLY sanctioned path out
+ * of INVOCATION_STARTED when no COMMITTED/error result was ever observed —
+ * there is no automatic retry anywhere in this module.
+ */
 export async function markPendingReconciliation(
   input: MarkPendingReconciliationInput,
 ): Promise<MarkPendingReconciliationResult> {
@@ -345,7 +501,7 @@ export async function markPendingReconciliation(
     if (current.status === 'PENDING_RECONCILIATION') {
       return { ok: true, record: current, idempotent: true } as const;
     }
-    if (current.status !== 'RESERVED') {
+    if (current.status !== 'RESERVED' && current.status !== 'INVOCATION_STARTED') {
       return { ok: false, reason: 'invalid_state', record: current } as const;
     }
 
@@ -353,6 +509,7 @@ export async function markPendingReconciliation(
     const { integrityHash: _priorHash, ...currentWithoutHash } = current;
     const pending = sealRecord({
       ...currentWithoutHash,
+      schemaVersion: SPEND_SCHEMA_VERSION,
       timestamp,
       status: 'PENDING_RECONCILIATION' as SpendStatus,
     });
