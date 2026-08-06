@@ -28,6 +28,14 @@ export type InterpretGoalInput = {
   /** Optional override when CEO names a project id explicitly */
   projectIdHint?: string;
   nowIso?: string;
+  /**
+   * Optional registry override for tests (same schema, not a second registry).
+   * Mirrors ResolveProjectOptions.registryProject in resolve-project.ts — lets
+   * tests substitute a project row without depending on live-machine registry
+   * content (e.g. real absolute paths that happen to exist on this host).
+   * Production callers omit this; live registry lookup is unaffected.
+   */
+  registryProject?: RegistryProject;
 };
 
 export type BindGoalOptions = {
@@ -112,6 +120,7 @@ export function interpretCeoGoal(input: InterpretGoalInput): AtlasGoalContract {
   }
 
   const project =
+    input.registryProject ??
     (input.projectIdHint?.startsWith('prj_') ? getProjectById(input.projectIdHint) : null) ??
     (input.projectIdHint ? findProjectByAlias(input.projectIdHint) : null) ??
     findProjectByAlias(message);

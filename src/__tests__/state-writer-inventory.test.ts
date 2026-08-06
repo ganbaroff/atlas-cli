@@ -93,4 +93,33 @@ describe('state writer inventory', () => {
     }
     expect([...referenced].sort()).toEqual((Object.keys(STATE_STORES) as StateStore[]).sort());
   });
+
+  // Test above ('classifies every production TypeScript file...') is the
+  // structural regression guard: it re-scans src/ on every run and fails
+  // the moment any file starts calling a mutating fs primitive without a
+  // matching STATE_WRITER_INVENTORY entry, so a new/renamed writer can never
+  // silently evade classification. These two modules were the gap this
+  // repair closed (2026-08-06) — pin their classification explicitly so a
+  // future edit that quietly downgrades or removes the entry (without the
+  // sweep test catching a *removal*, since deleting both the writer and its
+  // fs call would satisfy the sweep) still fails loudly here.
+  it('classifies the two writers registered by the 2026-08-06 inventory repair', () => {
+    const telegramCapability = STATE_WRITER_INVENTORY['src/atlas/telegram-capability.ts'];
+    expect(telegramCapability, 'src/atlas/telegram-capability.ts must stay registered').toBeDefined();
+    expect(telegramCapability).toHaveLength(1);
+    expect(telegramCapability?.[0]).toMatchObject({
+      classification: 'ephemeral',
+      location: 'temporary',
+    });
+    expect(telegramCapability?.[0]?.reason).toMatch(/tmp|scratch/i);
+
+    const voiceAdapterClient = STATE_WRITER_INVENTORY['src/atlas/voice-adapter-client.ts'];
+    expect(voiceAdapterClient, 'src/atlas/voice-adapter-client.ts must stay registered').toBeDefined();
+    expect(voiceAdapterClient).toHaveLength(1);
+    expect(voiceAdapterClient?.[0]).toMatchObject({
+      classification: 'configuration-content',
+      location: 'caller-target',
+    });
+    expect(voiceAdapterClient?.[0]?.reason).toMatch(/outPath|caller/i);
+  });
 });

@@ -127,6 +127,20 @@ export const STATE_WRITER_INVENTORY: Readonly<
   'src/atlas/task-spawner.ts': [
     authoritative(['task-results'], 'local executor result records'),
   ],
+  'src/atlas/telegram-capability.ts': [
+    surface(
+      'ephemeral',
+      'temporary',
+      'local STT/OCR round-trip scratch files under os.tmpdir(), unlinked in a finally block immediately after each request',
+    ),
+  ],
+  'src/atlas/voice-adapter-client.ts': [
+    surface(
+      'configuration-content',
+      'caller-target',
+      'voiceTts() writes synthesized audio bytes to the caller-supplied outPath argument',
+    ),
+  ],
   'src/atlas/write-back-hook.ts': [
     operational(['breadcrumbs'], 'session-exit audit breadcrumbs'),
   ],
