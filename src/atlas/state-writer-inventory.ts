@@ -141,6 +141,12 @@ export const STATE_WRITER_INVENTORY: Readonly<
       'voiceTts() writes synthesized audio bytes to the caller-supplied outPath argument',
     ),
   ],
+  'src/atlas/work-order/repo-writer-lock.ts': [
+    authoritative(
+      ['instance-lease'],
+      'RepoWriterLease per-repository writer mutual-exclusion reuses the instance-lease state family (no new store); stale-lease takeover is never silent and always requires recorded evidence',
+    ),
+  ],
   'src/atlas/work-order/replay.ts': [
     authoritative(
       ['queue-auth'],

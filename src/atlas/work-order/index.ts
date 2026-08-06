@@ -46,8 +46,47 @@ export {
   createProductionWorkOrderReplayStore,
 } from './replay.js';
 
-export type { WorkOrderValidationContext } from './validate.js';
+export type {
+  WorkOrderScopeCheckContext,
+  WorkOrderValidationContext,
+} from './validate.js';
 export {
   CLOCK_SKEW_TOLERANCE_MS,
+  checkWorkOrderScope,
+  claimWorkOrder,
   validateWorkOrder,
 } from './validate.js';
+
+export type {
+  RepoWriterLease,
+  RepoWriterLeaseOwner,
+  RepoWriterLeaseProcessIdentity,
+  RepoWriterLeaseStaleRecoveryEvidence,
+  RepoWriterLeaseRefusalReason,
+  RepoWriterLeaseAcquireResult,
+  RepoWriterLeaseReleaseResult,
+  RepoWriterLeaseRecoveryResult,
+  AcquireRepoWriterLeaseOptions,
+  HeartbeatRepoWriterLeaseOptions,
+  ReleaseRepoWriterLeaseOptions,
+  RecoverStaleRepoWriterLeaseOptions,
+} from './repo-writer-lock.js';
+export {
+  PROCESS_BOOT_TOKEN,
+  REPO_WRITER_LEASE_DEFAULT_TTL_MS,
+  canonicalizeRepoPath,
+  resolveRepoWriterLeaseRootDir,
+  acquireRepoWriterLease,
+  heartbeatRepoWriterLease,
+  releaseRepoWriterLease,
+  recoverStaleRepoWriterLease,
+  getRepoWriterLeaseInfo,
+  clearRepoWriterLeaseForTests,
+} from './repo-writer-lock.js';
+
+export type {
+  ExecutorGateFailureReason,
+  ExecutorGateVerdict,
+  ExecutorGateRequest,
+} from './executor-gate.js';
+export { runExecutorGate } from './executor-gate.js';

@@ -17,12 +17,15 @@ import {
   hmacSigner,
   hmacVerifier,
   signWorkOrder,
-  validateWorkOrder,
+  checkWorkOrderScope,
+  claimWorkOrder,
   createWorkOrderReplayStore,
   CLOCK_SKEW_TOLERANCE_MS,
   type WorkOrder,
   type WorkOrderReplayStore,
   type WorkOrderValidationContext,
+  type WorkOrderValidationVerdict,
+  type SignedWorkOrder,
 } from '../atlas/work-order/index.js';
 
 // Obviously-fake test key — never a real secret.
@@ -58,6 +61,26 @@ function baseOrder(overrides: Partial<WorkOrder> = {}): WorkOrder {
   };
 }
 
+/**
+ * P1-A wave-2 carry-over fix: the old monolithic validateWorkOrder(), which
+ * consumed the replay nonce on EVERY call, was split into a pure repeatable
+ * checkWorkOrderScope() and a one-shot claimWorkOrder() (see
+ * atlas/work-order/validate.ts). This test file is re-pointed to compose
+ * the two new primitives directly rather than the old function, to prove
+ * the split preserves every one of wave 1's original verdicts — no
+ * assertion below was weakened. (validateWorkOrder() itself still exists,
+ * as a thin convenience wrapper doing the same composition, for callers
+ * that only need single-call accept-or-reject semantics.)
+ */
+function validateAndClaim(
+  signed: SignedWorkOrder,
+  ctx: WorkOrderValidationContext,
+): WorkOrderValidationVerdict {
+  const scope = checkWorkOrderScope(signed, ctx);
+  if (!scope.ok) return scope;
+  return claimWorkOrder(signed, ctx.replayStore);
+}
+
 describe('work-order envelope (P1-A wave 1)', () => {
   let tempDir: string;
   let store: WorkOrderReplayStore;
@@ -91,7 +114,7 @@ describe('work-order envelope (P1-A wave 1)', () => {
 
   it('1. a validly signed order passes validation', () => {
     const signed = signWorkOrder(baseOrder(), signer);
-    const result = validateWorkOrder(signed, baseCtx());
+    const result = validateAndClaim(signed, baseCtx());
     expect(result).toEqual({ ok: true });
   });
 
@@ -99,7 +122,7 @@ describe('work-order envelope (P1-A wave 1)', () => {
     const signed = signWorkOrder(baseOrder(), signer);
     const unsigned = JSON.parse(JSON.stringify(signed));
     delete unsigned.integrity;
-    const result = validateWorkOrder(unsigned, baseCtx());
+    const result = validateAndClaim(unsigned, baseCtx());
     expect(result).toEqual({ ok: false, reason: 'signature_missing' });
   });
 
@@ -107,7 +130,7 @@ describe('work-order envelope (P1-A wave 1)', () => {
     const signed = signWorkOrder(baseOrder(), signer);
     const tampered = JSON.parse(JSON.stringify(signed));
     tampered.taskId = 'task-attacker-controlled';
-    const result = validateWorkOrder(tampered, baseCtx());
+    const result = validateAndClaim(tampered, baseCtx());
     expect(result).toEqual({ ok: false, reason: 'signature_invalid' });
   });
 
@@ -118,7 +141,7 @@ describe('work-order envelope (P1-A wave 1)', () => {
       expiresAt: new Date(now - 60 * 60 * 1000).toISOString(),
     });
     const signed = signWorkOrder(order, signer);
-    const result = validateWorkOrder(signed, baseCtx());
+    const result = validateAndClaim(signed, baseCtx());
     expect(result).toEqual({ ok: false, reason: 'expired' });
   });
 
@@ -129,7 +152,7 @@ describe('work-order envelope (P1-A wave 1)', () => {
       expiresAt: new Date(now + CLOCK_SKEW_TOLERANCE_MS + 2 * 60 * 60 * 1000).toISOString(),
     });
     const signed = signWorkOrder(order, signer);
-    const result = validateWorkOrder(signed, baseCtx());
+    const result = validateAndClaim(signed, baseCtx());
     expect(result).toEqual({ ok: false, reason: 'future_dated' });
   });
 
@@ -138,13 +161,13 @@ describe('work-order envelope (P1-A wave 1)', () => {
       baseOrder({ workOrderId: 'wo_replay-nonce-1', nonce: 'nonce-fixed-a' }),
       signer,
     );
-    expect(validateWorkOrder(first, baseCtx())).toEqual({ ok: true });
+    expect(validateAndClaim(first, baseCtx())).toEqual({ ok: true });
 
     const second = signWorkOrder(
       baseOrder({ workOrderId: 'wo_replay-nonce-2', nonce: 'nonce-fixed-a' }),
       signer,
     );
-    const result = validateWorkOrder(second, baseCtx());
+    const result = validateAndClaim(second, baseCtx());
     expect(result).toEqual({ ok: false, reason: 'nonce_replayed' });
   });
 
@@ -153,13 +176,13 @@ describe('work-order envelope (P1-A wave 1)', () => {
       baseOrder({ workOrderId: 'wo_replay-id-1', nonce: 'nonce-fixed-b1' }),
       signer,
     );
-    expect(validateWorkOrder(first, baseCtx())).toEqual({ ok: true });
+    expect(validateAndClaim(first, baseCtx())).toEqual({ ok: true });
 
     const second = signWorkOrder(
       baseOrder({ workOrderId: 'wo_replay-id-1', nonce: 'nonce-fixed-b2' }),
       signer,
     );
-    const result = validateWorkOrder(second, baseCtx());
+    const result = validateAndClaim(second, baseCtx());
     expect(result).toEqual({ ok: false, reason: 'work_order_id_replayed' });
   });
 
@@ -172,7 +195,7 @@ describe('work-order envelope (P1-A wave 1)', () => {
         baseOrder({ workOrderId: 'wo_restart-1', nonce: 'nonce-restart-1' }),
         signer,
       );
-      expect(validateWorkOrder(first, baseCtx({ replayStore: store1 }))).toEqual({ ok: true });
+      expect(validateAndClaim(first, baseCtx({ replayStore: store1 }))).toEqual({ ok: true });
 
       // "Boot 2": a brand-new store instance reading the SAME directory —
       // no shared in-memory state with store1.
@@ -181,7 +204,7 @@ describe('work-order envelope (P1-A wave 1)', () => {
         baseOrder({ workOrderId: 'wo_restart-2', nonce: 'nonce-restart-1' }),
         signer,
       );
-      const result = validateWorkOrder(second, baseCtx({ replayStore: store2 }));
+      const result = validateAndClaim(second, baseCtx({ replayStore: store2 }));
       expect(result).toEqual({ ok: false, reason: 'nonce_replayed' });
     } finally {
       rmSync(restartDir, { recursive: true, force: true });
@@ -190,19 +213,19 @@ describe('work-order envelope (P1-A wave 1)', () => {
 
   it('9. wrong executor identity is rejected', () => {
     const signed = signWorkOrder(baseOrder({ executorIdentity: 'atlas-executor' }), signer);
-    const result = validateWorkOrder(signed, baseCtx({ executorIdentity: 'someone-else' }));
+    const result = validateAndClaim(signed, baseCtx({ executorIdentity: 'someone-else' }));
     expect(result).toEqual({ ok: false, reason: 'wrong_executor_identity' });
   });
 
   it('10. wrong repository is rejected', () => {
     const signed = signWorkOrder(baseOrder({ repoCanonicalPath: 'C:/repo/ANUS' }), signer);
-    const result = validateWorkOrder(signed, baseCtx({ repoCanonicalPath: 'C:/repo/other' }));
+    const result = validateAndClaim(signed, baseCtx({ repoCanonicalPath: 'C:/repo/other' }));
     expect(result).toEqual({ ok: false, reason: 'wrong_repository' });
   });
 
   it('11. a base HEAD mismatch is rejected', () => {
     const signed = signWorkOrder(baseOrder({ baseHead: '9df07c4' }), signer);
-    const result = validateWorkOrder(signed, baseCtx({ baseHead: 'deadbeef' }));
+    const result = validateAndClaim(signed, baseCtx({ baseHead: 'deadbeef' }));
     expect(result).toEqual({ ok: false, reason: 'base_head_mismatch' });
   });
 
@@ -211,7 +234,7 @@ describe('work-order envelope (P1-A wave 1)', () => {
       baseOrder({ allowedPaths: ['src/atlas/work-order/**'] }),
       signer,
     );
-    const result = validateWorkOrder(signed, baseCtx({ candidatePath: 'src/telegram.ts' }));
+    const result = validateAndClaim(signed, baseCtx({ candidatePath: 'src/telegram.ts' }));
     expect(result).toEqual({ ok: false, reason: 'path_out_of_scope' });
   });
 
@@ -223,7 +246,7 @@ describe('work-order envelope (P1-A wave 1)', () => {
       }),
       signer,
     );
-    const result = validateWorkOrder(
+    const result = validateAndClaim(
       signed,
       baseCtx({ candidatePath: 'src/atlas/work-order/secret.local.ts' }),
     );
@@ -235,7 +258,7 @@ describe('work-order envelope (P1-A wave 1)', () => {
       baseOrder({ allowedCommandClasses: ['git', 'vitest'] }),
       signer,
     );
-    const result = validateWorkOrder(signed, baseCtx({ commandClass: 'npm-publish' }));
+    const result = validateAndClaim(signed, baseCtx({ commandClass: 'npm-publish' }));
     expect(result).toEqual({ ok: false, reason: 'command_class_forbidden' });
   });
 
@@ -249,7 +272,7 @@ describe('work-order envelope (P1-A wave 1)', () => {
       }),
       signer,
     );
-    const attemptsResult = validateWorkOrder(
+    const attemptsResult = validateAndClaim(
       attemptsOrder,
       baseCtx({ attemptNumber: 3, elapsedWallClockMs: 100 }),
     );
@@ -264,7 +287,7 @@ describe('work-order envelope (P1-A wave 1)', () => {
       }),
       signer,
     );
-    const wallClockResult = validateWorkOrder(
+    const wallClockResult = validateAndClaim(
       wallClockOrder,
       baseCtx({ attemptNumber: 1, elapsedWallClockMs: 6000 }),
     );
@@ -277,7 +300,7 @@ describe('work-order envelope (P1-A wave 1)', () => {
     // resolveWorkOrderVerifier() must resolve to undefined, and the
     // signature check must therefore return a closed verdict, never "ok".
     const signed = signWorkOrder(baseOrder(), signer);
-    const result = validateWorkOrder(signed, baseCtx({ verifier: undefined }));
+    const result = validateAndClaim(signed, baseCtx({ verifier: undefined }));
     expect(result).toEqual({ ok: false, reason: 'signature_missing' });
   });
 
@@ -298,7 +321,7 @@ describe('work-order envelope (P1-A wave 1)', () => {
 
     const tampered = JSON.parse(serializedEnvelope);
     tampered.taskId = 'attacker-controlled';
-    const verdict = validateWorkOrder(tampered, baseCtx());
+    const verdict = validateAndClaim(tampered, baseCtx());
     expect(JSON.stringify(verdict)).not.toContain(TEST_KEY);
   });
 

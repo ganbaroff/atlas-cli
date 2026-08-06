@@ -7,12 +7,26 @@
  * WorkOrderReplayStore — mirroring atlas/queue-auth.ts's
  * verifyPayload(row, key, ledger) shape exactly.
  *
- * validateWorkOrder() is a ONE-TIME claim gate: it consumes the envelope's
- * nonce/workOrderId as one of its checks, so call it exactly once, at the
- * moment an executor accepts a Work Order for execution — not once per
- * file write or per retry attempt inside that execution. maxAttempts /
- * maxWallClockMs are evaluated from the (attemptNumber, elapsedWallClockMs)
- * the caller supplies at that single claim moment.
+ * P1-A wave-2 carry-over fix (2026-08-06): wave 1 shipped a single
+ * validateWorkOrder() that consumed the envelope's nonce on EVERY call,
+ * which made it impossible to re-check scope per action inside one claimed
+ * Work Order (an executor gate needs to re-prove path/action/budget scope
+ * before EACH mutation, not just once). Split in two:
+ *   - checkWorkOrderScope(signed, ctx) — PURE and REPEATABLE. Signature,
+ *     expiry, future-dating, executor identity, repo, base HEAD, path
+ *     scope, forbidden action, command class, attempts, wall clock. Never
+ *     touches the replay store, so calling it many times against the same
+ *     envelope is safe and produces the same verdict for the same inputs.
+ *   - claimWorkOrder(signed, replayStore) — the ONE-SHOT nonce/workOrderId
+ *     consumption, split out so it can be called exactly once (at
+ *     acceptance) independently of how many times scope is re-checked.
+ * validateWorkOrder() remains as a convenience composition of the two
+ * (scope check, then claim) for callers that only need single-call
+ * accept-or-reject semantics — its checks run in the same fixed order as
+ * wave 1 from a caller's perspective and it still consumes the replay store
+ * exactly once per call, so all 18 wave-1 tests keep their original
+ * expected verdicts unchanged (re-pointed to compose the two new
+ * primitives, not weakened).
  *
  * Path-scope reuse survey: tools/fs-guard.ts's isSensitivePath() classifier
  * is reused here as an unconditional floor — a candidate path fs-guard
@@ -43,13 +57,16 @@ import type { WorkOrderReplayStore } from './replay.js';
 /** Small clock-skew allowance for an envelope's issuedAt being ahead of the checker's clock. */
 export const CLOCK_SKEW_TOLERANCE_MS = 5 * 60 * 1000; // 5 minutes
 
-export interface WorkOrderValidationContext {
+/**
+ * Everything checkWorkOrderScope needs. Deliberately has NO replayStore
+ * field — scope checking never touches the replay ledger, which is what
+ * makes it safe to call more than once per envelope.
+ */
+export interface WorkOrderScopeCheckContext {
   /** Wall clock the check runs against. Defaults to `new Date()`. */
   now?: Date;
   /** Signature verifier; defaults to resolveWorkOrderVerifier() (env-key-backed, fails closed when unset). */
   verifier?: WorkOrderVerifier;
-  /** Durable replay store — required; there is no in-memory-only default (replay protection must be durable). */
-  replayStore: WorkOrderReplayStore;
   /** Identity of the process claiming to execute this order. */
   executorIdentity: string;
   /** Repository the executor is actually operating in. */
@@ -66,6 +83,12 @@ export interface WorkOrderValidationContext {
   attemptNumber: number;
   /** Wall-clock time elapsed (ms) since work on this Work Order began. */
   elapsedWallClockMs: number;
+}
+
+/** Full validateWorkOrder() context — WorkOrderScopeCheckContext plus the one-shot replay store. */
+export interface WorkOrderValidationContext extends WorkOrderScopeCheckContext {
+  /** Durable replay store — required; there is no in-memory-only default (replay protection must be durable). */
+  replayStore: WorkOrderReplayStore;
 }
 
 function fail(reason: WorkOrderValidationFailureReason): WorkOrderValidationVerdict {
@@ -102,13 +125,15 @@ function matchesAnyGlob(candidate: string, globs: readonly string[]): boolean {
 }
 
 /**
- * Validate + claim a signed Work Order in one deterministic pass. Checks run
- * in a fixed order and the first failing check wins — callers get exactly
- * one reason per verdict, never a list.
+ * PURE and REPEATABLE — every check EXCEPT nonce/workOrderId replay. Safe to
+ * call many times for the same signed envelope (e.g. once per action inside
+ * one claimed Work Order); never mutates the replay store. Checks run in a
+ * fixed order and the first failing check wins — callers get exactly one
+ * reason per verdict, never a list.
  */
-export function validateWorkOrder(
+export function checkWorkOrderScope(
   signed: SignedWorkOrder,
-  ctx: WorkOrderValidationContext,
+  ctx: WorkOrderScopeCheckContext,
 ): WorkOrderValidationVerdict {
   const now = ctx.now ?? new Date();
   const verifier = ctx.verifier ?? resolveWorkOrderVerifier();
@@ -126,9 +151,6 @@ export function validateWorkOrder(
   if (Number.isFinite(issuedAtMs) && issuedAtMs - now.getTime() > CLOCK_SKEW_TOLERANCE_MS) {
     return fail('future_dated');
   }
-
-  const replay = ctx.replayStore.consumeIfFresh(signed.workOrderId, signed.nonce);
-  if (!replay.ok) return fail(replay.reason);
 
   if (ctx.executorIdentity !== signed.executorIdentity) return fail('wrong_executor_identity');
   if (ctx.repoCanonicalPath !== signed.repoCanonicalPath) return fail('wrong_repository');
@@ -158,4 +180,36 @@ export function validateWorkOrder(
   if (ctx.elapsedWallClockMs > signed.maxWallClockMs) return fail('wall_clock_exhausted');
 
   return { ok: true };
+}
+
+/**
+ * ONE-SHOT — consumes the envelope's (workOrderId, nonce) pair exactly
+ * once. Call this precisely once, at the moment a Work Order is accepted
+ * for execution (after checkWorkOrderScope has already passed) — not once
+ * per file touched or per retry.
+ */
+export function claimWorkOrder(
+  signed: SignedWorkOrder,
+  replayStore: WorkOrderReplayStore,
+): WorkOrderValidationVerdict {
+  const replay = replayStore.consumeIfFresh(signed.workOrderId, signed.nonce);
+  if (!replay.ok) return fail(replay.reason);
+  return { ok: true };
+}
+
+/**
+ * Convenience composition of checkWorkOrderScope + claimWorkOrder for
+ * callers that only need single-call accept-or-reject semantics. Still a
+ * ONE-TIME claim gate — calling it twice for the same envelope will fail
+ * the second time on replay, exactly like wave 1. Prefer the split
+ * primitives directly when scope needs to be re-checked more than once per
+ * envelope (e.g. inside executor-gate.ts, once per action).
+ */
+export function validateWorkOrder(
+  signed: SignedWorkOrder,
+  ctx: WorkOrderValidationContext,
+): WorkOrderValidationVerdict {
+  const scope = checkWorkOrderScope(signed, ctx);
+  if (!scope.ok) return scope;
+  return claimWorkOrder(signed, ctx.replayStore);
 }
