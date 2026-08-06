@@ -121,6 +121,12 @@ export const STATE_WRITER_INVENTORY: Readonly<
   'src/atlas/spend-tracker.ts': [
     authoritative(['spend-receipts'], 'daily cap rehydrates from durable spend receipts'),
   ],
+  'src/atlas/spend/store.ts': [
+    authoritative(
+      ['spend-receipts'],
+      'P1-B restart-durable reserve/commit/release ledger reuses the spend-receipts state family (no new store); day-file totals must survive restart',
+    ),
+  ],
   'src/atlas/swarm-logger.ts': [
     surface('configuration-content', 'external-memory-domain', 'swarm history is VOLAURA memory'),
   ],
