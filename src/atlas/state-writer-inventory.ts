@@ -141,6 +141,12 @@ export const STATE_WRITER_INVENTORY: Readonly<
       'voiceTts() writes synthesized audio bytes to the caller-supplied outPath argument',
     ),
   ],
+  'src/atlas/work-order/replay.ts': [
+    authoritative(
+      ['queue-auth'],
+      'work-order nonce/workOrderId one-time-claim ledger reuses the queue-auth state family (no new store); durable replay protection must survive restart',
+    ),
+  ],
   'src/atlas/write-back-hook.ts': [
     operational(['breadcrumbs'], 'session-exit audit breadcrumbs'),
   ],
