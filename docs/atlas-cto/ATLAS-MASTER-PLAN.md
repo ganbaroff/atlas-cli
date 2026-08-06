@@ -12,6 +12,10 @@
 > owns implementation/verification; bounded workers own only independent
 > mechanical lanes; Yusif owns goals, spend, privacy exceptions, and
 > irreversible gates.
+> **2026-08-06 canon sync:** Atlas-contractor phases (§9, milestones M8-M15)
+> merged in from `C:\Projects\ATLAS-MEGAPLAN-2026-08-05.md` per ADR-0011;
+> that file (mtime 2026-07-31 before this sync) is deleted in the same
+> commit that adds §9 below.
 
 ---
 
@@ -457,3 +461,144 @@ contract remains in
 - no live research before durable router state and privacy gates;
 - no paid API or weaker-provider privacy fallback without Yusif;
 - no completion claim without command evidence and Codex verification.
+
+---
+
+## 9. ATLAS-AS-CONTRACTOR PHASES (2026-08-06 canon sync)
+
+**Supersession notice:** this section supersedes and is the canon merge of
+`C:\Projects\ATLAS-MEGAPLAN-2026-08-05.md` (v3, 287 lines) into this, the one
+plan of record, per ADR-0011 decision 4 and this file's own Doc Law (§8:
+"no second plan, competing orchestrator, or `ATLAS.next`"). The megaplan
+file has no independent authority as of this section and is deleted from
+disk in the same commit that adds this section. `MISSION-BOARD.md`
+remains the CEO's single task-truth surface (ADR-0011 decision 5); the
+milestone ids below (M8-M15) are the plan-of-record anchor its P0-P7 rows
+resolve to.
+
+**Naming note:** `MISSION-BOARD.md` and the deleted megaplan label these
+phases P0-P7. This plan already uses P0-P5 in §5 for an unrelated
+technical-risk-backlog decomposition (Safety floor / Recoverability /
+Durability / Observability / Sandbox / Capability). To avoid collision, the
+Atlas-contractor phases are numbered **M8-M15** here; each entry below states
+its megaplan/board P-id for cross-reference.
+
+**Origin:** these phases replace v1's demo-before-fundament sequencing
+(adversarially rejected, 4 BLOCKER objections) and add the money layer the
+CEO named missing 2026-08-05 — money never comes from Atlas itself, only
+from the projects it builds; no phase is a success until a project Atlas
+built produces a real invoice or a real paid order (feature completeness
+alone is not success).
+
+**Dependency on the M0-M7 track above:** M10 (P2), M11 (P3), and M12 (P4)
+below assume a single durable, redeploy-surviving state authority. Today
+exec-graph ledger, operator/control-plane state, budgets/leases, evidence
+ledger, and swarm-exec bundles are non-durable in cloud. They may be
+designed/specified now but must not run live against unconsolidated state
+before this plan's own M3-to-M4 "Yusif cutover gate" (§0) closes. If that
+gate stalls indefinitely, the fallback is to run against the local-node
+state root only (`%USERPROFILE%\.atlas\state`), explicitly marked
+non-durable-in-cloud, and re-verify durability the day M4 lands.
+
+| Milestone | Board id | Status | Scope | Done-bar |
+|---|---|---|---|---|
+| M8 Atlas-contractor gate | P0 | BLOCKED-CEO | CEO-only rulings: $980 Azure ownership, 460 AZN debt closure, fresh Google billing check, voice-provider-ladder ruling, 2027-Q1 mission-gate ruling | all five rulings recorded; no phase below starts before this closes |
+| M9 Hands safety + courier kill | P1 | QUEUED | runner safety envelope to standard (signed work orders, actor-scoped writes, restart-durable spend cap, sandbox/worktree isolation, re-verified /pause+PANIC); retire the Cursor paste-relay | autonomous change made/verified/rolled back with zero human paste; forced process restart does not reset the spend cap; /pause+PANIC halt a live run in flight; courier-action counter (§9 definitions) = 0 for one full mission; sandboxed change proven in an isolated Integronix worktree with production untouched |
+| M10 Autonomy spine | P2 | QUEUED | `PlanContract` specified (schema written and reviewed) before code references it; `MISSION-BOARD.md` + `ORCHESTRATOR-STATE.md`; hard verification middleware (independent re-run + hash diff before a row may be marked VERIFIED); durable scheduled wake; Telegram freeform intake; memory-canon backup + proven restore-from-zero | one full goal→plan→execute→verify→board cycle with zero CEO actions, including one honest REJECT of a defect planted by an independent agent/session (§9 definitions), confirmed by a third process; restore-from-zero of the memory canon demonstrated on a scratch target |
+| M11 First contract: Integronix | P3 | QUEUED | auth, D1 schema committed to git, admin, customer-facing AI agent, under legal/licensing rails; internal milestones detailed below | Atlas runs the whole mission with the CEO approving only its internal milestones (below); zero task-level CEO involvement; production untouched outside an approved milestone; rollback demonstrated before first production write; delivered agent refuses out-of-licence claims in a red-team test |
+| M12 Multi-project brain | P4 | QUEUED | name the actual per-repo lock primitive (not yet named — open item); run 2 more projects as customers under the Integronix contract template; decision-narrative observability | two projects progressed in one night with a deliberate collision attempt correctly refused and logged; board is the CEO's single control surface; courier-actions/week = 0 |
+| M13 Voice daily organ | P5 | QUEUED | digest→TTS→Telegram voice note; STT questions back; adapter warmup (cold PaddleOCR-VL load measured 9+ minutes on CPU); free-first fallback ladder enforced in code, not descriptive | CEO receives the voice report on 5 consecutive days AND the board shows every attempted day including failures, human-interaction counter 0 each day |
+| M14 Emotional memory live | P6 | QUEUED | decay-weighted retrieval on a real content signal (`yusif-messages` corpus + project events), provenance preserved | N≥10 pre-registered paired blind trials against a recency baseline, win threshold declared in advance, CEO genuinely blinded at judgment time |
+| M15 Mission gate 2027-Q1 | P7 | QUEUED | decision only: personal OS vs. sellable agent OS | decision recorded; client site/orders proceed only after this gate |
+
+Owners: M8 and M15 are CEO decisions; M9-M14 are ATLAS-executed, CEO-gated at
+milestone boundaries only, never at task/subtask level (ADR-0011 decision 1).
+
+Dependencies: M8 blocks M9; M9 blocks M10; M10 blocks M11; M11 blocks M12;
+M12 blocks M13; M13 blocks M14; M14 blocks M15. M10-M12 are additionally
+blocked on the M3→M4 cutover gate above. Strictly sequential — no calendar
+overlap.
+
+### M8 detail — gate scope correction (2026-08-06)
+
+The megaplan's original P0 scope named 4 debt groups as blockers, including
+full key rotation. **Correction, carried over honestly:** per CEO ruling
+2026-08-05 («ключи ротировать не буду. всё ок.» — recorded
+`VOLAURA/memory/atlas/decisions/CEO-RULING-2026-08-05-key-rotation-declined.md`),
+the key-rotation component of debts 1-3 is **WAIVED-BY-CEO 2026-08-05** —
+risk knowingly accepted, keys stay classified COMPROMISED but do not block
+M8. M8's actual blocking scope is now only the non-key items:
+
+- $980 Azure ownership question (decides provider routing priority) — OPEN, blocks M8.
+- 460 AZN credited-pending debt closure — OPEN, blocks M8.
+- Fresh Google billing console check, `014883-4DBCC6-5D40F9` (last checked 2026-06-10) — OPEN, blocks M8.
+- Voice-provider-ladder ruling (feeds M13) — OPEN.
+- 2027-Q1 commercial-gate ruling (feeds M15) — OPEN.
+
+Full debt ledger (ids DEBT-1..DEBT-8) is tracked in `MISSION-BOARD.md` →
+STANDING DEBTS; this plan does not duplicate it, only records the waiver
+correction above since it changes M8's blocking scope.
+
+### M11 internal milestones (megaplan origin, unchanged)
+
+Reference only — CEO approves these six inside M11, nothing finer: M1 canon
+receipt + D1 schema in git + test/lint harness; M2 honesty pass (EN 404s, AZ
+catalog gate, placeholder SKUs) on preview; M3 admin auth enabled + audited;
+M4 customer-facing AI agent on preview behind legal rails with human
+escalation; M5 production cutover with rollback proven first; M6 lead→quote
+flow measured on real traffic. These reuse "M1-M6" as Integronix-internal
+labels per the original mission statement — they are NOT this master plan's
+own M1-M6 state-consolidation milestones in §0; scope is strictly the
+M11/Integronix contract.
+
+### Falsifiable definitions (carried from megaplan §5, unchanged)
+
+- **Courier-action** — any human copy/paste, retype, or manual relay of
+  content between two tools/agents/sessions that a machine could instead
+  have transported directly (e.g. CEO pasting a `CURSOR-HANDOFF.md` block
+  into Cursor, CEO relaying an error message between two chat windows).
+  Counted starting at M9, not later — the Cursor relay was the largest
+  single courier cost and must not be hidden by counting from M11 onward.
+- **Receipt** — a machine-produced record containing the literal command(s)
+  executed, their exit code and stdout/stderr (or a hash of same if long), a
+  content hash of any file claimed changed, and a timestamp. A conclusion
+  alone ("tests pass") without that is a claim, not a receipt.
+- **Independent** (for the M10 planted-defect test) — the agent/session that
+  plants a defect and the agent/session that fixes it share no message
+  history, prompt context, or process memory; the only channel between them
+  is the board row and its receipts. A third, separate process confirms the
+  REJECT reason matches the planted defect's actual nature before the test
+  counts as passed.
+
+### Risk register additions (2026-08-06, from megaplan §8)
+
+- **R8 — no backup/restore of the memory canon.** `ATLAS-ARCHITECTURE.md`
+  §12 gap 2b: no backup or restore mechanism exists anywhere. Fix: M10
+  backup + restore-from-zero demo on a scratch target. Reversed if a
+  restore drill fails.
+- **R9 — restart-resettable spend cap.** `spend-tracker.ts:84,95,113` resets
+  the daily counter to 0 on every process restart — the same defect this
+  plan's own §3/§5 already track as the P0.4/technical-risk-backlog item;
+  R9 is that defect carried into the contractor-phase risk register. Fix:
+  M9(a) restart-durable cap. Reversed if a forced restart during M9's own
+  test still resets the counter.
+- **R10 — plan-layer drift caused by the megaplan file itself**, if left
+  unmerged. Fix: this section — merge-then-delete was the hard acceptance
+  condition (megaplan §11, ADR-0011 decision 4). Closed by this commit.
+- **R11 — reviewer bottleneck.** Every gate above funnels through the one
+  person (CEO) the plan is explicitly trying to offload work from. Fix:
+  pre-register DoDs precisely enough that review is checklist-verification,
+  not open judgment. Reversed if gate turnaround becomes the dominant
+  constraint on velocity across 2+ consecutive milestones.
+
+### Standing debts (2026-08-06 sync — full ledger lives in `MISSION-BOARD.md`)
+
+Debts 1-2 and the rotation component of debt 3 are **WAIVED-BY-CEO
+2026-08-05**. Open and blocking M8: the $980 Azure ownership question (debt
+3 remainder), debt 4 (460 AZN), debt 8 (Google billing re-check). Open,
+non-blocking: debt 5 (refresh stale canon docs — this commit is part of
+that refresh), debt 6 (delete dead OpenManus path in
+`src/operator/action-lane.ts`), debt 7 (push
+`C:\Projects\_backup\volaura-mirror-2026-06-28.git` branches to origin
+before reclaiming 5.7GB — 100 of 115 branches exist nowhere else, never
+delete first).
