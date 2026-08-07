@@ -255,3 +255,24 @@ describe('AtlasToolBroker — pause semantics', () => {
     expect(resumed.ok).toBe(true);
   });
 });
+
+describe('AtlasToolBroker — search scope regression', () => {
+  it('sweeps the worktree root with dir "." instead of refusing it', async () => {
+    const broker = makeBroker({});
+    const out = await broker.invoke('search_files', { query: 'first line', dir: '.' });
+    expect(out.ok).toBe(true);
+    if (out.ok) expect(out.output).toContain('mission.txt');
+  });
+
+  it('still refuses a search rooted outside the worktree', async () => {
+    const broker = makeBroker({});
+    const out = await broker.invoke('search_files', { query: 'x', dir: '../..' });
+    expect(out).toEqual({ ok: false, refusedReason: 'path_outside_worktree' });
+  });
+
+  it('still refuses a search when no lease is held', async () => {
+    const broker = makeBroker({ lease: null });
+    const out = await broker.invoke('search_files', { query: 'x', dir: '.' });
+    expect(out).toEqual({ ok: false, refusedReason: 'lease_not_held' });
+  });
+});

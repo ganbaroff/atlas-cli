@@ -108,8 +108,11 @@ describe.skipIf(!runLive)('LIVE: failed acceptance is rolled back', () => {
     expect(lease.ok).toBe(true);
 
     const provider = approveProvider({
+      // NVIDIA credited capacity was tried and hung twice (ResourceExhausted
+      // 16/16, then a 10-minute timeout), so this uses the free gateway with a
+      // stronger model than the gemini-2.5-flash that edited nothing.
       providerId: 'openai-compatible',
-      modelId: 'gemini-2.5-flash',
+      modelId: 'gemini-3.5-flash',
       missionId: MISSION_ID,
       workOrderId: WORK_ORDER_ID,
       caller: 'live-rollback-test',
@@ -208,7 +211,9 @@ describe.skipIf(!runLive)('LIVE: failed acceptance is rolled back', () => {
               toolCalls: a.toolCallsRequested,
               refused: a.toolCallsRefused,
             })),
-            brokerRefusals: broker.auditTrail.filter((e) => !e.allowed).map((e) => e.reason),
+            brokerRefusals: broker.auditTrail
+              .filter((e) => !e.allowed)
+              .map((e) => ({ reason: e.reason, path: e.requestedPath, command: e.command })),
             stillFailing: outcome.failedChecks.map((f) => f.id),
             dirtyBeforeRollback: dirtyBeforeRollback.trim().split('\n').filter(Boolean),
             rollbackOk: rollback.ok,

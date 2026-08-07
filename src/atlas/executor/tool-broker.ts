@@ -311,9 +311,14 @@ export class AtlasToolBroker implements ExecutorToolBroker {
     const resolved = this.resolveInside(dir);
     if (!resolved.ok) return this.refuse('search_files', resolved.reason, dir);
 
+    // No candidatePath here, deliberately. Containment was already proven by
+    // resolveInside, and search only ever RETURNS paths — it opens nothing the
+    // caller has not then asked for through read_file, which is scope-checked.
+    // Requiring the directory itself to match allowedPaths made the ordinary
+    // `dir: "."` sweep fail as path_out_of_scope, which a live mission hit four
+    // times before falling back to guessing file contents.
     const auth = this.authorize({
       tool: 'search_files',
-      candidatePath: dir.replace(/\\/g, '/'),
       action: 'read',
       commandClass: 'filesystem',
     });

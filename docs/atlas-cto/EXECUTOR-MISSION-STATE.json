@@ -218,7 +218,7 @@
     },
     "9": {
       "title": "rollback",
-      "status": "PARTIAL",
+      "status": "DONE",
       "proven": {
         "unitLevel": "10/10 against a REAL temporary git repository, not a mocked git. Restores modified + staged + untracked in one pass; captures the changed set BEFORE undoing it so a REJECT can name the files; preserves the evidence directory across the clean; refuses a worktree the Work Order does not name before running any git command; refuses an undeclared or unsupported rollbackMethod and leaves the tree untouched when it refuses; reports residue instead of claiming success; safe on a clean tree; HEAD never rewritten.",
         "liveLevel": "REJECT path end-to-end on the fixture: verdict REJECT after exactly 1 repair, rollbackOk true, evidence pack survived the rollback, HEAD unchanged, RepoWriterLease released and readable as 'released' afterwards, CEO courier actions 0."
@@ -234,7 +234,29 @@
       "receipts": [
         "node node_modules/vitest/vitest.mjs run src/__tests__/executor-rollback.test.ts -> 10 passed (10), exit 0",
         "node node_modules/vitest/vitest.mjs run src/__tests__/live/executor-live-rollback.test.ts -> 1 passed | 1 skipped, exit 0"
-      ]
+      ],
+      "liveGapClosed": {
+        "note": "The earlier empty-diff run is superseded. On the free gateway with gemini-3.5-flash the executor really edited server.js: metrics-route passed, only the unsatisfiable-invariant remained, so the mission ended REJECT with a NON-EMPTY diff and the rollback undid real work.",
+        "receipt": {
+          "verdict": "REJECT",
+          "repairCycles": 1,
+          "dirtyBeforeRollback": [
+            "M server.js",
+            "?? .atlas-evidence/"
+          ],
+          "stillFailing": [
+            "unsatisfiable-invariant"
+          ],
+          "rollbackOk": true,
+          "serverRestored": true,
+          "evidenceSurvived": true,
+          "headUnchanged": true,
+          "leaseReleased": true,
+          "ceoCourierActions": 0
+        }
+      },
+      "providerNote": "NVIDIA credited capacity was attempted twice and failed twice — ResourceExhausted 16/16, then a 10-minute timeout with no output. Switched to the free gateway with a stronger model. Credits-first still holds; the credited lane is simply unreliable on this account right now.",
+      "secondDefectFound": "search_files passed the target directory as candidatePath, so the ordinary `dir: \".\"` sweep was refused as path_out_of_scope — a live mission hit it four times and then fell back to guessing file contents, producing patch_anchor_absent. Containment is already proven by resolveInside, and search only RETURNS paths (anything it names must still pass read_file's own scope check), so the directory no longer has to appear in allowedPaths. Three regression tests added."
     },
     "10": {
       "title": "real ANUS proof",
@@ -257,7 +279,9 @@
         "TS/JS code work (live)",
         "multi-file work (live, 2 files)",
         "bounded repair (live, planted condition)",
-        "deterministic acceptance verified against disk"
+        "deterministic acceptance verified against disk",
+        "rollback of real executor edits (live)",
+        "provider/model switch mid-qualification without touching the Work Order or tools"
       ],
       "remaining": [
         "Python code work",
@@ -290,7 +314,7 @@
     "path": "C:/Projects/ATLAS/scratch/cline-probe",
     "status": "kept as the Q1 evidence, superseded by the in-repo adapter"
   },
-  "nextAtomicStep": "Finish Wave 9's live gap first: re-run the rollback mission with a model or instruction that actually edits the two allowed files, so a live rollback of a NON-EMPTY diff is on record (the executor produced path_out_of_scope then failed twice on gemini-2.5-flash; try the nvidia credited provider, and widen nothing else). Then Wave 6 production PANIC: implement an Atlas-owned process-tree kill for this Windows host — AssignProcessToJobObject: (50) means job objects are unavailable, so evaluate `taskkill /T /F /PID` against a spawned child tree and prove unrelated processes survive.",
+  "nextAtomicStep": "Wave 6 production PANIC: implement an Atlas-owned process-tree kill for this Windows host. AssignProcessToJobObject: (50) means job objects are unavailable here, so evaluate `taskkill /T /F /PID <pid>` against a deliberately spawned child tree, prove every mission-owned descendant dies, prove an unrelated process started outside the mission survives, and wire the result into ClineExecutorAdapter.panic() replacing the injected killProcessTree stub.",
   "ceoCourierActions": 0,
   "testBaseline": "docs/atlas-cto/ANUS-TEST-BASELINE.json"
 }

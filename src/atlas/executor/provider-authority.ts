@@ -51,7 +51,15 @@ export const PROVIDER_REGISTRY: Readonly<Record<string, ProviderRegistryEntry>> 
   'openai-compatible': {
     funding: 'free',
     credentialEnvVar: 'FREELLMAPI_API_KEY',
-    models: ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-3-flash-preview', 'gemma-4-31b-it'],
+    models: [
+      'gemini-3.5-flash',
+      'gemini-3-flash-preview',
+      'gemini-3.1-flash-lite-preview',
+      'gemini-2.5-flash',
+      'gemini-2.5-flash-lite',
+      'gemma-4-31b-it',
+      'gemma-4-26b-a4b-it',
+    ],
   },
   anthropic: {
     funding: 'paid',
