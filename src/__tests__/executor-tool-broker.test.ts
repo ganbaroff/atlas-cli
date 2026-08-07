@@ -370,3 +370,50 @@ describe('AtlasToolBroker — python command class', () => {
     expect(out).toEqual({ ok: false, refusedReason: 'command_class_forbidden' });
   });
 });
+
+describe('AtlasToolBroker — ranged read_file', () => {
+  // Whole-file reads ended the final mission: models consumed a 27KB source
+  // file and then produced no further tool call. A slice keeps the file
+  // reachable without forcing it into one turn.
+  it('returns the whole file with a header when no range is given', async () => {
+    const broker = makeBroker({});
+    const out = await broker.invoke('read_file', { path: 'mission.txt' });
+    expect(out.ok).toBe(true);
+    if (out.ok) {
+      expect(out.output).toContain('lines 1-');
+      expect(out.output).toContain('1: first line');
+      expect(out.output).toContain('2: second line');
+    }
+  });
+
+  it('returns only the requested slice, numbered from the real line number', async () => {
+    const broker = makeBroker({});
+    const out = await broker.invoke('read_file', { path: 'mission.txt', startLine: 2, lineCount: 1 });
+    expect(out.ok).toBe(true);
+    if (out.ok) {
+      expect(out.output).toContain('lines 2-2 of');
+      expect(out.output).toContain('2: second line');
+      expect(out.output).not.toContain('1: first line');
+    }
+  });
+
+  it('clamps an out-of-range start instead of failing or returning nothing', async () => {
+    const broker = makeBroker({});
+    const out = await broker.invoke('read_file', { path: 'mission.txt', startLine: 9999, lineCount: 5 });
+    expect(out.ok).toBe(true);
+    if (out.ok) expect(out.output).toMatch(/lines \d+-\d+ of \d+/);
+  });
+
+  it('clamps a nonsense range rather than throwing', async () => {
+    const broker = makeBroker({});
+    const out = await broker.invoke('read_file', { path: 'mission.txt', startLine: -5, lineCount: 0 });
+    expect(out.ok).toBe(true);
+    if (out.ok) expect(out.output).toContain('lines 1-1 of');
+  });
+
+  it('still enforces scope on a ranged read', async () => {
+    const broker = makeBroker({});
+    const out = await broker.invoke('read_file', { path: '../../../../Windows/win.ini', startLine: 1, lineCount: 1 });
+    expect(out).toEqual({ ok: false, refusedReason: 'path_outside_worktree' });
+  });
+});

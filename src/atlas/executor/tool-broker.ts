@@ -128,8 +128,20 @@ export class AtlasToolBroker implements ExecutorToolBroker {
   readonly tools: readonly BrokeredTool[] = [
     {
       name: 'read_file',
-      description: 'Read a UTF-8 text file inside the mission worktree. Paths are worktree-relative.',
-      inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
+      description:
+        'Read a UTF-8 text file inside the mission worktree. Paths are worktree-relative. ' +
+        'Optional startLine (1-based) and lineCount read a slice instead of the whole file — ' +
+        'use them on large files. The result is prefixed with a header giving the total line ' +
+        'count and the range returned, and lines are numbered so they can be cited exactly.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          path: { type: 'string' },
+          startLine: { type: 'number', description: '1-based first line to return' },
+          lineCount: { type: 'number', description: 'how many lines to return' },
+        },
+        required: ['path'],
+      },
       mutating: false,
     },
     {
@@ -296,9 +308,27 @@ export class AtlasToolBroker implements ExecutorToolBroker {
     try {
       if (tool === 'read_file') {
         if (!existsSync(resolved.absolute)) return this.refuse(tool, 'file_not_found', rel);
-        const text = readFileSync(resolved.absolute, 'utf8').slice(0, MAX_READ_CHARS);
+        const lines = readFileSync(resolved.absolute, 'utf8').split(/\r?\n/);
+        const total = lines.length;
+
+        // Ranged reads exist because a whole-file read of a real source file
+        // ends the mission on smaller models: they consume the file and then
+        // produce no further tool call. A slice keeps the same file reachable
+        // without forcing the executor to swallow it in one turn.
+        const rawStart = typeof input.startLine === 'number' ? Math.trunc(input.startLine) : 1;
+        const start = Math.max(1, Math.min(rawStart, total));
+        const rawCount = typeof input.lineCount === 'number' ? Math.trunc(input.lineCount) : total;
+        const count = Math.max(1, rawCount);
+        const end = Math.min(total, start + count - 1);
+
+        const numbered = lines
+          .slice(start - 1, end)
+          .map((line, i) => `${start + i}: ${line}`)
+          .join('\n')
+          .slice(0, MAX_READ_CHARS);
+        const header = `# ${rel} — lines ${start}-${end} of ${total}\n`;
         this.record({ at: this.now().toISOString(), tool, requestedPath: rel, allowed: true });
-        return { ok: true, output: text };
+        return { ok: true, output: header + numbered };
       }
 
       if (tool === 'write_file') {

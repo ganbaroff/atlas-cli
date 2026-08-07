@@ -297,10 +297,18 @@ describe.skipIf(!runLive)('LIVE FINAL: one CEO sentence, one delivered result', 
       instruction:
         `In ${TARGET_FILE} there are ${baselineUnbounded} calls to execFileSync('git', ...) that pass no ` +
         `timeout option. If git hangs — a stale index.lock, a credential prompt, a stalled network ` +
-        `drive — the whole process hangs forever. Add a numeric \`timeout\` option (use 10000) to the ` +
-        `options object of EVERY execFileSync call in that file. Change nothing else: do not alter the ` +
-        `git arguments, the error handling, or any other behaviour. Use read_file first, then ` +
-        `apply_patch for each call site.`,
+        `drive — the whole process hangs forever. Add \`timeout: 10000\` to the options object of ` +
+        `EVERY execFileSync call in that file. Change nothing else.
+` +
+        `The file is large, so do NOT read it whole. Work one call site at a time:
+` +
+        `1. read_file with { path, startLine, lineCount: 40 } to see a slice around a call;
+` +
+        `2. apply_patch on that exact slice, using a unique surrounding line as the anchor;
+` +
+        `3. repeat for the next call site.
+` +
+        `Start by reading lines 85-130, which contain the first calls.`,
       broker,
       provider: routedProvider,
     };
@@ -309,11 +317,17 @@ describe.skipIf(!runLive)('LIVE FINAL: one CEO sentence, one delivered result', 
       adapter: new ClineExecutorAdapter({ agentFactory: (c: VendorAgentConfig) => new mod.Agent(c) }),
       context,
       checks,
-      runAttempt: async (instruction) =>
-        new ClineExecutorAdapter({ agentFactory: (c: VendorAgentConfig) => new mod.Agent(c) }).execute({
-          ...context,
-          instruction,
-        }),
+      runAttempt: async (instruction, attempt) => {
+        const r = await new ClineExecutorAdapter({
+          agentFactory: (c: VendorAgentConfig) => new mod.Agent(c),
+        }).execute({ ...context, instruction });
+        // Surfaced because two silent 'failed' runs told us nothing about WHY.
+        process.stderr.write(
+          `[final-attempt ${attempt}] status=${r.status} tools=${r.toolCallsRequested} error=${String(r.error ?? 'none').slice(0, 300)}
+`,
+        );
+        return r;
+      },
     });
 
     const finalUnbounded = unboundedGitCalls(targetSource());
