@@ -5,10 +5,21 @@
   "branch": "codex/cline-executor-adapter",
   "worktree": "C:/Users/user/OneDrive/Documents/GitHub/ANUS/.worktrees/cline-executor-adapter",
   "baseHead": "2aa383a",
-  "executorCandidate": { "name": "cline", "packages": ["@cline/sdk@0.0.71", "@cline/agents@0.0.71"], "status": "PASSED_Q1_NOT_QUALIFIED" },
+  "executorCandidate": {
+    "name": "cline",
+    "packages": [
+      "@cline/sdk@0.0.71",
+      "@cline/agents@0.0.71"
+    ],
+    "status": "PASSED_Q1_NOT_QUALIFIED"
+  },
   "frozen": {
     "rule": "A FROZEN wave is closed. Do not redesign it, do not re-litigate its choices, do not re-run its qualification from scratch. Touch a frozen artifact only to fix a defect proven by a failing test, and say so in the commit. Everything else builds ON them.",
-    "waves": [1, 2, 3],
+    "waves": [
+      1,
+      2,
+      3
+    ],
     "frozenAt": "2026-08-07",
     "frozenAtCommit": "6333cfd",
     "artifacts": [
@@ -28,46 +39,181 @@
     "1": {
       "title": "production executor interface",
       "status": "DONE",
-      "artifacts": ["src/atlas/executor/adapter.ts"],
+      "artifacts": [
+        "src/atlas/executor/adapter.ts"
+      ],
       "notes": "Reused existing src/core-spine/executor-adapter-contract.ts as the declarative capability contract; adapter.ts is its runtime counterpart, not a second contract. No vendor type crosses the boundary.",
-      "receipts": ["19/19 tests green via src/__tests__/executor-tool-broker.test.ts (shares the module graph)"]
+      "receipts": [
+        "19/19 tests green via src/__tests__/executor-tool-broker.test.ts (shares the module graph)"
+      ]
     },
     "2": {
       "title": "Atlas-owned tools",
       "status": "DONE",
-      "artifacts": ["src/atlas/executor/tool-broker.ts", "src/__tests__/executor-tool-broker.test.ts"],
-      "tools": ["read_file", "search_files", "write_file", "apply_patch", "run_command", "git_status", "git_diff"],
-      "authorityChecks": ["signature via checkWorkOrderScope", "live RepoWriterLease owner + workOrderId", "real git rev-parse HEAD", "resolved-path containment", "allowedPaths/forbiddenPaths", "command class", "attempt + wall-clock budget", "pause gate"],
+      "artifacts": [
+        "src/atlas/executor/tool-broker.ts",
+        "src/__tests__/executor-tool-broker.test.ts"
+      ],
+      "tools": [
+        "read_file",
+        "search_files",
+        "write_file",
+        "apply_patch",
+        "run_command",
+        "git_status",
+        "git_diff"
+      ],
+      "authorityChecks": [
+        "signature via checkWorkOrderScope",
+        "live RepoWriterLease owner + workOrderId",
+        "real git rev-parse HEAD",
+        "resolved-path containment",
+        "allowedPaths/forbiddenPaths",
+        "command class",
+        "attempt + wall-clock budget",
+        "pause gate"
+      ],
       "repairCycles": 1,
       "repairReason": "checkWorkOrderScope resolved the env-backed verifier and failed closed (signature_missing); verifier is now an injectable broker option, production still fails closed when unset",
-      "receipts": ["node node_modules/vitest/vitest.mjs run src/__tests__/executor-tool-broker.test.ts -> 19 passed (19), exit 0"]
+      "receipts": [
+        "node node_modules/vitest/vitest.mjs run src/__tests__/executor-tool-broker.test.ts -> 19 passed (19), exit 0"
+      ]
     },
     "3": {
       "title": "model/spend boundary",
       "status": "DONE",
-      "artifacts": ["src/atlas/executor/provider-authority.ts", "src/__tests__/executor-provider-authority.test.ts"],
+      "artifacts": [
+        "src/atlas/executor/provider-authority.ts",
+        "src/__tests__/executor-provider-authority.test.ts"
+      ],
       "invariant": "ApprovedProvider can only be minted by approveProvider(); ExecutorAdapter accepts one but cannot construct one, so an executor cannot pick its own provider.",
       "failClosedFix": "spend-policy.isPaidProvider is an allowlist of PAID names, so an unrecognised provider reads as free — a silent bypass at an executor boundary. approveProvider now refuses unknown provider, unpriced model, missing/empty credential, ATLAS_PAUSE, and SpendBlockedError, each before any credential lookup or evidence write.",
       "noSecondLedger": "paid path still calls enforceSpendPolicy; the decision is recorded as one audit-finding claim in the existing M8 ledger via appendClaim",
       "repairCycles": 1,
       "repairReason": "test-only defect: the no-leak assertion compared String(apiKey.length) as a substring and false-positived against the claim timestamp; replaced with an 8-char sliding-window check",
-      "receipts": ["node node_modules/vitest/vitest.mjs run src/__tests__/executor-provider-authority.test.ts src/__tests__/executor-tool-broker.test.ts -> 2 files passed, 31 passed (31), exit 0"]
+      "receipts": [
+        "node node_modules/vitest/vitest.mjs run src/__tests__/executor-provider-authority.test.ts src/__tests__/executor-tool-broker.test.ts -> 2 files passed, 31 passed (31), exit 0"
+      ]
     },
-    "4": { "title": "real coding mission on disposable fixture", "status": "NOT_STARTED" },
-    "5": { "title": "failure + one repair", "status": "NOT_STARTED" },
-    "6": { "title": "pause/resume/PANIC", "status": "PARTIAL", "notes": "broker-level pause proven by test; process-tree PANIC and the Windows AssignProcessToJobObject(50) supervision failure are NOT solved" },
-    "7": { "title": "crash/restart recovery", "status": "NOT_STARTED" },
-    "8": { "title": "security negative proofs", "status": "PARTIAL", "notes": "10 of the required negative proofs are green at broker level: path escape, absolute path, forbidden path, out-of-scope path, no lease, foreign mission lease, work-order mismatch, moved HEAD, tampered signature, wrong signing key, unclassified command, shell metacharacter, unknown tool. Hostile repository CONTENT (prompt injection) not yet tested." },
-    "9": { "title": "rollback", "status": "NOT_STARTED" },
-    "10": { "title": "real ANUS proof", "status": "NOT_STARTED" },
-    "11": { "title": "executor qualification 12 classes", "status": "PARTIAL", "proven": ["scope violation", "provider switch"], "remaining": ["TS code work", "Python code work", "multi-file work", "large repo search", "existing failing repo", "prompt injection", "bounded repair", "pause/PANIC", "process restart", "complete CEO-goal loop"] },
-    "12": { "title": "final product proof", "status": "NOT_STARTED" }
+    "4": {
+      "title": "real coding mission on disposable fixture",
+      "status": "PARTIAL",
+      "done": "ClineExecutorAdapter implemented behind the ExecutorAdapter interface: src/atlas/executor/cline-adapter.ts. Vendor reached only through a dynamic import held in a variable, so @cline/agents is not a build dependency of ANUS and tsc stays clean without the SDK installed. Vendor receives exactly broker.tools and nothing else; provider credentials come only from ApprovedProvider; a provider without spendClaimId is refused before any agent is constructed.",
+      "notDone": "No live mission has run through this path. The disposable git fixture, the /health goal, milestone generation, lease acquisition and evidence emission are not wired.",
+      "artifacts": [
+        "src/atlas/executor/cline-adapter.ts",
+        "src/__tests__/executor-cline-adapter.test.ts"
+      ],
+      "receipts": [
+        "node node_modules/vitest/vitest.mjs run src/__tests__/executor-cline-adapter.test.ts -> 22 passed (22), exit 0"
+      ]
+    },
+    "5": {
+      "title": "failure + one repair",
+      "status": "NOT_STARTED"
+    },
+    "6": {
+      "title": "pause/resume/PANIC",
+      "status": "PARTIAL",
+      "proven": "pause() closes the broker first, so a hostile vendor that ignores beforeTool and calls a tool anyway is still refused with mission_paused and writes nothing. panic() closes the broker, aborts the vendor, invokes the process-tree killer, and the panicked status is never overwritten by a vendor reporting success mid-run.",
+      "notProven": "The process-tree killer itself is an injected function with no production implementation. AssignProcessToJobObject: (50) on this Windows host is untouched and remains the blocking issue for unattended use.",
+      "receipts": [
+        "4 of the 22 adapter tests cover pause/panic semantics"
+      ]
+    },
+    "7": {
+      "title": "crash/restart recovery",
+      "status": "PARTIAL",
+      "proven": "snapshot() binds to sha256(canonicalizeWorkOrder + signature), so a widened or re-signed order yields a different hash and a snapshot cannot be replayed against it. restore() refuses a foreign adapterId and a foreign adapterVersion, and downgrades a 'running' snapshot to 'paused' so a restored mission never resumes as if still live.",
+      "notProven": "No real process kill and restart has been performed. Spend reservations, lease state and attempt budget are not yet part of the persisted mission record."
+    },
+    "8": {
+      "title": "security negative proofs",
+      "status": "PARTIAL",
+      "proven": [
+        "path escape",
+        "absolute path",
+        "forbidden path",
+        "out-of-scope path",
+        "no lease",
+        "foreign mission lease",
+        "work-order mismatch",
+        "moved HEAD",
+        "tampered signature",
+        "wrong signing key",
+        "unclassified command",
+        "shell metacharacter smuggling",
+        "unknown tool",
+        "paused mission",
+        "unapproved provider",
+        "unpriced model",
+        "missing credential",
+        "ATLAS_PAUSE",
+        "paid provider without ATLAS_ALLOW_PAID",
+        "credential never written to evidence",
+        "widened work order changes the snapshot hash"
+      ],
+      "notProven": [
+        "hostile repository CONTENT (prompt injection) has no live test; the system prompt instructs that repository content is DATA never orders, and that instruction is asserted by test, but no adversarial fixture has been run"
+      ]
+    },
+    "9": {
+      "title": "rollback",
+      "status": "NOT_STARTED"
+    },
+    "10": {
+      "title": "real ANUS proof",
+      "status": "NOT_STARTED"
+    },
+    "11": {
+      "title": "executor qualification 12 classes",
+      "status": "PARTIAL",
+      "proven": [
+        "scope violation",
+        "provider switch",
+        "structured events",
+        "Atlas-owned tools",
+        "work order binding",
+        "lease binding",
+        "spend control",
+        "pause",
+        "snapshot/restore contracts"
+      ],
+      "remaining": [
+        "TS code work",
+        "Python code work",
+        "multi-file work",
+        "large repo search",
+        "existing failing repo",
+        "prompt injection",
+        "bounded repair",
+        "real PANIC process tree",
+        "real process restart",
+        "complete CEO-goal loop"
+      ]
+    },
+    "12": {
+      "title": "final product proof",
+      "status": "NOT_STARTED"
+    }
   },
   "knownBlockers": [
-    { "id": "WIN-JOBOBJ", "detail": "AssignProcessToJobObject: (50) The request is not supported — child-process supervision fails on this host when stdio is redirected; PANIC process-tree semantics unproven", "severity": "blocking-for-unattended-use" },
-    { "id": "NVIDIA-QUOTA", "detail": "NVIDIA inference returns ResourceExhausted: Worker local total request limit reached (16/16); qualification runs use the freellmapi gateway via openai-compatible", "severity": "workaround-in-place" }
+    {
+      "id": "WIN-JOBOBJ",
+      "detail": "AssignProcessToJobObject: (50) The request is not supported — child-process supervision fails on this host when stdio is redirected; PANIC process-tree semantics unproven",
+      "severity": "blocking-for-unattended-use"
+    },
+    {
+      "id": "NVIDIA-QUOTA",
+      "detail": "NVIDIA inference returns ResourceExhausted: Worker local total request limit reached (16/16); qualification runs use the freellmapi gateway via openai-compatible",
+      "severity": "workaround-in-place"
+    }
   ],
-  "clineProbe": { "path": "C:/Projects/ATLAS/scratch/cline-probe", "status": "kept as the Q1 evidence, superseded by the in-repo adapter" },
-  "nextAtomicStep": "Implement ClineExecutorAdapter in src/atlas/executor/cline-adapter.ts behind the ExecutorAdapter interface: dynamic import of @cline/agents (never a static import — @cline is not installed in ANUS node_modules), register ONLY broker.tools as Agent tools, map AgentRuntimeEvent onto the closed ExecutorEvent set, take providerId/modelId/apiKey/baseUrl exclusively from the ApprovedProvider, and back pause() with broker.pause() plus panic() with an agent.abort() call. Test with an injected fake agent factory so the suite does not require the SDK.",
-  "ceoCourierActions": 0
+  "clineProbe": {
+    "path": "C:/Projects/ATLAS/scratch/cline-probe",
+    "status": "kept as the Q1 evidence, superseded by the in-repo adapter"
+  },
+  "nextAtomicStep": "Wave 4 live: build the disposable git fixture runner — mint a signed Work Order, acquire a real RepoWriterLease, construct AtlasToolBroker over the fixture worktree, approveProvider() on the free gateway, run ClineExecutorAdapter against the real @cline/agents (installed into the fixture, not into ANUS) with the goal 'add a /health endpoint returning JSON and prove it with a test', then release the lease and write the evidence pack. This is the first run where the vendor is real rather than faked.",
+  "ceoCourierActions": 0,
+  "testBaseline": "docs/atlas-cto/ANUS-TEST-BASELINE.json"
 }
