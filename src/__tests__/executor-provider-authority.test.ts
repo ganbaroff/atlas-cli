@@ -20,6 +20,7 @@ import {
 } from '../atlas/executor/provider-authority.js';
 
 const SECRETS: Record<string, string> = {
+  CEREBRAS_API_KEY: 'cerebras-test-value',
   NVIDIA_API_KEY: 'nvidia-test-value',
   FREELLMAPI_API_KEY: 'free-test-value',
   ANTHROPIC_API_KEY: 'anthropic-test-value',
@@ -178,5 +179,35 @@ describe('approveProvider — approval path', () => {
     const approved = approve({ providerId: 'anthropic', modelId: 'claude-sonnet-5' });
     expect(approved.paid).toBe(true);
     expect(recordedClaims).toHaveLength(1);
+  });
+});
+
+describe('cerebras lane — the only non-Google option', () => {
+  // The free gateway proxies every model through the Google API, so Gemini and
+  // Gemma alike fail multi-turn tool calling with a missing thought_signature.
+  // Cerebras is OpenAI-compatible and has no such requirement — but it also
+  // carries the ADR-013 $7.25 burn scar, and Atlas cannot verify its price from
+  // here. Unknown price fails closed.
+  it('is refused while ATLAS_ALLOW_PAID is unset, before any credential lookup', () => {
+    expectRefusal(() => approve({ providerId: 'cerebras', modelId: 'gpt-oss-120b' }), 'spend_blocked');
+    expect(secretLookups).toEqual([]);
+    expect(recordedClaims).toEqual([]);
+  });
+
+  it('is classified paid, never free', () => {
+    expect(PROVIDER_REGISTRY.cerebras.funding).toBe('paid');
+    expect(PROVIDER_REGISTRY.cerebras.baseUrl).toBe('https://api.cerebras.ai/v1');
+  });
+
+  it('still refuses an unpriced cerebras model even once paid spend is allowed', () => {
+    process.env.ATLAS_ALLOW_PAID = '1';
+    expectRefusal(() => approve({ providerId: 'cerebras', modelId: 'some-unlisted' }), 'model_unpriced');
+  });
+
+  it('mints a cerebras provider only with explicit paid authorization', () => {
+    process.env.ATLAS_ALLOW_PAID = '1';
+    const approved = approve({ providerId: 'cerebras', modelId: 'gpt-oss-120b' });
+    expect(approved.paid).toBe(true);
+    expect(approved.baseUrl).toBe('https://api.cerebras.ai/v1');
   });
 });

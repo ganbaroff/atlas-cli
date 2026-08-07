@@ -455,7 +455,14 @@
       "whatWouldCloseIt": "A model that sustains a ~28KB file plus an agent loop. The registry already carries the paid lane (anthropic), which approveProvider refuses while ATLAS_ALLOW_PAID is unset — a spend decision, and therefore a CEO decision, not a technical one.",
       "receipts": [
         "node node_modules/vitest/vitest.mjs run src/__tests__/live/executor-live-final.test.ts -> 1 passed | 1 skipped, exit 0 on all three runs (the test passes because the REJECT path is correct behaviour)"
-      ]
+      ],
+      "laneSearchResult": {
+        "freeGatewayIsAllGoogle": "gemma-4-31b-it was tried on the free gateway specifically because Gemma is not Gemini. It produced the IDENTICAL thought_signature error, which proves the gateway proxies EVERY model through the Google API. The whole free lane is dead for multi-turn tool calling, not just the Gemini models.",
+        "nvidiaLane": "Retried once more with meta/llama-3.3-70b-instruct: hung with no output for 10 minutes. Four failures this session across three models.",
+        "cerebrasFound": "CEREBRAS_API_KEY reaches https://api.cerebras.ai/v1 (HTTP 200) and offers gpt-oss-120b, zai-glm-4.7, gemma-4-31b. OpenAI-compatible, no thought_signature requirement — the only non-Google lane on this machine.",
+        "cerebrasClassification": "Registered as funding:'paid', deliberately. Not because it lacks a free tier, but because Atlas cannot verify a call's price from here and this provider carries the ADR-013 $7.25 burn scar. Unknown price fails closed. Using it therefore requires ATLAS_ALLOW_PAID — a CEO spend decision, which is where this correctly stops."
+      },
+      "realDefectFound": "Registering cerebras exposed a genuine gap: approveProvider trusted enforceSpendPolicy alone, and spend-policy's PAID_PROVIDERS allowlist (openai, openrouter, anthropic) does not contain cerebras. A lane classified 'paid' in the Atlas registry sailed straight through the spend gate. approveProvider now enforces its OWN classification first and enforceSpendPolicy second — both gates run. Four tests pin it."
     }
   },
   "knownBlockers": [
@@ -474,11 +481,11 @@
     "path": "C:/Projects/ATLAS/scratch/cline-probe",
     "status": "kept as the Q1 evidence, superseded by the in-repo adapter"
   },
-  "nextAtomicStep": "Wave 12, the final product proof: one natural-language CEO goal drives the whole loop with zero courier actions, and the receipt carries goal, milestone summary, workOrder hash, executor and version, provider, repo and worktree, changed files, commands, test exit codes, repair count, verifier verdict, spend, evidence path, rollback reference, process cleanup, and the CEO courier-action count. Reuse the fixture; do not invent new machinery.",
+  "nextAtomicStep": "This is now a CEO decision, not a technical one. Either (a) CEO sets ATLAS_ALLOW_PAID and names a spend ceiling, after which the final proof reruns on cerebras gpt-oss-120b — the machinery is already wired and one command away; or (b) a free non-Google OpenAI-compatible endpoint is supplied and added to PROVIDER_REGISTRY. Do not redesign Atlas and do not weaken the spend gate to unblock this.",
   "ceoCourierActions": 0,
   "testBaseline": "docs/atlas-cto/ANUS-TEST-BASELINE.json",
   "knownArtifacts": [
     "ANUS/.worktrees/atlas-mission-courier-ts2367 on branch atlas/mission-courier-ts2367 — left in place as the Wave 10 evidence; safe to remove with `git worktree remove --force` once the receipt is accepted"
   ],
-  "productStatus": "ATLAS PRODUCT NOT VERIFIED — EXACT BLOCKER: no available free or credited model completes a real 28KB-file mission; every Atlas invariant held and every Cline contract held."
+  "productStatus": "ATLAS PRODUCT NOT VERIFIED — EXACT BLOCKER: every free lane on this machine proxies through the Google API, which fails multi-turn tool calling because the Cline SDK sends no thought_signature; the credited NVIDIA lane does not respond; the only non-Google lane (cerebras) is classified paid and correctly refused without ATLAS_ALLOW_PAID. Atlas is not the blocker — no Atlas invariant and no Cline contract failed in any of the five attempts."
 }

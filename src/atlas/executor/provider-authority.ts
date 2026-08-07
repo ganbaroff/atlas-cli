@@ -20,7 +20,7 @@
  */
 
 import { appendClaim } from '../../evidence/ledger.js';
-import { enforceSpendPolicy, isPaused, SpendBlockedError } from '../spend-policy.js';
+import { enforceSpendPolicy, isPaused, paidAllowed, SpendBlockedError } from '../spend-policy.js';
 import type { ApprovedProvider } from './adapter.js';
 
 /** How a provider is funded. `paid` is the only class that can cost cash. */
@@ -60,6 +60,25 @@ export const PROVIDER_REGISTRY: Readonly<Record<string, ProviderRegistryEntry>> 
       'gemma-4-31b-it',
       'gemma-4-26b-a4b-it',
     ],
+  },
+  /**
+   * The only non-Google lane reachable from this machine. It matters because
+   * the free gateway proxies EVERY model through the Google API, so all of its
+   * models — Gemini and Gemma alike — fail multi-turn tool calling with
+   * "Function call is missing a thought_signature". Cerebras is
+   * OpenAI-compatible and has no such requirement.
+   *
+   * Classified `paid` deliberately, not because Cerebras has no free tier, but
+   * because Atlas cannot verify the price of a call from here and this provider
+   * carries a scar: a $7.25 burn recorded in ADR-013. Unknown price fails
+   * closed, so using it needs ATLAS_ALLOW_PAID — a CEO spend decision, exactly
+   * as the rule requires.
+   */
+  cerebras: {
+    funding: 'paid',
+    credentialEnvVar: 'CEREBRAS_API_KEY',
+    baseUrl: 'https://api.cerebras.ai/v1',
+    models: ['gpt-oss-120b', 'zai-glm-4.7', 'gemma-4-31b'],
   },
   anthropic: {
     funding: 'paid',
@@ -136,6 +155,19 @@ export function approveProvider(request: ApproveProviderRequest): ApprovedProvid
   }
 
   const paid = entry.funding === 'paid';
+
+  // The registry's own classification is authoritative HERE. spend-policy's
+  // PAID_PROVIDERS is a separate allowlist that does not know about every lane
+  // this registry carries — cerebras is classified paid here and absent there,
+  // so relying on enforceSpendPolicy alone let a paid lane through. Both gates
+  // now run, and this one runs first.
+  if (paid && !paidAllowed()) {
+    throw new ProviderNotApprovedError(
+      'spend_blocked',
+      `provider '${request.providerId}' is classified paid in the Atlas registry and ATLAS_ALLOW_PAID is not set`,
+    );
+  }
+
   try {
     enforceSpendPolicy(request.providerId, request.caller);
   } catch (err) {
