@@ -1,24 +1,33 @@
 {
   "purpose": "Measured baseline of the ANUS suite so a later session never has to re-derive it from zero. Compare against this before blaming your own change: a failure listed here is pre-existing and is NOT a regression.",
-  "measuredAt": "2026-08-07",
+  "measuredAt": "2026-08-07 (refreshed after waves 1-12)",
   "measuredOn": {
     "branch": "codex/cline-executor-adapter",
     "worktree": "C:/Users/user/OneDrive/Documents/GitHub/ANUS/.worktrees/cline-executor-adapter",
-    "headAtMeasurement": "6333cfd",
+    "headAtMeasurement": "9e4b9b8",
     "host": "WIN-QGHLRRNLBOF, Windows 11"
   },
   "howToReproduce": {
-    "suite": "node node_modules/vitest/vitest.mjs run",
+    "suite": "node node_modules/vitest/vitest.mjs run --exclude \"**/live/**\"",
     "typecheck": "node node_modules/typescript/bin/tsc --noEmit",
     "warning": "never `npx vitest` — it returns nothing on this host; never pipe to tail and read $? — that returns tail's exit code and has hidden a real failure before",
-    "runtimeMinutes": 2
+    "runtimeMinutes": 2,
+    "liveNote": "LIVE missions under src/__tests__/live/ are excluded from the baseline: they call a real model over the network, cost quota, and their verdict depends on the executor rather than on this repo. Run them deliberately, one file at a time."
   },
   "suite": {
-    "command": "node node_modules/vitest/vitest.mjs run",
+    "command": "node node_modules/vitest/vitest.mjs run --exclude \"**/live/**\"",
     "exitCode": 1,
-    "testFiles": { "passed": 153, "failed": 4, "total": 157 },
-    "tests": { "passed": 1558, "failed": 5, "skipped": 12, "total": 1575 },
-    "durationSeconds": 113,
+    "testFiles": {
+      "passed": 160,
+      "failed": 2,
+      "total": 162
+    },
+    "tests": {
+      "passed": 1642,
+      "failed": 3,
+      "skipped": 12,
+      "total": 1657
+    },
     "note": "exitCode 1 is the EXPECTED steady state on this host. The suite is not green and must never be reported as green."
   },
   "typecheck": {
@@ -30,7 +39,11 @@
   "knownFailures": [
     {
       "file": "src/__tests__/m10-install-lifecycle.test.ts",
-      "cases": ["install: build + health green from isolated state dirs", "upgrade: rebuild preserves exec-graph + goal budget state", "rollback: restore prior dist; state + health still valid"],
+      "cases": [
+        "install: build + health green from isolated state dirs",
+        "upgrade: rebuild preserves exec-graph + goal budget state",
+        "rollback: restore prior dist; state + health still valid"
+      ],
       "count": 3,
       "cause": "`npx tsup` is not resolvable on this host's PATH inside vitest's child-process context",
       "class": "host-environment",
@@ -39,7 +52,9 @@
     },
     {
       "file": "src/__tests__/integration/e2e-binary.test.ts",
-      "cases": ["E2E: atlas binary"],
+      "cases": [
+        "E2E: atlas binary"
+      ],
       "count": 1,
       "cause": "its beforeAll tsup build fails for the same PATH reason; its 10 tests then report as skipped and are part of the 12 skipped",
       "class": "host-environment",
@@ -48,9 +63,24 @@
     }
   ],
   "knownTypecheckErrors": [
-    { "file": "src/__tests__/runner-health-no-claim.test.ts", "line": 390, "code": "TS2352", "preExisting": true },
-    { "file": "src/__tests__/runner-health-no-claim.test.ts", "line": 396, "code": "TS2352", "preExisting": true },
-    { "file": "src/courier/courier-loop.ts", "line": 549, "code": "TS2367", "preExisting": true }
+    {
+      "file": "src/__tests__/runner-health-no-claim.test.ts",
+      "line": 390,
+      "code": "TS2352",
+      "preExisting": true
+    },
+    {
+      "file": "src/__tests__/runner-health-no-claim.test.ts",
+      "line": 396,
+      "code": "TS2352",
+      "preExisting": true
+    },
+    {
+      "file": "src/courier/courier-loop.ts",
+      "line": 549,
+      "code": "TS2367",
+      "preExisting": true
+    }
   ],
   "regressionsFoundAndFixedThisSession": [
     {
@@ -61,10 +91,10 @@
     }
   ],
   "deltaVsPriorBaseline": {
-    "priorBaseline": "1529 passed / 3 failed / 12 skipped (CURSOR-HANDOFF 2026-08-06, branch codex/p1a-work-orders)",
-    "current": "1558 passed / 5 failed / 12 skipped, then 1 of those 5 fixed",
-    "addedByThisSession": 31,
+    "priorBaseline": "1558 passed / 5 failed / 12 skipped (2026-08-07, before the executor work)",
+    "current": "1642 passed / 3 failed / 12 skipped",
+    "addedByExecutorWork": 117,
     "newFailuresRemaining": 0,
-    "interpretation": "+31 tests are the two new executor suites (19 broker + 12 provider authority). The 5th failure was mine and is fixed. The remaining 4 are the same host-environment failures as the prior baseline."
+    "interpretation": "+84 net passing tests over the prior baseline and the failure count DROPPED from 5 to 3: the state-writer-inventory failure was mine and is fixed, and e2e-binary now reports as a file-level failure whose 10 tests land in the unchanged skipped count. The 3 remaining failures are the same `npx tsup` PATH problem as always."
   }
 }
