@@ -1,0 +1,45 @@
+{
+  "missionOrder": "CEO EXECUTION ORDER 2026-08-07 — turn the Cline probe into real Atlas hands",
+  "updatedAt": "2026-08-07",
+  "repo": "C:/Users/user/OneDrive/Documents/GitHub/ANUS",
+  "branch": "codex/cline-executor-adapter",
+  "worktree": "C:/Users/user/OneDrive/Documents/GitHub/ANUS/.worktrees/cline-executor-adapter",
+  "baseHead": "2aa383a",
+  "executorCandidate": { "name": "cline", "packages": ["@cline/sdk@0.0.71", "@cline/agents@0.0.71"], "status": "PASSED_Q1_NOT_QUALIFIED" },
+  "waves": {
+    "1": {
+      "title": "production executor interface",
+      "status": "DONE",
+      "artifacts": ["src/atlas/executor/adapter.ts"],
+      "notes": "Reused existing src/core-spine/executor-adapter-contract.ts as the declarative capability contract; adapter.ts is its runtime counterpart, not a second contract. No vendor type crosses the boundary.",
+      "receipts": ["19/19 tests green via src/__tests__/executor-tool-broker.test.ts (shares the module graph)"]
+    },
+    "2": {
+      "title": "Atlas-owned tools",
+      "status": "DONE",
+      "artifacts": ["src/atlas/executor/tool-broker.ts", "src/__tests__/executor-tool-broker.test.ts"],
+      "tools": ["read_file", "search_files", "write_file", "apply_patch", "run_command", "git_status", "git_diff"],
+      "authorityChecks": ["signature via checkWorkOrderScope", "live RepoWriterLease owner + workOrderId", "real git rev-parse HEAD", "resolved-path containment", "allowedPaths/forbiddenPaths", "command class", "attempt + wall-clock budget", "pause gate"],
+      "repairCycles": 1,
+      "repairReason": "checkWorkOrderScope resolved the env-backed verifier and failed closed (signature_missing); verifier is now an injectable broker option, production still fails closed when unset",
+      "receipts": ["node node_modules/vitest/vitest.mjs run src/__tests__/executor-tool-broker.test.ts -> 19 passed (19), exit 0"]
+    },
+    "3": { "title": "model/spend boundary", "status": "NOT_STARTED" },
+    "4": { "title": "real coding mission on disposable fixture", "status": "NOT_STARTED" },
+    "5": { "title": "failure + one repair", "status": "NOT_STARTED" },
+    "6": { "title": "pause/resume/PANIC", "status": "PARTIAL", "notes": "broker-level pause proven by test; process-tree PANIC and the Windows AssignProcessToJobObject(50) supervision failure are NOT solved" },
+    "7": { "title": "crash/restart recovery", "status": "NOT_STARTED" },
+    "8": { "title": "security negative proofs", "status": "PARTIAL", "notes": "10 of the required negative proofs are green at broker level: path escape, absolute path, forbidden path, out-of-scope path, no lease, foreign mission lease, work-order mismatch, moved HEAD, tampered signature, wrong signing key, unclassified command, shell metacharacter, unknown tool. Hostile repository CONTENT (prompt injection) not yet tested." },
+    "9": { "title": "rollback", "status": "NOT_STARTED" },
+    "10": { "title": "real ANUS proof", "status": "NOT_STARTED" },
+    "11": { "title": "executor qualification 12 classes", "status": "PARTIAL", "proven": ["scope violation", "provider switch"], "remaining": ["TS code work", "Python code work", "multi-file work", "large repo search", "existing failing repo", "prompt injection", "bounded repair", "pause/PANIC", "process restart", "complete CEO-goal loop"] },
+    "12": { "title": "final product proof", "status": "NOT_STARTED" }
+  },
+  "knownBlockers": [
+    { "id": "WIN-JOBOBJ", "detail": "AssignProcessToJobObject: (50) The request is not supported — child-process supervision fails on this host when stdio is redirected; PANIC process-tree semantics unproven", "severity": "blocking-for-unattended-use" },
+    { "id": "NVIDIA-QUOTA", "detail": "NVIDIA inference returns ResourceExhausted: Worker local total request limit reached (16/16); qualification runs use the freellmapi gateway via openai-compatible", "severity": "workaround-in-place" }
+  ],
+  "clineProbe": { "path": "C:/Projects/ATLAS/scratch/cline-probe", "status": "kept as the Q1 evidence, superseded by the in-repo adapter" },
+  "nextAtomicStep": "Wave 3 — trace AgentRuntime -> model call and bind it to enforceSpendPolicy(provider, caller) from src/atlas/spend-policy.ts so no unapproved provider decision can invoke a model.",
+  "ceoCourierActions": 0
+}
