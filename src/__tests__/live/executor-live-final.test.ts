@@ -224,9 +224,13 @@ describe.skipIf(!runLive)('LIVE FINAL: one CEO sentence, one delivered result', 
       resolveSecret,
       evidenceDir,
     });
-    // nvidia carries its own registry baseUrl; the free gateway needs its own.
+    // A lane's baseUrl comes from the registry when it has one. Only the free
+    // gateway lane needs its URL injected from the secret source — an earlier
+    // version handed the gateway URL to EVERY non-nvidia lane, which is why
+    // cerebras reported "Invalid API key" (its key sent to the wrong host) and
+    // anthropic returned an HTML error page.
     const routedProvider =
-      provider.providerId === 'nvidia'
+      provider.baseUrl
         ? provider
         : { ...provider, baseUrl: (resolveSecret('FREELLMAPI_BASE_URL') ?? '').replace(/\/+$/, '') };
 

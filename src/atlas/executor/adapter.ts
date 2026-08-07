@@ -93,7 +93,14 @@ export interface ExecutorRunContext {
  * receives this and may not construct one: no approved decision, no model call.
  */
 export interface ApprovedProvider {
+  /** Atlas's own lane name — used for policy, evidence and receipts. */
   readonly providerId: string;
+  /**
+   * The id the executor SDK understands. Often identical, but an Atlas lane
+   * the vendor has never heard of must be presented as one it has, or it
+   * cannot even authenticate.
+   */
+  readonly vendorProviderId?: string;
   readonly modelId: string;
   readonly baseUrl?: string;
   /** Resolved at call time from the Atlas secret provider; never logged. */

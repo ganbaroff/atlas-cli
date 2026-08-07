@@ -229,7 +229,7 @@ export class ClineExecutorAdapter implements ExecutorAdapter {
     const provider = context.provider;
 
     this.agent = factory({
-      providerId: provider.providerId,
+      providerId: provider.vendorProviderId ?? provider.providerId,
       modelId: provider.modelId,
       apiKey: provider.apiKey,
       baseUrl: provider.baseUrl,

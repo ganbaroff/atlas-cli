@@ -31,6 +31,15 @@ export interface ProviderRegistryEntry {
   /** Env var holding the credential. Its VALUE is never logged or persisted. */
   readonly credentialEnvVar: string;
   readonly baseUrl?: string;
+  /**
+   * The provider id the EXECUTOR understands, when it differs from the Atlas
+   * lane name. Cline only knows a fixed set (anthropic, gemini,
+   * openai-compatible, nvidia, xai, ollama, groq, openrouter, openai-native);
+   * handing it 'cerebras' produced "Invalid API key" because it had no idea how
+   * to authenticate a lane it has never heard of. Atlas keeps its own lane
+   * names for policy and evidence; this is the translation at the boundary.
+   */
+  readonly vendorProviderId?: string;
   /** Models Atlas has priced. An unpriced model fails closed. */
   readonly models: readonly string[];
 }
@@ -78,6 +87,7 @@ export const PROVIDER_REGISTRY: Readonly<Record<string, ProviderRegistryEntry>> 
     funding: 'paid',
     credentialEnvVar: 'CEREBRAS_API_KEY',
     baseUrl: 'https://api.cerebras.ai/v1',
+    vendorProviderId: 'openai-compatible',
     models: ['gpt-oss-120b', 'zai-glm-4.7', 'gemma-4-31b'],
   },
   anthropic: {
@@ -211,6 +221,7 @@ export function approveProvider(request: ApproveProviderRequest): ApprovedProvid
 
   return {
     providerId: request.providerId,
+    vendorProviderId: entry.vendorProviderId ?? request.providerId,
     modelId: request.modelId,
     baseUrl: entry.baseUrl,
     apiKey,

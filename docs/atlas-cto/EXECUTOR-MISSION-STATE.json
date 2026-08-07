@@ -462,7 +462,17 @@
         "cerebrasFound": "CEREBRAS_API_KEY reaches https://api.cerebras.ai/v1 (HTTP 200) and offers gpt-oss-120b, zai-glm-4.7, gemma-4-31b. OpenAI-compatible, no thought_signature requirement — the only non-Google lane on this machine.",
         "cerebrasClassification": "Registered as funding:'paid', deliberately. Not because it lacks a free tier, but because Atlas cannot verify a call's price from here and this provider carries the ADR-013 $7.25 burn scar. Unknown price fails closed. Using it therefore requires ATLAS_ALLOW_PAID — a CEO spend decision, which is where this correctly stops."
       },
-      "realDefectFound": "Registering cerebras exposed a genuine gap: approveProvider trusted enforceSpendPolicy alone, and spend-policy's PAID_PROVIDERS allowlist (openai, openrouter, anthropic) does not contain cerebras. A lane classified 'paid' in the Atlas registry sailed straight through the spend gate. approveProvider now enforces its OWN classification first and enforceSpendPolicy second — both gates run. Four tests pin it."
+      "realDefectFound": "Registering cerebras exposed a genuine gap: approveProvider trusted enforceSpendPolicy alone, and spend-policy's PAID_PROVIDERS allowlist (openai, openrouter, anthropic) does not contain cerebras. A lane classified 'paid' in the Atlas registry sailed straight through the spend gate. approveProvider now enforces its OWN classification first and enforceSpendPolicy second — both gates run. Four tests pin it.",
+      "ceoAuthorizedPaidSpend": "2026-08-07, verbatim: \"atlas allow paid ... кредиты сколько хочешь пусть тратит на тесты\". ATLAS_ALLOW_PAID was passed per-command only; no env file and no setting was changed.",
+      "everyLaneProbedDirectly": {
+        "method": "Each provider was called directly with curl-equivalent fetch, bypassing Cline entirely, so the verdict is the provider's own answer and not an SDK artefact.",
+        "freellmapi_google": "multi-turn tool calling dies on thought_signature; gateway also reports All models exhausted",
+        "nvidia": "no response — ResourceExhausted 16/16, then three separate 10-minute timeouts",
+        "cerebras": "HTTP 402 payment_required: 'Payment required to access this resource. Visit your billing tab.' Cline surfaced this as 'Invalid API key', which was misleading.",
+        "anthropic": "HTTP 400 invalid_request_error: 'Your credit balance is too low to access the Anthropic API.'"
+      },
+      "myDefectFound": "The final test injected the FREE GATEWAY baseUrl into every lane except nvidia, so the cerebras key was sent to the gateway host and anthropic received an HTML error page. Fixed: a lane with its own registry baseUrl keeps it, and only the gateway lane has its URL injected. The direct probes above were run after the fix and confirm the provider verdicts are real, not routing artefacts.",
+      "moneySpent": "zero. Every call was refused by the provider before any generation."
     }
   },
   "knownBlockers": [
@@ -481,11 +491,11 @@
     "path": "C:/Projects/ATLAS/scratch/cline-probe",
     "status": "kept as the Q1 evidence, superseded by the in-repo adapter"
   },
-  "nextAtomicStep": "This is now a CEO decision, not a technical one. Either (a) CEO sets ATLAS_ALLOW_PAID and names a spend ceiling, after which the final proof reruns on cerebras gpt-oss-120b — the machinery is already wired and one command away; or (b) a free non-Google OpenAI-compatible endpoint is supplied and added to PROVIDER_REGISTRY. Do not redesign Atlas and do not weaken the spend gate to unblock this.",
+  "nextAtomicStep": "CEO must FUND one lane, not merely authorize it. Cheapest to unblock, in order: (1) top up Anthropic — the key exists and Cline supports it natively, so it is one command after funding; (2) top up Cerebras billing — gpt-oss-120b, also one command; (3) supply an Azure/Vertex OpenAI-compatible endpoint and key, which are NOT present in the secret source today, and add the lane to PROVIDER_REGISTRY. Do not weaken the spend gate and do not redesign Atlas.",
   "ceoCourierActions": 0,
   "testBaseline": "docs/atlas-cto/ANUS-TEST-BASELINE.json",
   "knownArtifacts": [
     "ANUS/.worktrees/atlas-mission-courier-ts2367 on branch atlas/mission-courier-ts2367 — left in place as the Wave 10 evidence; safe to remove with `git worktree remove --force` once the receipt is accepted"
   ],
-  "productStatus": "ATLAS PRODUCT NOT VERIFIED — EXACT BLOCKER: every free lane on this machine proxies through the Google API, which fails multi-turn tool calling because the Cline SDK sends no thought_signature; the credited NVIDIA lane does not respond; the only non-Google lane (cerebras) is classified paid and correctly refused without ATLAS_ALLOW_PAID. Atlas is not the blocker — no Atlas invariant and no Cline contract failed in any of the five attempts."
+  "productStatus": "ATLAS PRODUCT NOT VERIFIED — EXACT BLOCKER: every model lane on this machine is exhausted or unfunded. Google gateway breaks multi-turn tool calling AND is out of quota; NVIDIA does not respond; Cerebras returns HTTP 402 payment required; Anthropic reports credit balance too low. Paid spend is AUTHORIZED by the CEO and still cannot proceed, because authorization is not funding. Atlas is not the blocker: no Atlas invariant and no Cline contract failed in any of the eight attempts."
 }
