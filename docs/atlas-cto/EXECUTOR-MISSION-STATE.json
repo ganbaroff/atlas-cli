@@ -24,7 +24,17 @@
       "repairReason": "checkWorkOrderScope resolved the env-backed verifier and failed closed (signature_missing); verifier is now an injectable broker option, production still fails closed when unset",
       "receipts": ["node node_modules/vitest/vitest.mjs run src/__tests__/executor-tool-broker.test.ts -> 19 passed (19), exit 0"]
     },
-    "3": { "title": "model/spend boundary", "status": "NOT_STARTED" },
+    "3": {
+      "title": "model/spend boundary",
+      "status": "DONE",
+      "artifacts": ["src/atlas/executor/provider-authority.ts", "src/__tests__/executor-provider-authority.test.ts"],
+      "invariant": "ApprovedProvider can only be minted by approveProvider(); ExecutorAdapter accepts one but cannot construct one, so an executor cannot pick its own provider.",
+      "failClosedFix": "spend-policy.isPaidProvider is an allowlist of PAID names, so an unrecognised provider reads as free — a silent bypass at an executor boundary. approveProvider now refuses unknown provider, unpriced model, missing/empty credential, ATLAS_PAUSE, and SpendBlockedError, each before any credential lookup or evidence write.",
+      "noSecondLedger": "paid path still calls enforceSpendPolicy; the decision is recorded as one audit-finding claim in the existing M8 ledger via appendClaim",
+      "repairCycles": 1,
+      "repairReason": "test-only defect: the no-leak assertion compared String(apiKey.length) as a substring and false-positived against the claim timestamp; replaced with an 8-char sliding-window check",
+      "receipts": ["node node_modules/vitest/vitest.mjs run src/__tests__/executor-provider-authority.test.ts src/__tests__/executor-tool-broker.test.ts -> 2 files passed, 31 passed (31), exit 0"]
+    },
     "4": { "title": "real coding mission on disposable fixture", "status": "NOT_STARTED" },
     "5": { "title": "failure + one repair", "status": "NOT_STARTED" },
     "6": { "title": "pause/resume/PANIC", "status": "PARTIAL", "notes": "broker-level pause proven by test; process-tree PANIC and the Windows AssignProcessToJobObject(50) supervision failure are NOT solved" },
@@ -40,6 +50,6 @@
     { "id": "NVIDIA-QUOTA", "detail": "NVIDIA inference returns ResourceExhausted: Worker local total request limit reached (16/16); qualification runs use the freellmapi gateway via openai-compatible", "severity": "workaround-in-place" }
   ],
   "clineProbe": { "path": "C:/Projects/ATLAS/scratch/cline-probe", "status": "kept as the Q1 evidence, superseded by the in-repo adapter" },
-  "nextAtomicStep": "Wave 3 — trace AgentRuntime -> model call and bind it to enforceSpendPolicy(provider, caller) from src/atlas/spend-policy.ts so no unapproved provider decision can invoke a model.",
+  "nextAtomicStep": "Implement ClineExecutorAdapter in src/atlas/executor/cline-adapter.ts behind the ExecutorAdapter interface: dynamic import of @cline/agents (never a static import — @cline is not installed in ANUS node_modules), register ONLY broker.tools as Agent tools, map AgentRuntimeEvent onto the closed ExecutorEvent set, take providerId/modelId/apiKey/baseUrl exclusively from the ApprovedProvider, and back pause() with broker.pause() plus panic() with an agent.abort() call. Test with an injected fake agent factory so the suite does not require the SDK.",
   "ceoCourierActions": 0
 }
