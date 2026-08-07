@@ -296,7 +296,42 @@
     },
     "10": {
       "title": "real ANUS proof",
-      "status": "NOT_STARTED"
+      "status": "DONE",
+      "debtChosen": "src/courier/courier-loop.ts(549,23) TS2367 — a defence-in-depth identity check comparing two literal adapter-id types tsc proves can never overlap. One file, one expression, no security surface, no architecture.",
+      "debtRejected": "DEBT-6 (delete the dead OpenManus path) was rejected as the first ANUS proof: grep shows OpenManus referenced in six files (action-lane, dispatcher, contracts, hands/registry, briefing, executor-adapter-contract), which is the broad architectural change the execution order excludes.",
+      "isolation": "The mission ran in its own throwaway worktree ANUS/.worktrees/atlas-mission-courier-ts2367 on branch atlas/mission-courier-ts2367, Work Order scoped to exactly one allowedPath. Canonical ANUS untouched, nothing merged, nothing pushed.",
+      "run1": {
+        "verdict": "VERIFIED",
+        "repairCycles": 0,
+        "typecheckErrors": {
+          "baseline": 3,
+          "final": 2
+        },
+        "changedFiles": [
+          "M src/courier/courier-loop.ts",
+          "?? .atlas-evidence/"
+        ],
+        "brokerRefusals": [],
+        "ceoCourierActions": 0,
+        "note": "The executor really fixed a real ANUS typecheck error. Atlas measured the drop itself by running tsc in the mission worktree, and separately verified the IDENTITY_COLLISION runtime guard still existed so the error could not be silenced by deleting the check."
+      },
+      "run2": {
+        "verdict": "REJECT",
+        "typecheckErrors": {
+          "baseline": 3,
+          "final": 3
+        },
+        "note": "A second run of the same mission failed to fix it and was rolled back to baseline. Same code, same prompt, different model output — the loop is deterministic, the executor is not. Both outcomes are correct behaviour and both are exercised by the test."
+      },
+      "honestLimit": "VERIFIED is achievable on this debt but is NOT reliably reproducible with gemini-3.5-flash. The Atlas machinery behaved identically in both runs; only the executor's quality varied.",
+      "myDefectFound": "The test's isolation assertion hand-sliced the git porcelain status prefix and ate a character off every path, failing a mission that had actually succeeded. It now uses the shared parsePorcelain from rollback.ts.",
+      "artifacts": [
+        "src/__tests__/live/executor-live-anus.test.ts"
+      ],
+      "receipts": [
+        "node node_modules/vitest/vitest.mjs run src/__tests__/live/executor-live-anus.test.ts -> 1 passed | 1 skipped, exit 0 (REJECT path, rolled back to baseline)",
+        "same test, earlier run -> VERIFIED, tsc 3 -> 2"
+      ]
     },
     "11": {
       "title": "executor qualification 12 classes",
@@ -320,13 +355,13 @@
         "provider/model switch mid-qualification without touching the Work Order or tools",
         "PANIC process tree (real processes)",
         "prompt injection",
-        "real process restart (SIGKILL + fresh process, mutation ran exactly once)"
+        "real process restart (SIGKILL + fresh process, mutation ran exactly once)",
+        "live mission against ANUS itself (VERIFIED once, REJECT+rollback once, both correct)",
+        "existing failing repo (ANUS carries 3 pre-existing tsc errors and 4 pre-existing test failures)"
       ],
       "remaining": [
         "Python code work",
-        "large repo search",
-        "existing failing repo",
-        "live mission against ANUS itself"
+        "large repo search"
       ]
     },
     "12": {
@@ -350,7 +385,10 @@
     "path": "C:/Projects/ATLAS/scratch/cline-probe",
     "status": "kept as the Q1 evidence, superseded by the in-repo adapter"
   },
-  "nextAtomicStep": "Wave 10: pick ONE small, non-security, non-architectural ANUS debt (DEBT-6 in MISSION-BOARD — delete the dead OpenManus path in src/operator/action-lane.ts — is the intended candidate; confirm it is still dead first). Run the full loop against a real ANUS worktree: signed Work Order scoped to that one file, real lease, Atlas broker, ClineExecutorAdapter, tests, independent verification, evidence. No merge, no push.",
+  "nextAtomicStep": "Wave 11 remainder then Wave 12. Two mission classes are unproven: (a) Python code work — run a mission against a small disposable Python fixture with pytest as the acceptance command, confirming classifyCommand's 'python' class works end to end; (b) large repository search — a mission whose only job is to locate something in the ANUS tree via search_files, proving the tool is usable at repo scale rather than on a 3-file fixture. Then Wave 12: one natural-language CEO goal driving the full loop with the complete receipt.",
   "ceoCourierActions": 0,
-  "testBaseline": "docs/atlas-cto/ANUS-TEST-BASELINE.json"
+  "testBaseline": "docs/atlas-cto/ANUS-TEST-BASELINE.json",
+  "knownArtifacts": [
+    "ANUS/.worktrees/atlas-mission-courier-ts2367 on branch atlas/mission-courier-ts2367 — left in place as the Wave 10 evidence; safe to remove with `git worktree remove --force` once the receipt is accepted"
+  ]
 }
