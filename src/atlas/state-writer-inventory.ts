@@ -141,6 +141,12 @@ export const STATE_WRITER_INVENTORY: Readonly<
       'voiceTts() writes synthesized audio bytes to the caller-supplied outPath argument',
     ),
   ],
+  'src/atlas/executor/mission-record.ts': [
+    operational(
+      ['operator-state'],
+      'durable mission continuity record: missionId, work-order hash, milestone, completed steps, lease owner, spend claim id and evidence path. Written atomically (temp + rename) so a killed process leaves either the old record or the new one. Executor session state is carried as an opaque reference and is never Atlas memory authority',
+    ),
+  ],
   'src/atlas/executor/tool-broker.ts': [
     surface(
       'configuration-content',

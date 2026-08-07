@@ -198,9 +198,21 @@
     },
     "7": {
       "title": "crash/restart recovery",
-      "status": "PARTIAL",
-      "proven": "snapshot() binds to sha256(canonicalizeWorkOrder + signature), so a widened or re-signed order yields a different hash and a snapshot cannot be replayed against it. restore() refuses a foreign adapterId and a foreign adapterVersion, and downgrades a 'running' snapshot to 'paused' so a restored mission never resumes as if still live.",
-      "notProven": "No real process kill and restart has been performed. Spend reservations, lease state and attempt budget are not yet part of the persisted mission record."
+      "status": "DONE",
+      "record": "mission-record.ts holds the Atlas-owned continuity record: missionId, work-order hash, repo/worktree, baseHead, current milestone, attempt/maxAttempts, lease owner, spendClaimId, evidence path, and the completed-step list. The executor's own session state is carried as an OPAQUE reference — Atlas persists it so a restarted mission can rehydrate the vendor, and never reads it as authority.",
+      "crashSafety": "Every write is temp-file-then-rename, so a process killed mid-write leaves either the previous record or the new one, never a truncated file that would strand the mission. A corrupt record raises rather than silently starting the mission over.",
+      "idempotence": "runStepOnce answers 'did this already happen' from disk, not from memory. A completed stepId is skipped on replay, so a mutation cannot run twice and a provider cannot be invoked twice after a crash.",
+      "realRestartProof": "A spawned worker process wrote the record, appended one line to a target file, then SIGKILLed itself with no cleanup. A second, fresh process restored from disk and attempted the same step: it reported skipped:true and the target file still contained exactly ONE line. The restored record still carried spendClaimId 'clm_restart_spend' and the single completed step.",
+      "artifacts": [
+        "src/atlas/executor/mission-record.ts",
+        "src/__tests__/executor-mission-record.test.ts"
+      ],
+      "receipts": [
+        "node node_modules/vitest/vitest.mjs run src/__tests__/executor-mission-record.test.ts -> 8 passed (8), exit 0",
+        "eight executor suites together -> 105 passed (105), exit 0",
+        "node node_modules/typescript/bin/tsc --noEmit -> 3 errors, all pre-existing, 0 new"
+      ],
+      "openNote": "The record is proven standalone. Threading it through a live ClineExecutorAdapter mission — so a real mid-mission kill resumes the vendor session rather than a synthetic step — is the remaining integration."
     },
     "8": {
       "title": "security negative proofs",
@@ -307,13 +319,13 @@
         "rollback of real executor edits (live)",
         "provider/model switch mid-qualification without touching the Work Order or tools",
         "PANIC process tree (real processes)",
-        "prompt injection"
+        "prompt injection",
+        "real process restart (SIGKILL + fresh process, mutation ran exactly once)"
       ],
       "remaining": [
         "Python code work",
         "large repo search",
         "existing failing repo",
-        "real process restart",
         "live mission against ANUS itself"
       ]
     },
@@ -338,7 +350,7 @@
     "path": "C:/Projects/ATLAS/scratch/cline-probe",
     "status": "kept as the Q1 evidence, superseded by the in-repo adapter"
   },
-  "nextAtomicStep": "Wave 7 real restart recovery: persist the Atlas-owned mission record (missionId, workOrder hash, repo/worktree, baseHead, milestone, verified steps, executor snapshot reference, lease state, spend claim id, attempt count, evidence path) to disk, kill the Atlas process for real, start a fresh one, restore, and prove no completed mutation runs twice, no provider invocation duplicates, and no spend reservation disappears.",
+  "nextAtomicStep": "Wave 10: pick ONE small, non-security, non-architectural ANUS debt (DEBT-6 in MISSION-BOARD — delete the dead OpenManus path in src/operator/action-lane.ts — is the intended candidate; confirm it is still dead first). Run the full loop against a real ANUS worktree: signed Work Order scoped to that one file, real lease, Atlas broker, ClineExecutorAdapter, tests, independent verification, evidence. No merge, no push.",
   "ceoCourierActions": 0,
   "testBaseline": "docs/atlas-cto/ANUS-TEST-BASELINE.json"
 }
