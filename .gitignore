@@ -97,3 +97,6 @@ smoke-log*.txt
 
 # m10 lifecycle test sandbox (crash-leftover guard)
 .m10-*/
+
+# Live desktop-proof artifacts: screenshots of the operator screen. Never commit.
+.atlas-proof/
