@@ -130,8 +130,46 @@
       ]
     },
     "5": {
-      "title": "failure + one repair",
-      "status": "NOT_STARTED"
+      "title": "failure + one bounded repair",
+      "status": "DONE",
+      "design": "runMissionWithBoundedRepair has no loop. Attempt, verify, at most one repair, verify, stop. A third attempt is unrepresentable in the code, not merely discouraged. Acceptance is re-derived from disk and a real test run, so an executor claiming success without doing the work is rejected exactly like one that admits failure.",
+      "liveProof": {
+        "verdict": "VERIFIED",
+        "repairCycles": 1,
+        "attempt1": {
+          "executorStatus": "succeeded",
+          "toolCalls": 6,
+          "refused": 1,
+          "failedChecks": [
+            "ready-route"
+          ]
+        },
+        "repairNamedOnly": [
+          "ready-route"
+        ],
+        "attempt2": {
+          "executorStatus": "succeeded",
+          "toolCalls": 5,
+          "refused": 0,
+          "failedChecks": []
+        },
+        "healthPresent": true,
+        "readyPresent": true,
+        "independentTestExitCode": 0,
+        "ceoCourierActions": 0
+      },
+      "plantedCondition": "Atlas acceptance required BOTH /health and /ready; the executor's first instruction named only /health. Attempt 1 failed on ready-route exactly as designed.",
+      "artifacts": [
+        "src/atlas/executor/mission-runner.ts",
+        "src/__tests__/executor-mission-runner.test.ts",
+        "src/__tests__/live/executor-live-repair.test.ts"
+      ],
+      "receipts": [
+        "node node_modules/vitest/vitest.mjs run src/__tests__/executor-mission-runner.test.ts -> 7 passed (7), exit 0",
+        "node node_modules/vitest/vitest.mjs run src/__tests__/live/executor-live-repair.test.ts -> 1 passed | 1 skipped, exit 0",
+        "4 executor unit suites together -> 60 passed (60), exit 0",
+        "node node_modules/typescript/bin/tsc --noEmit -> 3 errors, all pre-existing, 0 new"
+      ]
     },
     "6": {
       "title": "pause/resume/PANIC",
@@ -201,14 +239,15 @@
         "snapshot/restore contracts",
         "complete CEO-goal loop (live, fixture)",
         "TS/JS code work (live)",
-        "multi-file work (live, 2 files)"
+        "multi-file work (live, 2 files)",
+        "bounded repair (live, planted condition)",
+        "deterministic acceptance verified against disk"
       ],
       "remaining": [
         "Python code work",
         "large repo search",
         "existing failing repo",
         "prompt injection",
-        "bounded repair driven by a planted acceptance failure",
         "real PANIC process tree",
         "real process restart",
         "live mission against ANUS itself"
@@ -235,7 +274,7 @@
     "path": "C:/Projects/ATLAS/scratch/cline-probe",
     "status": "kept as the Q1 evidence, superseded by the in-repo adapter"
   },
-  "nextAtomicStep": "Wave 5: plant an acceptance condition the executor does not know (e.g. the verifier also requires a /ready route), let the first attempt fail deterministically, generate exactly ONE bounded repair instruction, re-invoke the executor, re-run tests, verify independently. A second failure must produce an honest REJECT, not another repair.",
+  "nextAtomicStep": "Wave 9 rollback: run a live mission that changes several allowed files and deliberately fails final acceptance, then prove the declared rollbackMethod ('git-checkout--') returns the worktree to its pre-state, that changed files were known before rollback, that evidence survives it, that the canonical ANUS tree is untouched, and that the lease is released. Reuse the fixture and the mission-runner REJECT path.",
   "ceoCourierActions": 0,
   "testBaseline": "docs/atlas-cto/ANUS-TEST-BASELINE.json"
 }
