@@ -218,7 +218,23 @@
     },
     "9": {
       "title": "rollback",
-      "status": "NOT_STARTED"
+      "status": "PARTIAL",
+      "proven": {
+        "unitLevel": "10/10 against a REAL temporary git repository, not a mocked git. Restores modified + staged + untracked in one pass; captures the changed set BEFORE undoing it so a REJECT can name the files; preserves the evidence directory across the clean; refuses a worktree the Work Order does not name before running any git command; refuses an undeclared or unsupported rollbackMethod and leaves the tree untouched when it refuses; reports residue instead of claiming success; safe on a clean tree; HEAD never rewritten.",
+        "liveLevel": "REJECT path end-to-end on the fixture: verdict REJECT after exactly 1 repair, rollbackOk true, evidence pack survived the rollback, HEAD unchanged, RepoWriterLease released and readable as 'released' afterwards, CEO courier actions 0."
+      },
+      "notProven": "The live run rolled back an EMPTY diff. The executor changed no files: attempt 1 made a single tool call that the broker refused with path_out_of_scope, and both attempts came back executorStatus 'failed'. So the live evidence covers REJECT, evidence survival, HEAD safety and lease release — it does NOT yet show a live rollback of real executor edits. That property is currently proven only at unit level.",
+      "realDefectFound": "rollbackMission originally ran `git checkout -- .`, which restores the worktree from the INDEX. Anything the executor had staged survived the rollback. A unit test with a staged file caught it; the implementation now uses `git restore --source=HEAD --staged --worktree -- .`, the only form that undoes both.",
+      "fixtureArtefact": "Windows autocrlf rewrote LF to CRLF on checkout so restored files never byte-matched their pre-state and every rollback reported residue. The test repo now sets core.autocrlf false. Fixture artefact, not a rollback defect.",
+      "artifacts": [
+        "src/atlas/executor/rollback.ts",
+        "src/__tests__/executor-rollback.test.ts",
+        "src/__tests__/live/executor-live-rollback.test.ts"
+      ],
+      "receipts": [
+        "node node_modules/vitest/vitest.mjs run src/__tests__/executor-rollback.test.ts -> 10 passed (10), exit 0",
+        "node node_modules/vitest/vitest.mjs run src/__tests__/live/executor-live-rollback.test.ts -> 1 passed | 1 skipped, exit 0"
+      ]
     },
     "10": {
       "title": "real ANUS proof",
@@ -274,7 +290,7 @@
     "path": "C:/Projects/ATLAS/scratch/cline-probe",
     "status": "kept as the Q1 evidence, superseded by the in-repo adapter"
   },
-  "nextAtomicStep": "Wave 9 rollback: run a live mission that changes several allowed files and deliberately fails final acceptance, then prove the declared rollbackMethod ('git-checkout--') returns the worktree to its pre-state, that changed files were known before rollback, that evidence survives it, that the canonical ANUS tree is untouched, and that the lease is released. Reuse the fixture and the mission-runner REJECT path.",
+  "nextAtomicStep": "Finish Wave 9's live gap first: re-run the rollback mission with a model or instruction that actually edits the two allowed files, so a live rollback of a NON-EMPTY diff is on record (the executor produced path_out_of_scope then failed twice on gemini-2.5-flash; try the nvidia credited provider, and widen nothing else). Then Wave 6 production PANIC: implement an Atlas-owned process-tree kill for this Windows host — AssignProcessToJobObject: (50) means job objects are unavailable, so evaluate `taskkill /T /F /PID` against a spawned child tree and prove unrelated processes survive.",
   "ceoCourierActions": 0,
   "testBaseline": "docs/atlas-cto/ANUS-TEST-BASELINE.json"
 }
