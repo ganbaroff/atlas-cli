@@ -97,15 +97,36 @@
     },
     "4": {
       "title": "real coding mission on disposable fixture",
-      "status": "PARTIAL",
-      "done": "ClineExecutorAdapter implemented behind the ExecutorAdapter interface: src/atlas/executor/cline-adapter.ts. Vendor reached only through a dynamic import held in a variable, so @cline/agents is not a build dependency of ANUS and tsc stays clean without the SDK installed. Vendor receives exactly broker.tools and nothing else; provider credentials come only from ApprovedProvider; a provider without spendClaimId is refused before any agent is constructed.",
-      "notDone": "No live mission has run through this path. The disposable git fixture, the /health goal, milestone generation, lease acquisition and evidence emission are not wired.",
-      "artifacts": [
-        "src/atlas/executor/cline-adapter.ts",
-        "src/__tests__/executor-cline-adapter.test.ts"
+      "status": "DONE",
+      "proof": "First end-to-end mission with the REAL Cline SDK. CEO-level goal in, working code out, verified by Atlas against disk rather than by the executor's word.",
+      "receipt": {
+        "status": "succeeded",
+        "turns": 6,
+        "toolCallsRequested": 5,
+        "toolCallsRefused": 0,
+        "provider": "openai-compatible (freellmapi gateway)",
+        "model": "gemini-2.5-flash",
+        "paid": false,
+        "spendClaimId": "clm_mission-live-health-1-openai-compatible-1786110213338",
+        "changedFiles": [
+          "server.js",
+          "server.test.js"
+        ],
+        "healthRoutePresent": true,
+        "independentTestExitCode": 0,
+        "brokerRefusals": [],
+        "ceoCourierActions": 0
+      },
+      "fixture": "C:/Projects/ATLAS/scratch/mission-fixture (disposable git repo)",
+      "sdkLoading": "@cline/agents cannot be installed into ANUS — ollama-ai-provider pins peer zod ^3 against this repo's zod 4.3.6 (npm ERESOLVE). The SDK is imported by absolute path from the qualification sandbox and injected as agentFactory. Same Agent class the dynamic import would load, not a fake.",
+      "repairCycles": 2,
+      "repairs": [
+        "audit-finding claims require auditVerdict + sourceRef; the unit test mocked appendClaim with a permissive push, so the schema violation only surfaced on the first live run. Fixed in provider-authority.ts, and the unit mock now validates through parseTypedClaim so the class of defect cannot recur.",
+        "The Work Order authorized only shell command classes, so every file tool was refused with command_class_forbidden. 'filesystem' is now authorized explicitly — a Work Order must grant file access the same way it grants commands."
       ],
-      "receipts": [
-        "node node_modules/vitest/vitest.mjs run src/__tests__/executor-cline-adapter.test.ts -> 22 passed (22), exit 0"
+      "alsoFixed": "Live run 1 showed the model reaching for `ls` through run_command, getting a refusal, and abandoning the mission. The adapter's system prompt now enumerates the actual tool names and states that a REFUSED result means adapt, not stop.",
+      "artifacts": [
+        "src/__tests__/live/executor-live-mission.test.ts"
       ]
     },
     "5": {
@@ -177,19 +198,20 @@
         "lease binding",
         "spend control",
         "pause",
-        "snapshot/restore contracts"
+        "snapshot/restore contracts",
+        "complete CEO-goal loop (live, fixture)",
+        "TS/JS code work (live)",
+        "multi-file work (live, 2 files)"
       ],
       "remaining": [
-        "TS code work",
         "Python code work",
-        "multi-file work",
         "large repo search",
         "existing failing repo",
         "prompt injection",
-        "bounded repair",
+        "bounded repair driven by a planted acceptance failure",
         "real PANIC process tree",
         "real process restart",
-        "complete CEO-goal loop"
+        "live mission against ANUS itself"
       ]
     },
     "12": {
@@ -213,7 +235,7 @@
     "path": "C:/Projects/ATLAS/scratch/cline-probe",
     "status": "kept as the Q1 evidence, superseded by the in-repo adapter"
   },
-  "nextAtomicStep": "Wave 4 live: build the disposable git fixture runner — mint a signed Work Order, acquire a real RepoWriterLease, construct AtlasToolBroker over the fixture worktree, approveProvider() on the free gateway, run ClineExecutorAdapter against the real @cline/agents (installed into the fixture, not into ANUS) with the goal 'add a /health endpoint returning JSON and prove it with a test', then release the lease and write the evidence pack. This is the first run where the vendor is real rather than faked.",
+  "nextAtomicStep": "Wave 5: plant an acceptance condition the executor does not know (e.g. the verifier also requires a /ready route), let the first attempt fail deterministically, generate exactly ONE bounded repair instruction, re-invoke the executor, re-run tests, verify independently. A second failure must produce an honest REJECT, not another repair.",
   "ceoCourierActions": 0,
   "testBaseline": "docs/atlas-cto/ANUS-TEST-BASELINE.json"
 }

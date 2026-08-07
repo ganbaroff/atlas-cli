@@ -158,6 +158,12 @@ export function approveProvider(request: ApproveProviderRequest): ApprovedProvid
       path: `mission/${request.missionId}`,
       confidence: 1,
       source: 'atlas/executor/provider-authority.approveProvider',
+      // The M8 schema requires both on an audit-finding: the verdict makes the
+      // claim falsifiable, and sourceRef names what an auditor must re-check.
+      // Mocking appendClaim in the unit tests hid this — the first live run
+      // failed on it immediately.
+      auditVerdict: 'confirmed',
+      sourceRef: `workOrder:${request.workOrderId}#provider=${request.providerId}&model=${request.modelId}&funding=${entry.funding}`,
       ts: at.toISOString(),
     },
     request.evidenceDir,

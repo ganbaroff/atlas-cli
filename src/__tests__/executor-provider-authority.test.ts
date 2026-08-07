@@ -10,6 +10,8 @@
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { parseTypedClaim } from '../evidence/claim.js';
+
 import {
   approveProvider,
   ProviderNotApprovedError,
@@ -32,9 +34,14 @@ function resolveSecret(name: string): string | undefined {
   return SECRETS[name];
 }
 
+// Validates through the REAL schema before recording. A permissive mock here is
+// what let a schema violation reach the first live run: audit-finding requires
+// auditVerdict and sourceRef, and a plain push accepted a claim the ledger
+// would have rejected.
 const recordClaim = ((claim: unknown) => {
-  recordedClaims.push(claim);
-  return { prevHash: null, entryHash: 'test', claim } as never;
+  const parsed = parseTypedClaim(claim);
+  recordedClaims.push(parsed);
+  return { prevHash: null, entryHash: 'test', claim: parsed } as never;
 }) as never;
 
 function approve(overrides: Record<string, unknown> = {}) {
