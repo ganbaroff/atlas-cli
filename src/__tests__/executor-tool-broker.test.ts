@@ -337,3 +337,36 @@ describe('AtlasToolBroker — hostile executor obeying an injected payload', () 
     expect(out).toEqual({ ok: false, refusedReason: 'shell_metacharacter_refused' });
   });
 });
+
+describe('AtlasToolBroker — python command class', () => {
+  // The live Python mission ended REJECT because the model never called the
+  // tool, which leaves the class itself unproven. These drive it directly.
+  // The base Work Order authorizes git/node/filesystem, so a python mission
+  // needs its own order — which is itself the point: the class must be granted.
+  const pythonOrder = () =>
+    signWorkOrder(
+      makeOrder({ allowedCommandClasses: ['git', 'node', 'filesystem', 'python'] }),
+      hmacSigner(SIGNING_KEY),
+    );
+
+  it('classifies and executes a real python command, returning its exit code', async () => {
+    const broker = makeBroker({ order: pythonOrder() });
+    const out = await broker.invoke('run_command', { command: 'python --version' });
+    expect(out.ok).toBe(true);
+    if (out.ok) expect(out.output).toMatch(/^exit=0/);
+  });
+
+  it('returns a real non-zero exit code instead of hiding a failure', async () => {
+    const broker = makeBroker({ order: pythonOrder() });
+    const out = await broker.invoke('run_command', { command: 'python -c import_sys_broken' });
+    expect(out.ok).toBe(true);
+    if (out.ok) expect(out.output).not.toMatch(/^exit=0/);
+  });
+
+  it('refuses python when the Work Order does not authorize that class', async () => {
+    const nodeOnly = signWorkOrder(makeOrder({ allowedCommandClasses: ['node'] }), hmacSigner(SIGNING_KEY));
+    const broker = makeBroker({ order: nodeOnly });
+    const out = await broker.invoke('run_command', { command: 'python --version' });
+    expect(out).toEqual({ ok: false, refusedReason: 'command_class_forbidden' });
+  });
+});
