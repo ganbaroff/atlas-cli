@@ -1,0 +1,70 @@
+{
+  "purpose": "Measured baseline of the ANUS suite so a later session never has to re-derive it from zero. Compare against this before blaming your own change: a failure listed here is pre-existing and is NOT a regression.",
+  "measuredAt": "2026-08-07",
+  "measuredOn": {
+    "branch": "codex/cline-executor-adapter",
+    "worktree": "C:/Users/user/OneDrive/Documents/GitHub/ANUS/.worktrees/cline-executor-adapter",
+    "headAtMeasurement": "6333cfd",
+    "host": "WIN-QGHLRRNLBOF, Windows 11"
+  },
+  "howToReproduce": {
+    "suite": "node node_modules/vitest/vitest.mjs run",
+    "typecheck": "node node_modules/typescript/bin/tsc --noEmit",
+    "warning": "never `npx vitest` — it returns nothing on this host; never pipe to tail and read $? — that returns tail's exit code and has hidden a real failure before",
+    "runtimeMinutes": 2
+  },
+  "suite": {
+    "command": "node node_modules/vitest/vitest.mjs run",
+    "exitCode": 1,
+    "testFiles": { "passed": 153, "failed": 4, "total": 157 },
+    "tests": { "passed": 1558, "failed": 5, "skipped": 12, "total": 1575 },
+    "durationSeconds": 113,
+    "note": "exitCode 1 is the EXPECTED steady state on this host. The suite is not green and must never be reported as green."
+  },
+  "typecheck": {
+    "command": "node node_modules/typescript/bin/tsc --noEmit",
+    "exitCode": 2,
+    "errorCount": 3,
+    "note": "exitCode 2 with exactly these 3 errors is the expected steady state. A 4th error is yours."
+  },
+  "knownFailures": [
+    {
+      "file": "src/__tests__/m10-install-lifecycle.test.ts",
+      "cases": ["install: build + health green from isolated state dirs", "upgrade: rebuild preserves exec-graph + goal budget state", "rollback: restore prior dist; state + health still valid"],
+      "count": 3,
+      "cause": "`npx tsup` is not resolvable on this host's PATH inside vitest's child-process context",
+      "class": "host-environment",
+      "preExisting": true,
+      "owner": "unassigned"
+    },
+    {
+      "file": "src/__tests__/integration/e2e-binary.test.ts",
+      "cases": ["E2E: atlas binary"],
+      "count": 1,
+      "cause": "its beforeAll tsup build fails for the same PATH reason; its 10 tests then report as skipped and are part of the 12 skipped",
+      "class": "host-environment",
+      "preExisting": true,
+      "owner": "unassigned"
+    }
+  ],
+  "knownTypecheckErrors": [
+    { "file": "src/__tests__/runner-health-no-claim.test.ts", "line": 390, "code": "TS2352", "preExisting": true },
+    { "file": "src/__tests__/runner-health-no-claim.test.ts", "line": 396, "code": "TS2352", "preExisting": true },
+    { "file": "src/courier/courier-loop.ts", "line": 549, "code": "TS2367", "preExisting": true }
+  ],
+  "regressionsFoundAndFixedThisSession": [
+    {
+      "file": "src/__tests__/state-writer-inventory.test.ts",
+      "cause": "src/atlas/executor/tool-broker.ts calls filesystem mutators and was not classified in STATE_WRITER_INVENTORY; the structural test discovers writers independently, so an unregistered writer fails by design",
+      "fix": "registered as configuration-content / caller-target — mission-worktree writes only, nothing under ATLAS_STATE_ROOT",
+      "verifiedBy": "node node_modules/vitest/vitest.mjs run src/__tests__/state-writer-inventory.test.ts -> 4 passed (4), exit 0"
+    }
+  ],
+  "deltaVsPriorBaseline": {
+    "priorBaseline": "1529 passed / 3 failed / 12 skipped (CURSOR-HANDOFF 2026-08-06, branch codex/p1a-work-orders)",
+    "current": "1558 passed / 5 failed / 12 skipped, then 1 of those 5 fixed",
+    "addedByThisSession": 31,
+    "newFailuresRemaining": 0,
+    "interpretation": "+31 tests are the two new executor suites (19 broker + 12 provider authority). The 5th failure was mine and is fixed. The remaining 4 are the same host-environment failures as the prior baseline."
+  }
+}

@@ -6,6 +6,24 @@
   "worktree": "C:/Users/user/OneDrive/Documents/GitHub/ANUS/.worktrees/cline-executor-adapter",
   "baseHead": "2aa383a",
   "executorCandidate": { "name": "cline", "packages": ["@cline/sdk@0.0.71", "@cline/agents@0.0.71"], "status": "PASSED_Q1_NOT_QUALIFIED" },
+  "frozen": {
+    "rule": "A FROZEN wave is closed. Do not redesign it, do not re-litigate its choices, do not re-run its qualification from scratch. Touch a frozen artifact only to fix a defect proven by a failing test, and say so in the commit. Everything else builds ON them.",
+    "waves": [1, 2, 3],
+    "frozenAt": "2026-08-07",
+    "frozenAtCommit": "6333cfd",
+    "artifacts": [
+      "src/atlas/executor/adapter.ts",
+      "src/atlas/executor/tool-broker.ts",
+      "src/atlas/executor/provider-authority.ts",
+      "src/__tests__/executor-tool-broker.test.ts",
+      "src/__tests__/executor-provider-authority.test.ts"
+    ],
+    "guardedBy": "31 tests, exit 0. Baseline for the whole repo: docs/atlas-cto/ANUS-TEST-BASELINE.json — read it before assuming a red suite is your fault.",
+    "alsoFrozen": [
+      "Executor choice: Cline SDK is the primary candidate. Do not re-open the framework comparison. OpenManus and OpenCode are rejected; OpenHands is the fallback and is qualified against the SAME ExecutorAdapter interface, not by changing Atlas.",
+      "Architecture: Atlas keeps goals, milestones, durable memory, Work Orders, filesystem scope, command scope, process ownership, provider/spend policy, evidence, verification, repair limits, rollback. The executor is hands only."
+    ]
+  },
   "waves": {
     "1": {
       "title": "production executor interface",

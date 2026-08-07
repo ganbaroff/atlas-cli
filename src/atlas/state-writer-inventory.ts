@@ -141,6 +141,13 @@ export const STATE_WRITER_INVENTORY: Readonly<
       'voiceTts() writes synthesized audio bytes to the caller-supplied outPath argument',
     ),
   ],
+  'src/atlas/executor/tool-broker.ts': [
+    surface(
+      'configuration-content',
+      'caller-target',
+      'write_file/apply_patch mutate only files inside the mission worktree named by the signed Work Order; every write is scope-checked against allowedPaths/forbiddenPaths and refused before the side effect, and nothing lands under ATLAS_STATE_ROOT',
+    ),
+  ],
   'src/atlas/work-order/repo-writer-lock.ts': [
     authoritative(
       ['instance-lease'],
