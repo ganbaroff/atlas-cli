@@ -295,19 +295,42 @@ describe('ClineExecutorAdapter — pause, resume, panic', () => {
     await expect(adapter.pause('x')).rejects.toBeInstanceOf(ExecutorAdapterError);
   });
 
-  it('panic aborts the vendor, closes the broker, and kills the process tree', async () => {
+  it('panic aborts the vendor, closes the broker, and kills registered mission processes', async () => {
     const broker = new StubBroker();
     const killed: number[] = [];
     const { factory, captured } = makeFakeFactory({});
     const adapter = new ClineExecutorAdapter({
       agentFactory: factory,
-      killProcessTree: (pid) => killed.push(pid),
+      killProcessTree: (pid) => {
+        killed.push(pid);
+        return undefined;
+      },
     });
     await adapter.execute(makeContext(broker));
+    // Register a mission-owned process the way a spawning tool would.
+    adapter.processes.register(process.pid);
     await adapter.panic('ceo PANIC');
     expect(broker.paused).toBe(true);
     expect(captured.aborts).toContain('ceo PANIC');
     expect(killed).toEqual([process.pid]);
+    expect(adapter.status).toBe('panicked');
+  });
+
+  it('never kills the Atlas process itself when no mission process was registered', async () => {
+    const killed: number[] = [];
+    const { factory } = makeFakeFactory({});
+    const adapter = new ClineExecutorAdapter({
+      agentFactory: factory,
+      killProcessTree: (pid) => {
+        killed.push(pid);
+        return undefined;
+      },
+    });
+    await adapter.execute(makeContext(new StubBroker()));
+    await adapter.panic('ceo PANIC');
+    // Nothing registered means nothing to kill — killing process.pid here would
+    // terminate the orchestrator, which an earlier draft did.
+    expect(killed).toEqual([]);
     expect(adapter.status).toBe('panicked');
   });
 

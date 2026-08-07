@@ -17,6 +17,7 @@
 import { createHash } from 'node:crypto';
 
 import { canonicalizeWorkOrder } from '../work-order/sign.js';
+import { killProcessTree, MissionProcessRegistry, type ProcessTreeKillResult } from './process-tree.js';
 import type { SignedWorkOrder } from '../work-order/types.js';
 import type {
   ApprovedProvider,
@@ -125,8 +126,12 @@ export function hashSignedWorkOrder(signed: SignedWorkOrder): string {
 export interface ClineExecutorAdapterOptions {
   /** Injected in tests. Omitted in production, where the real SDK is imported. */
   readonly agentFactory?: VendorAgentFactory;
-  /** Injected in tests. Terminates the mission process tree. */
-  readonly killProcessTree?: (pid: number) => void;
+  /**
+   * Overrides the process-tree killer. Production uses the real one from
+   * process-tree.ts; tests inject a recorder. NOTE the signature returns a
+   * result — PANIC has to be able to report that it did NOT fully succeed.
+   */
+  readonly killProcessTree?: (pid: number) => ProcessTreeKillResult | void;
   readonly now?: () => Date;
 }
 
@@ -142,6 +147,13 @@ export class ClineExecutorAdapter implements ExecutorAdapter {
   private toolsRequested = 0;
   private toolsRefused = 0;
   private restoredSession: unknown = undefined;
+  /**
+   * Processes this mission spawned. PANIC kills these roots and their trees —
+   * never `process.pid`, which is Atlas itself. An earlier draft passed
+   * process.pid to the killer, which would have terminated the orchestrator.
+   */
+  readonly processes = new MissionProcessRegistry();
+  private lastPanicResults: ProcessTreeKillResult[] = [];
   private readonly now: () => Date;
 
   constructor(private readonly options: ClineExecutorAdapterOptions = {}) {
@@ -317,8 +329,16 @@ export class ClineExecutorAdapter implements ExecutorAdapter {
     } catch {
       /* an abort that throws must not stop the process-tree kill */
     }
-    this.options.killProcessTree?.(process.pid);
+    const kill = this.options.killProcessTree ?? ((pid: number) => killProcessTree(pid));
+    this.lastPanicResults = this.processes.registered
+      .map((pid) => kill(pid))
+      .filter((r): r is ProcessTreeKillResult => Boolean(r));
     this.emit({ kind: 'panicked', at: this.now().toISOString(), reason });
+  }
+
+  /** What the last PANIC actually terminated. Empty until panic() runs. */
+  get panicEvidence(): readonly ProcessTreeKillResult[] {
+    return this.lastPanicResults;
   }
 
   snapshot(): ExecutorSnapshot {
