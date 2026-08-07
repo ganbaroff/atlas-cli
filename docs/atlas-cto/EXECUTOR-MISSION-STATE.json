@@ -393,7 +393,69 @@
     },
     "12": {
       "title": "final product proof",
-      "status": "NOT_STARTED"
+      "status": "ATTEMPTED_REJECT",
+      "ceoGoal": "Атлас, найди в ANUS одну небольшую реальную проблему в рабочем коде, которая мешает надёжности или удобству системы, сам выбери правильное исправление, реализуй его безопасно, проверь результат и верни мне только готовый результат с доказательствами. Ничего не пушь и не деплой.",
+      "atlasDecidedAlone": {
+        "defect": "src/atlas/goal-intake/resolve-project.ts makes 5 execFileSync('git', ...) calls with NO timeout",
+        "whyReal": "production code on the Goal Intake path, runs on every CEO goal; a hung git (stale index.lock, credential prompt, stalled drive) hangs the Atlas process forever",
+        "notDocs": true,
+        "fixChosen": "add timeout: 10000 to every call site",
+        "acceptanceChosen": [
+          "all 5 git calls bounded",
+          "project-resolution.test.ts still exits 0 (19 tests)",
+          "typecheck error count not worse than 3"
+        ],
+        "ceoWasAskedNothing": true
+      },
+      "atlasMachineryResult": "PERFECT on all three runs: signed Work Order (hash 473f203b10c9ba86721c5b0ebfecba656e03cce1e50823349d946fe9e6aa0537), real RepoWriterLease acquired and released, isolated worktree, Atlas-owned broker, approved free/credited provider with a spend claim, durable mission record written, deterministic verifier, rollback executed on REJECT, canonical ANUS HEAD and dirty-count unchanged, nothing pushed, nothing deployed, nothing merged, CEO courier actions 0.",
+      "executorResult": "FAILED on all three runs. The defect was not fixed: unbounded git calls 5 -> 5, diffStat empty, only the evidence directory appeared in git status.",
+      "modelsTried": [
+        {
+          "provider": "openai-compatible",
+          "model": "gemini-3.5-flash",
+          "attempt1": {
+            "toolCalls": 1,
+            "calls": [
+              "read_file:src/atlas/goal-intake/resolve-project.ts"
+            ],
+            "status": "failed"
+          },
+          "attempt2": {
+            "toolCalls": 0,
+            "status": "failed"
+          }
+        },
+        {
+          "provider": "openai-compatible",
+          "model": "gemini-3-flash-preview",
+          "attempt1": {
+            "toolCalls": 1,
+            "status": "failed"
+          },
+          "attempt2": {
+            "toolCalls": 0,
+            "status": "failed"
+          }
+        },
+        {
+          "provider": "nvidia",
+          "model": "qwen/qwen2.5-coder-32b-instruct",
+          "attempt1": {
+            "toolCalls": 0,
+            "status": "failed"
+          },
+          "attempt2": {
+            "toolCalls": 0,
+            "status": "failed"
+          }
+        }
+      ],
+      "diagnosis": "The two gateway models each read the 27,844-byte target file and then failed with zero further tool calls — the file plus the agent loop exceeds what a flash-tier model sustains. The NVIDIA code model produced no tool call at all, consistent with the ResourceExhausted/timeout behaviour that lane has shown all session. This is an EXECUTOR CAPABILITY limit on the free and credited lanes, not a Cline SDK contract failure: every Cline contract (structured events, Atlas-owned tools, beforeTool gate, snapshot/restore, abort) held in every run.",
+      "notAClineDisqualification": "The execution order disqualifies Cline after two BLOCKING CONTRACT failures. None occurred. What failed is the model behind it, and the model is Atlas's own choice through approveProvider — swapping it changes no Work Order, no tool, no acceptance check. That is exactly what the ExecutorAdapter boundary exists for.",
+      "whatWouldCloseIt": "A model that sustains a ~28KB file plus an agent loop. The registry already carries the paid lane (anthropic), which approveProvider refuses while ATLAS_ALLOW_PAID is unset — a spend decision, and therefore a CEO decision, not a technical one.",
+      "receipts": [
+        "node node_modules/vitest/vitest.mjs run src/__tests__/live/executor-live-final.test.ts -> 1 passed | 1 skipped, exit 0 on all three runs (the test passes because the REJECT path is correct behaviour)"
+      ]
     }
   },
   "knownBlockers": [
@@ -417,5 +479,6 @@
   "testBaseline": "docs/atlas-cto/ANUS-TEST-BASELINE.json",
   "knownArtifacts": [
     "ANUS/.worktrees/atlas-mission-courier-ts2367 on branch atlas/mission-courier-ts2367 — left in place as the Wave 10 evidence; safe to remove with `git worktree remove --force` once the receipt is accepted"
-  ]
+  ],
+  "productStatus": "ATLAS PRODUCT NOT VERIFIED — EXACT BLOCKER: no available free or credited model completes a real 28KB-file mission; every Atlas invariant held and every Cline contract held."
 }
