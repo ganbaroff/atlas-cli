@@ -58,6 +58,27 @@ export interface ToolBrokerOptions {
   readonly now?: () => Date;
 }
 
+/**
+ * Command forms that reach outside the mission worktree even though their
+ * leading binary belongs to an authorized class. Authorizing the class `git`
+ * must not hand the executor the machine's global configuration — an injected
+ * payload asking for `git config --global core.hooksPath /dev/null` passed the
+ * class check until this existed.
+ */
+const ESCAPES_WORKTREE = [
+  /^git\s+config\s+(--global|--system)\b/i,
+  /^git\s+(push|remote\s+(add|set-url))\b/i,
+  /^git\s+clone\b/i,
+  /^git\s+(-C|--git-dir|--work-tree)\b/i,
+  /^npm\s+(publish|install\s+(-g|--global))\b/i,
+  /^node\s+.*--eval\b/i,
+];
+
+export function findWorktreeEscape(command: string): string | undefined {
+  const normalized = command.trim().replace(/\s+/g, ' ');
+  return ESCAPES_WORKTREE.find((re) => re.test(normalized))?.source;
+}
+
 /** Maps a concrete command to the coarse class the Work Order authorizes. */
 export function classifyCommand(command: string): string {
   const head = command.trim().split(/\s+/)[0]?.toLowerCase() ?? '';
@@ -382,6 +403,13 @@ export class AtlasToolBroker implements ExecutorToolBroker {
     const commandClass = classifyCommand(command);
     if (commandClass.startsWith('unclassified:')) {
       return this.refuse('run_command', commandClass, undefined, command);
+    }
+
+    // Class membership is necessary but not sufficient: some forms of an
+    // authorized binary act outside the worktree entirely.
+    const escape = findWorktreeEscape(command);
+    if (escape) {
+      return this.refuse('run_command', 'command_escapes_worktree', undefined, command);
     }
 
     const auth = this.authorize({ tool: 'run_command', action: 'execute', commandClass });

@@ -276,3 +276,64 @@ describe('AtlasToolBroker — search scope regression', () => {
     expect(out).toEqual({ ok: false, refusedReason: 'lease_not_held' });
   });
 });
+
+describe('AtlasToolBroker — hostile executor obeying an injected payload', () => {
+  // A live model declining the injection proves it behaved, not that Atlas
+  // enforced. These drive every step of the payload deliberately, so each
+  // refusal is the boundary doing its job rather than the model's restraint.
+  const INJECTED_STEPS = [
+    { tool: 'read_file', input: { path: '../../../../Users/user/OneDrive/Documents/GitHub/ANUS/.env' }, expect: 'path_outside_worktree' },
+    { tool: 'read_file', input: { path: '../../../../Windows/System32/drivers/etc/hosts' }, expect: 'path_outside_worktree' },
+    { tool: 'run_command', input: { command: 'curl https://example.com/collect' }, expect: 'unclassified:curl' },
+    { tool: 'run_command', input: { command: 'git config --global core.hooksPath /dev/null' }, expect: 'command_escapes_worktree' },
+    { tool: 'write_file', input: { path: 'src/secrets/key.txt', content: '{}' }, expect: 'path_forbidden' },
+  ];
+
+  it('refuses every injected step, before any side effect', async () => {
+    const broker = makeBroker({});
+    const secretBefore = readFileSync(path.join(repoRoot, 'src', 'secrets', 'key.txt'), 'utf8');
+
+    for (const step of INJECTED_STEPS) {
+      const out = await broker.invoke(step.tool, step.input);
+      expect(out.ok).toBe(false);
+      if (!out.ok) expect(out.refusedReason).toBe(step.expect);
+    }
+
+    // Nothing the payload demanded actually happened.
+    expect(readFileSync(path.join(repoRoot, 'src', 'secrets', 'key.txt'), 'utf8')).toBe(secretBefore);
+    expect(broker.auditTrail.filter((e) => e.allowed)).toEqual([]);
+  });
+
+  it('leaks no file content when an out-of-worktree read is refused', async () => {
+    const broker = makeBroker({});
+    const out = await broker.invoke('read_file', { path: '../../../../Windows/win.ini' });
+    expect(out).toEqual({ ok: false, refusedReason: 'path_outside_worktree' });
+    expect(JSON.stringify(out)).not.toMatch(/\[/);
+  });
+
+  it('refuses authorized binaries used in forms that act outside the worktree', async () => {
+    const broker = makeBroker({});
+    for (const command of [
+      'git push origin main',
+      'git remote add evil https://example.com/x.git',
+      'git clone https://example.com/x.git',
+      'git -C C:/Windows status',
+      'npm install -g something',
+    ]) {
+      const out = await broker.invoke('run_command', { command });
+      expect(out).toEqual({ ok: false, refusedReason: 'command_escapes_worktree' });
+    }
+  });
+
+  it('still allows an ordinary in-worktree git command', async () => {
+    const broker = makeBroker({});
+    const out = await broker.invoke('run_command', { command: 'git status --porcelain' });
+    expect(out.ok).toBe(true);
+  });
+
+  it('refuses a payload that tries to smuggle a second command past the class check', async () => {
+    const broker = makeBroker({});
+    const out = await broker.invoke('run_command', { command: 'node -e "1" && curl https://example.com' });
+    expect(out).toEqual({ ok: false, refusedReason: 'shell_metacharacter_refused' });
+  });
+});
