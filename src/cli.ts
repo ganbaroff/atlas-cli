@@ -1582,7 +1582,77 @@ docsCmd
 
 const desktopCmd = program
   .command('desktop')
-  .description('Bounded Windows desktop control (Notepad v0 read-only proof)');
+  .description('Windows desktop control — see the machine and drive applications');
+
+desktopCmd
+  .command('see')
+  .description('What is on this machine right now: monitors, foreground app, open windows')
+  .option('--pid <pid>', 'Only windows belonging to this process')
+  .option('--json', 'JSON output')
+  .action(async (opts: { pid?: string; json?: boolean }) => {
+    const { describeScreen, listWindows } = await import('./atlas/desktop/control.js');
+    const screen = await describeScreen();
+    const windows = await listWindows({ pid: opts.pid ? Number(opts.pid) : undefined });
+    if (opts.json) {
+      console.log(JSON.stringify({ ...screen, windows }, null, 2));
+      return;
+    }
+    for (const m of screen.monitors) {
+      console.log(`monitor ${m.name}${m.primary ? ' (primary)' : ''}  ${m.bounds.w}x${m.bounds.h}`);
+    }
+    console.log(`foreground: ${screen.foreground.process} — ${screen.foreground.title}`);
+    console.log(`${windows.length} windows:`);
+    for (const w of windows) {
+      console.log(`  ${String(w.pid).padStart(7)}  ${w.process.padEnd(20)} ${w.title.slice(0, 60)}`);
+    }
+  });
+
+desktopCmd
+  .command('shot')
+  .description('Screenshot the desktop, or one window with --hwnd/--pid')
+  .requiredOption('--out <path>', 'PNG output path')
+  .option('--hwnd <hwnd>', 'Window handle to capture instead of the whole desktop')
+  .option('--pid <pid>', 'Owning process id, required with --hwnd')
+  .action(async (opts: { out: string; hwnd?: string; pid?: string }) => {
+    const { capture } = await import('./atlas/desktop/control.js');
+    const target = opts.hwnd && opts.pid ? { hwnd: Number(opts.hwnd), pid: Number(opts.pid) } : undefined;
+    if (opts.hwnd && !opts.pid) {
+      console.error('--hwnd requires --pid: the owning process is re-verified before any window is touched');
+      process.exitCode = 2;
+      return;
+    }
+    const r = await capture(opts.out, target);
+    console.log(`${r.width}x${r.height} ${r.bytes}b -> ${r.path}`);
+  });
+
+desktopCmd
+  .command('inspect')
+  .description('List the addressable UI elements of a window')
+  .requiredOption('--hwnd <hwnd>', 'Window handle (from `desktop see`)')
+  .requiredOption('--pid <pid>', 'Owning process id')
+  .option('--depth <n>', 'Tree depth', '5')
+  .option('--json', 'JSON output')
+  .action(async (opts: { hwnd: string; pid: string; depth: string; json?: boolean }) => {
+    const { inspect } = await import('./atlas/desktop/control.js');
+    const r = await inspect({ hwnd: Number(opts.hwnd), pid: Number(opts.pid) }, { depth: Number(opts.depth) });
+    if (opts.json) {
+      console.log(JSON.stringify(r, null, 2));
+      return;
+    }
+    console.log(`${r.window.name} — ${r.elements.length} elements${r.truncated ? ' (truncated)' : ''}`);
+    for (const e of r.elements) {
+      const id = e.automationId || '-';
+      console.log(`  ${'  '.repeat(e.level ?? 0)}${e.controlType.padEnd(12)} ${id.padEnd(24)} ${e.name.slice(0, 40)}`);
+    }
+  });
+
+desktopCmd
+  .command('proof')
+  .description('Run the live end-to-end control proof and print the receipt path')
+  .action(async () => {
+    console.log('run: npx tsx scripts/desktop-control-proof.mts');
+    console.log('receipt: .atlas-proof/desktop-control-receipt.json');
+  });
 
 desktopCmd
   .command('notepad-proof')
