@@ -49,11 +49,19 @@ param(
   [int]$TimeoutMs = 10000,
   [int]$MaxChars = 20000,
   [int]$MaxNodes = 400,
-  [switch]$IncludeInvisible
+  [switch]$IncludeInvisible,
+  [switch]$Utf8B64
 )
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
+
+# Text is corrupted on the way OUT as well as in. With base64 input fixed, `settext`
+# received the correct 10-character Cyrillic string (chars:10) and wrote it, yet `read`
+# still returned "????? ????" — the JSON left PowerShell through the console code page.
+# Both ends of the pipe must be UTF-8 or the fix on one end proves nothing.
+[Console]::OutputEncoding = New-Object System.Text.UTF8Encoding($false)
+$OutputEncoding = [Console]::OutputEncoding
 
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
@@ -98,6 +106,26 @@ public static class AtlasDesk {
   public const uint MOUSEEVENTF_WHEEL     = 0x0800;
 }
 "@
+
+# Non-ASCII text cannot survive the command line. PowerShell 5.1 receives arguments
+# through the console code page, so "Атлас управляет компьютером" arrived as "????? ..."
+# BEFORE the script ran — and the settext read-back then compared corrupted against
+# corrupted and reported verified:true. A round-trip check cannot see damage that
+# happened upstream of the round trip. So text travels as base64 UTF-8 and is decoded
+# here; the typed wrapper always sets -Utf8B64, which makes the safe path the only path.
+if ($Utf8B64) {
+  function FromB64([string]$s) {
+    if ([string]::IsNullOrEmpty($s)) { return $s }
+    return [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($s))
+  }
+  $Text = FromB64 $Text
+  $Name = FromB64 $Name
+  $Keys = FromB64 $Keys
+  $Path = FromB64 $Path
+  $Arguments = FromB64 $Arguments
+  $AutomationId = FromB64 $AutomationId
+  $OutFile = FromB64 $OutFile
+}
 
 # Must run before anything reads a coordinate. Without it Windows lies to a
 # non-DPI-aware process: on this machine a 2560x1600 display reports as 1280x800,
@@ -347,7 +375,13 @@ switch ($Action.ToLowerInvariant()) {
     if (-not $OutFile) { Fail 'outfile_required' 2 }
     $dir = Split-Path -Parent $OutFile
     if ($dir -and -not (Test-Path $dir)) { [void](New-Item -ItemType Directory -Force -Path $dir) }
-    if ($Hwnd) {
+    if ($Bounds) {
+      # Region capture exists for OCR: running a vision model over a whole 2560x1600
+      # desktop is slow and returns mostly irrelevant text. Crop to the part in question.
+      if ($Bounds -notmatch '^\-?\d+,\-?\d+,\d+,\d+$') { Fail 'bad_bounds' 2 @{ bounds = $Bounds } }
+      $p = $Bounds.Split(',')
+      $rect = New-Object System.Drawing.Rectangle([int]$p[0], [int]$p[1], [int]$p[2], [int]$p[3])
+    } elseif ($Hwnd) {
       $h = Resolve-Hwnd $Hwnd
       [void](Assert-WindowPid $h $TargetPid)
       [void](Focus-Window $h)
@@ -587,6 +621,142 @@ switch ($Action.ToLowerInvariant()) {
     [System.Windows.Forms.SendKeys]::SendWait($Keys)
     Start-Sleep -Milliseconds 200
     Emit @{ ok = $true; pid = $owner; hwnd = [int64]$h; sent = $Keys.Length }
+  }
+
+  'ocr' {
+    # Pixels, for the surfaces UI Automation cannot see: browser canvas, Electron apps
+    # with no accessibility tree, games, remote desktop. Windows.Media.Ocr is used rather
+    # than the local documents adapter on :8766 — that adapter runs PaddleOCR-VL on CPU
+    # and had not answered a single 1293x765 window after five minutes (4482s of CPU
+    # burned), while this returns in under two seconds and ships with the OS. The adapter
+    # stays the right tool for scanned documents; it is the wrong one for a screen.
+    Add-Type -AssemblyName System.Runtime.WindowsRuntime
+    $asTask = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {
+      $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and
+      $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' })[0]
+    function AwaitOp($op, $t) {
+      $task = $asTask.MakeGenericMethod($t).Invoke($null, @($op))
+      [void]$task.Wait(-1)
+      return $task.Result
+    }
+    $null = [Windows.Media.Ocr.OcrEngine, Windows.Foundation, ContentType = WindowsRuntime]
+    $null = [Windows.Graphics.Imaging.BitmapDecoder, Windows.Foundation, ContentType = WindowsRuntime]
+    $null = [Windows.Storage.StorageFile, Windows.Foundation, ContentType = WindowsRuntime]
+
+    $installed = @([Windows.Media.Ocr.OcrEngine]::AvailableRecognizerLanguages | ForEach-Object { $_.LanguageTag })
+    # No image means the caller is asking what this machine can read, not asking to read
+    # something. Answering that through a deliberate failure would make the language list
+    # reachable only by catching an error.
+    if (-not $Path) { Emit @{ ok = $true; mode = 'languages'; available = $installed } }
+    $img = Resolve-Path -LiteralPath $Path -ErrorAction SilentlyContinue
+    if (-not $img) { Fail 'image_not_found' 2 @{ path = $Path; available = $installed } }
+
+    $engine = $null
+    if ($Name) {
+      # Caller asked for a specific language; only honour it if the pack is installed,
+      # otherwise say so rather than silently reading Cyrillic with an English model.
+      $lang = New-Object Windows.Globalization.Language($Name)
+      $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromLanguage($lang)
+      if ($null -eq $engine) {
+        Fail 'ocr_language_not_installed' 5 @{
+          requested = $Name
+          available = ([Windows.Media.Ocr.OcrEngine]::AvailableRecognizerLanguages | ForEach-Object { $_.LanguageTag })
+        }
+      }
+    } else {
+      $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages()
+    }
+    if ($null -eq $engine) { Fail 'no_ocr_language' 5 }
+
+    # Windows OCR is trained on dark text over a light page and returns almost nothing for
+    # light-on-dark. That is not an edge case here: the calculator, the editors and the
+    # browsers on this machine are all dark-themed, and a capture showing "72" in 100px
+    # digits produced 6 lines with no 72 in them. Sample the luminance and invert first.
+    $probe = [System.Drawing.Bitmap]::FromFile($img.Path)
+    $sum = 0.0; $n = 0
+    $stepX = [Math]::Max(1, [int]($probe.Width / 40))
+    $stepY = [Math]::Max(1, [int]($probe.Height / 40))
+    for ($px = 0; $px -lt $probe.Width; $px += $stepX) {
+      for ($py = 0; $py -lt $probe.Height; $py += $stepY) {
+        $c = $probe.GetPixel($px, $py)
+        $sum += ($c.R * 0.299 + $c.G * 0.587 + $c.B * 0.114) / 255.0
+        $n++
+      }
+    }
+    $meanLuma = if ($n -gt 0) { $sum / $n } else { 1.0 }
+    $inverted = $false
+    $ocrPath = $img.Path
+    if ($meanLuma -lt 0.45) {
+      $inv = New-Object System.Drawing.Bitmap($probe.Width, $probe.Height)
+      $g = [System.Drawing.Graphics]::FromImage($inv)
+      $matrix = New-Object System.Drawing.Imaging.ColorMatrix(, [float[][]](
+        [float[]](-1, 0, 0, 0, 0), [float[]](0, -1, 0, 0, 0), [float[]](0, 0, -1, 0, 0),
+        [float[]](0, 0, 0, 1, 0), [float[]](1, 1, 1, 0, 1)))
+      $attrs = New-Object System.Drawing.Imaging.ImageAttributes
+      $attrs.SetColorMatrix($matrix)
+      $rect = New-Object System.Drawing.Rectangle(0, 0, $probe.Width, $probe.Height)
+      $g.DrawImage($probe, $rect, 0, 0, $probe.Width, $probe.Height, [System.Drawing.GraphicsUnit]::Pixel, $attrs)
+      $g.Dispose()
+      $ocrPath = [System.IO.Path]::Combine([System.IO.Path]::GetDirectoryName($img.Path),
+        [System.IO.Path]::GetFileNameWithoutExtension($img.Path) + '.inverted.png')
+      $inv.Save($ocrPath, [System.Drawing.Imaging.ImageFormat]::Png)
+      $inv.Dispose()
+      $inverted = $true
+    }
+    $probe.Dispose()
+
+    $file = AwaitOp ([Windows.Storage.StorageFile]::GetFileFromPathAsync($ocrPath)) ([Windows.Storage.StorageFile])
+    $stream = AwaitOp ($file.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])
+    $decoder = AwaitOp ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) ([Windows.Graphics.Imaging.BitmapDecoder])
+    $bitmap = AwaitOp ($decoder.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
+    $result = AwaitOp ($engine.RecognizeAsync($bitmap)) ([Windows.Media.Ocr.OcrResult])
+
+    $lines = New-Object System.Collections.ArrayList
+    foreach ($ln in $result.Lines) {
+      [void]$lines.Add($ln.Text)
+      if ($lines.Count -ge $MaxNodes) { break }
+    }
+    $text = $result.Text
+    if ($null -ne $text -and $text.Length -gt $MaxChars) { $text = $text.Substring(0, $MaxChars) }
+    $stream.Dispose()
+    Emit @{
+      ok = $true; path = $img.Path
+      language = $engine.RecognizerLanguage.LanguageTag
+      lineCount = [int]$lines.Count
+      lines = $lines.ToArray()
+      text = $text
+      available = $installed
+      meanLuma = [math]::Round($meanLuma, 3)
+      inverted = $inverted
+    }
+  }
+
+  'processes' {
+    # Read-only inventory of what is running, so a caller can tell "the app is not open"
+    # from "the app is open but has no window". No kill action is offered here: ending a
+    # process is destructive and belongs behind `close`, which refuses shared hosts.
+    $rows = New-Object System.Collections.ArrayList
+    $withWindows = New-Object System.Collections.Generic.HashSet[int]
+    $cb = [AtlasDesk+EnumProc]{
+      param([IntPtr]$hh, [IntPtr]$ll)
+      if (-not [AtlasDesk]::IsWindowVisible($hh)) { return $true }
+      if ([string]::IsNullOrWhiteSpace((Get-WindowTitle $hh))) { return $true }
+      $wp = 0
+      [void][AtlasDesk]::GetWindowThreadProcessId($hh, [ref]$wp)
+      [void]$withWindows.Add([int]$wp)
+      return $true
+    }
+    [void][AtlasDesk]::EnumWindows($cb, [IntPtr]::Zero)
+    $procs = Get-Process | Sort-Object -Property WorkingSet64 -Descending
+    if ($Name) { $procs = $procs | Where-Object { $_.ProcessName -like "*$Name*" } }
+    foreach ($p in ($procs | Select-Object -First $MaxNodes)) {
+      [void]$rows.Add([ordered]@{
+        pid = $p.Id; name = $p.ProcessName
+        memMb = [math]::Round($p.WorkingSet64 / 1MB, 1)
+        hasWindow = $withWindows.Contains($p.Id)
+      })
+    }
+    Emit @{ ok = $true; count = $rows.Count; processes = $rows.ToArray() }
   }
 
   'window' {

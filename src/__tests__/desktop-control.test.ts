@@ -28,7 +28,7 @@ describe('desktop control engine', () => {
     for (const action of [
       'windows', 'screen', 'capture', 'tree', 'read',
       'launch', 'focus', 'settext', 'invoke', 'click', 'keys', 'hotkey', 'close',
-      'window', 'scroll', 'clipboard',
+      'window', 'scroll', 'clipboard', 'ocr', 'processes',
     ]) {
       expect(src, `action ${action} missing`).toContain(`'${action}' {`);
     }
@@ -124,6 +124,57 @@ describe('desktop control engine', () => {
     expect(src).toContain('clipboard_verify_failed');
     const block = src.slice(src.indexOf("'clipboard' {"), src.indexOf("'hotkey' {"));
     expect(block.indexOf('Set-Clipboard')).toBeLessThan(block.indexOf('clipboard_verify_failed'));
+  });
+
+  it('carries non-ASCII text as base64 in and UTF-8 out', () => {
+    const src = engine();
+    // A PowerShell 5.1 argument goes through the console code page: "Атлас" arrived as
+    // "?????" and the engine's own read-back compared corrupted against corrupted and
+    // reported verified:true. Both directions had to be fixed — the input encoding fix
+    // alone still returned "????? ????" because stdout used the code page too.
+    expect(src).toContain('$Utf8B64');
+    expect(src).toContain('[System.Text.Encoding]::UTF8.GetString');
+    expect(src).toMatch(/\[Console\]::OutputEncoding = New-Object System\.Text\.UTF8Encoding\(\$false\)/);
+    expect(src.indexOf('$Text = FromB64 $Text')).toBeLessThan(src.indexOf('switch ($Action'));
+  });
+
+  it('always uses the encoded transport from the typed layer', () => {
+    const wrapper = readFileSync(resolve(process.cwd(), 'src/atlas/desktop/control.ts'), 'utf8');
+    // -Utf8B64 is unconditional, so a caller cannot select the lossy path by accident.
+    expect(wrapper).toMatch(/const out: string\[\] = \['-Utf8B64'\]/);
+    for (const p of ['text', 'name', 'keys', 'path', 'arguments', 'automationId', 'outFile']) {
+      expect(wrapper, `${p} must travel encoded`).toContain(`'${p}'`);
+    }
+    // setText re-reads through a second call and compares to the caller's own string,
+    // because a check inside the engine cannot see damage that happened on the way in.
+    expect(wrapper).toContain('settext_independent_verify_failed');
+  });
+
+  it('inverts dark-themed captures before OCR', () => {
+    const src = engine();
+    // Windows OCR is trained on dark text over a light page. A capture of the dark-themed
+    // calculator returned 6 lines and none of them held the 100px "72".
+    expect(src).toContain('$meanLuma');
+    expect(src).toMatch(/if \(\$meanLuma -lt 0\.45\)/);
+    expect(src).toContain('ColorMatrix');
+  });
+
+  it('refuses an OCR language that is not installed instead of guessing', () => {
+    const src = engine();
+    expect(src).toContain('ocr_language_not_installed');
+    // ...and reports what IS available, so the caller can act on the refusal.
+    expect(src).toMatch(/available = \$installed/);
+  });
+
+  it('offers no process-kill action', () => {
+    const src = engine();
+    const block = src.slice(src.indexOf("'processes' {"), src.indexOf("'window' {"));
+    // Strip comments first: the block explains in prose why it offers no kill, and a
+    // check that reads its own documentation is testing the wrong thing.
+    const code = block.split('\n').map((l) => l.replace(/#.*$/, '')).join('\n');
+    // Ending a process is destructive and belongs behind `close`, which refuses shared
+    // hosts. An inventory action must not become a back door around that refusal.
+    expect(code).not.toMatch(/Stop-Process|kill/i);
   });
 
   it('emits exactly one JSON object and a stable exit code per action', () => {

@@ -16,7 +16,8 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   capture, click, close, describeScreen, focus, inspect, invoke,
-  launch, listWindows, moveWindow, readClipboard, readText, scroll, writeClipboard,
+  launch, listProcesses, listWindows, moveWindow, ocrLanguages,
+  readClipboard, readScreenText, readText, scroll, writeClipboard,
 } from '../src/atlas/desktop/control.js';
 
 const OUT = resolve(process.cwd(), '.atlas-proof');
@@ -142,6 +143,47 @@ async function main(): Promise<void> {
     `clipboard holds "${marker}"`,
     `verified=${wrote.verified}, read "${readBack.slice(0, 40)}"`,
     wrote.verified === true && readBack === marker);
+
+  // Unicode has to survive the whole channel. Command-line arguments do not carry it:
+  // "Атлас" reached the engine as "?????" and its own read-back then compared corrupted
+  // against corrupted and reported success. The clipboard round-trip exercises the same
+  // encoded transport in both directions.
+  const unicode = 'Атлас — ə ö ü ğ — 日本語 — 2026';
+  const uniWrite = await writeClipboard(unicode);
+  const uniRead = await readClipboard();
+  gate('U1', 'carries non-ASCII text intact in both directions',
+    unicode,
+    uniRead,
+    uniWrite.verified === true && uniRead === unicode);
+
+  // ---- SEEING WITHOUT UI AUTOMATION --------------------------------------
+  const langs = await ocrLanguages();
+  gate('O1', 'reports which OCR languages this machine can read',
+    'at least one language tag',
+    langs.join(', ') || '(none)',
+    langs.length > 0);
+
+  // Reads a live window as pixels — the path that works on browser canvas, Electron and
+  // games, where UI Automation returns nothing at all.
+  //
+  // The assertion is on words the application renders, not on the calculator's result.
+  // Measured limitation, worth stating rather than hiding: Windows OCR handles text-dense
+  // surfaces well (62 lines from a browser window; a Russian sentence in an editor came
+  // back verbatim) but does not reliably recognise isolated oversized glyphs, so the 100px
+  // "72" is missed even with the dark-theme inversion applied. Where UIA works it is
+  // exact and is the right tool; OCR is for where UIA sees nothing.
+  const ocr = await readScreenText({ outFile: resolve(OUT, 'proof-ocr.png'), target });
+  const recovered = ['Calculator', 'Standard'].filter((w) => ocr.text.includes(w));
+  gate('O2', 'reads a real window as text from pixels alone',
+    'the words Calculator and Standard recovered by OCR',
+    `${ocr.lines.length} lines via ${ocr.language}; recovered ${recovered.join(', ') || 'nothing'}`,
+    recovered.length === 2);
+
+  const procs = await listProcesses();
+  gate('P1', 'inventories running processes and which of them own a window',
+    'processes listed, at least one with a window and one without',
+    `${procs.length} processes; ${procs.filter((p) => p.hasWindow).length} with a window`,
+    procs.length > 5 && procs.some((p) => p.hasWindow) && procs.some((p) => !p.hasWindow));
 
   const winShot = await capture(resolve(OUT, 'proof-calculator.png'), target);
   gate('A7', 'captures a single window rather than the whole screen',

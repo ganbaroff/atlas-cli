@@ -94,13 +94,23 @@ function enginePath(): string {
   return hit;
 }
 
+/**
+ * Parameters that may legitimately carry non-ASCII text. These travel base64-encoded
+ * because a PowerShell 5.1 argument goes through the console code page: "Атлас" reached
+ * the script as "?????" and the engine's own read-back then compared corrupted against
+ * corrupted and reported success. Encoding here rather than offering an opt-in means a
+ * caller cannot pick the broken path by accident.
+ */
+const B64_PARAMS = new Set(['text', 'name', 'keys', 'path', 'arguments', 'automationId', 'outFile']);
+
 function flags(o: Record<string, unknown>): string[] {
-  const out: string[] = [];
+  const out: string[] = ['-Utf8B64'];
   for (const [k, v] of Object.entries(o)) {
     if (v === undefined || v === null || v === '' || v === false) continue;
     const name = `-${k[0].toUpperCase()}${k.slice(1)}`;
-    if (v === true) out.push(name);
-    else out.push(name, String(v));
+    if (v === true) { out.push(name); continue; }
+    const raw = String(v);
+    out.push(name, B64_PARAMS.has(k) ? Buffer.from(raw, 'utf8').toString('base64') : raw);
   }
   return out;
 }
@@ -174,6 +184,54 @@ export async function capture(outFile: string, target?: { hwnd: number; pid: num
   return run('capture', { outFile, hwnd: target?.hwnd, targetPid: target?.pid });
 }
 
+/** Screenshot an arbitrary rectangle. Crop before OCR — a whole desktop is mostly noise. */
+export async function captureRegion(outFile: string, region: Bounds): Promise<CaptureInfo> {
+  return run('capture', { outFile, bounds: `${region.x},${region.y},${region.w},${region.h}` });
+}
+
+/**
+ * Read what is on screen as text, by OCR rather than UI Automation.
+ *
+ * UIA covers native controls; it returns nothing useful for a browser canvas, a game, an
+ * Electron surface with no accessibility tree, or a remote-desktop window — which is
+ * exactly what an assistant gets asked about. So pixels are the fallback path.
+ *
+ * Uses the OCR engine built into Windows. The local documents adapter on :8766 was tried
+ * first and is the wrong tool here: PaddleOCR-VL on CPU had not answered a single
+ * 1293x765 window capture after five minutes. Windows.Media.Ocr returns in under two
+ * seconds. Keep the adapter for scanned documents, where its quality is the point.
+ */
+export async function readScreenText(opts: {
+  outFile: string;
+  target?: { hwnd: number; pid: number };
+  region?: Bounds;
+  language?: string;
+}): Promise<{ text: string; lines: string[]; language: string; capture: CaptureInfo }> {
+  const shot = opts.region
+    ? await captureRegion(opts.outFile, opts.region)
+    : await capture(opts.outFile, opts.target);
+  const r = await run<{ text: string; lines: string[]; language: string }>('ocr', {
+    path: shot.path, name: opts.language, maxNodes: 200,
+  });
+  return { ...r, capture: shot };
+}
+
+/** OCR language tags installed on this machine. A missing pack is a refusal, not silent garbage. */
+export async function ocrLanguages(): Promise<string[]> {
+  const r = await run<{ available: string[] }>('ocr');
+  return r.available ?? [];
+}
+
+/** Everything running, biggest first; `hasWindow` separates "not open" from "open, no window". */
+export async function listProcesses(filter?: string): Promise<Array<{
+  pid: number; name: string; memMb: number; hasWindow: boolean;
+}>> {
+  const r = await run<{ processes: Array<{ pid: number; name: string; memMb: number; hasWindow: boolean }> }>(
+    'processes', { name: filter, maxNodes: 60 },
+  );
+  return r.processes;
+}
+
 /** The UI Automation control tree of a window — how you discover what is addressable. */
 export async function inspect(
   target: { hwnd: number; pid: number },
@@ -215,13 +273,32 @@ export async function focus(target: { hwnd: number; pid: number }): Promise<{ ti
   return run('focus', { hwnd: target.hwnd, targetPid: target.pid });
 }
 
-/** Set a control's value through ValuePattern; the engine reads it back and fails if it did not take. */
+/**
+ * Set a control's value through ValuePattern.
+ *
+ * The engine reads the value back and fails if it did not take, but that check runs
+ * inside the engine and so cannot see damage that happened on the way in. This layer
+ * re-reads the control and compares against the caller's own string — an independent
+ * check outside the channel that could have corrupted it.
+ */
 export async function setText(
   target: { hwnd: number; pid: number },
   sel: Selector,
   text: string,
-): Promise<{ chars: number; verified: boolean }> {
-  return run('settext', { hwnd: target.hwnd, targetPid: target.pid, ...sel, text });
+): Promise<{ chars: number; verified: boolean; independentlyVerified: boolean }> {
+  const r = await run<{ chars: number; verified: boolean }>('settext', {
+    hwnd: target.hwnd, targetPid: target.pid, ...sel, text,
+  });
+  const back = await readText(target, sel);
+  if (back.text !== text) {
+    throw new DesktopError('settext_independent_verify_failed', 7, {
+      action: 'settext',
+      wantedChars: text.length,
+      gotChars: back.text.length,
+      firstDivergenceAt: [...text].findIndex((c, i) => back.text[i] !== c),
+    });
+  }
+  return { ...r, independentlyVerified: true };
 }
 
 /** Invoke / select / toggle an element, whichever pattern it actually supports. */
