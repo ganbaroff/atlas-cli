@@ -28,6 +28,7 @@ describe('desktop control engine', () => {
     for (const action of [
       'windows', 'screen', 'capture', 'tree', 'read',
       'launch', 'focus', 'settext', 'invoke', 'click', 'keys', 'hotkey', 'close',
+      'window', 'scroll', 'clipboard',
     ]) {
       expect(src, `action ${action} missing`).toContain(`'${action}' {`);
     }
@@ -98,6 +99,31 @@ describe('desktop control engine', () => {
     const keysBlock = src.slice(src.indexOf("'keys' {"), src.indexOf("'hotkey' {"));
     expect(keysBlock).toMatch(/if \(-not \(Focus-Window \$h\)\) \{ Fail 'focus_not_confirmed'/);
     expect(keysBlock.indexOf('focus_not_confirmed')).toBeLessThan(keysBlock.indexOf('SendKeys'));
+  });
+
+  it('distinguishes a window the app constrained from one that never moved', () => {
+    const src = engine();
+    // Calculator honours a requested position and width but clamps height to its own
+    // minimum. Throwing there would make `window` unusable on any app with a minimum;
+    // reporting success on a window that did not move would be a lie. Both cases exist.
+    expect(src).toContain('window_geometry_unchanged');
+    expect(src).toMatch(/if \(\$off -and -not \$moved\)/);
+    expect(src).toMatch(/constrained = \$off/);
+  });
+
+  it('reinterprets negative wheel deltas instead of casting them', () => {
+    const src = engine();
+    // [uint32](-360) throws in PowerShell, so scrolling down died silently before
+    // reaching Emit and the caller saw an empty stdout rather than an error.
+    expect(src).toContain('[System.BitConverter]::ToUInt32');
+    expect(src).not.toMatch(/\[uint32\]\(\[int\]\(\$notches \* 120\)\)/);
+  });
+
+  it('verifies the clipboard write it claims to have made', () => {
+    const src = engine();
+    expect(src).toContain('clipboard_verify_failed');
+    const block = src.slice(src.indexOf("'clipboard' {"), src.indexOf("'hotkey' {"));
+    expect(block.indexOf('Set-Clipboard')).toBeLessThan(block.indexOf('clipboard_verify_failed'));
   });
 
   it('emits exactly one JSON object and a stable exit code per action', () => {

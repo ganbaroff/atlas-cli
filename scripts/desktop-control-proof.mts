@@ -16,7 +16,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
   capture, click, close, describeScreen, focus, inspect, invoke,
-  launch, listWindows, readText,
+  launch, listWindows, moveWindow, readClipboard, readText, scroll, writeClipboard,
 } from '../src/atlas/desktop/control.js';
 
 const OUT = resolve(process.cwd(), '.atlas-proof');
@@ -103,6 +103,45 @@ async function main(): Promise<void> {
     '9 x 8 = 72 shown on the calculator display',
     result.text,
     /(^|\D)72\s*$/.test(result.text));
+
+  // ---- WINDOW MANAGEMENT / INPUT BREADTH ---------------------------------
+  const moved = await moveWindow(target, { x: 140, y: 90, w: 700, h: 900 });
+  gate('W1', 'moves and resizes a window, reporting app-enforced constraints',
+    'window at x=140,y=90; constraint reported rather than hidden',
+    `after ${JSON.stringify(moved.after)} constrained=${moved.constrained}`,
+    moved.after?.x === 140 && moved.after?.y === 90);
+
+  const mini = await moveWindow(target, 'minimize');
+  gate('W2', 'minimises a window and confirms the state',
+    'minimized=true',
+    `minimized=${mini.minimized}`,
+    mini.minimized === true);
+
+  const restored = await moveWindow(target, 'restore');
+  gate('W3', 'restores a minimised window',
+    'minimized=false',
+    `minimized=${restored.minimized}`,
+    restored.minimized === false);
+
+  const scrolled = await scroll(target, -3);
+  gate('W4', 'sends real mouse-wheel notches',
+    '-3 notches accepted',
+    `${scrolled.notches} notches over "${scrolled.element.name}"`,
+    scrolled.notches === -3);
+
+  const rightClick = await click(target, { automationId: 'num5Button' }, { button: 'right' });
+  gate('W5', 'clicks with a non-default mouse button',
+    'button=right, 1 press',
+    `button=${rightClick.button}, presses=${rightClick.presses}`,
+    rightClick.button === 'right' && rightClick.presses === 1);
+
+  const marker = `atlas-clipboard-${Date.now()}`;
+  const wrote = await writeClipboard(marker);
+  const readBack = await readClipboard();
+  gate('W6', 'writes and reads the system clipboard',
+    `clipboard holds "${marker}"`,
+    `verified=${wrote.verified}, read "${readBack.slice(0, 40)}"`,
+    wrote.verified === true && readBack === marker);
 
   const winShot = await capture(resolve(OUT, 'proof-calculator.png'), target);
   gate('A7', 'captures a single window rather than the whole screen',

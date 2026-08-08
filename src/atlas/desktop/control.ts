@@ -233,8 +233,49 @@ export async function invoke(target: { hwnd: number; pid: number }, sel: Selecto
 export async function click(
   target: { hwnd: number; pid: number },
   sel: Selector,
-): Promise<{ element: ElementInfo; point: { x: number; y: number } }> {
-  return run('click', { hwnd: target.hwnd, targetPid: target.pid, ...sel });
+  opts: { button?: 'left' | 'right'; double?: boolean } = {},
+): Promise<{ element: ElementInfo; point: { x: number; y: number }; button: string; presses: number }> {
+  return run('click', {
+    hwnd: target.hwnd, targetPid: target.pid, ...sel,
+    button: opts.button, double: opts.double,
+  });
+}
+
+/**
+ * Move / resize / minimise / maximise / restore a window.
+ *
+ * `constrained: true` means the window applied the change but clamped it — an
+ * application may enforce a minimum tracking size. That is the app's rule, not a
+ * failure; only a window that did not move at all throws.
+ */
+export async function moveWindow(
+  target: { hwnd: number; pid: number },
+  to: Bounds | 'minimize' | 'maximize' | 'restore',
+): Promise<{ before: Bounds | null; after: Bounds | null; minimized: boolean; constrained: boolean }> {
+  const args = typeof to === 'string'
+    ? { text: to }
+    : { bounds: `${to.x},${to.y},${to.w},${to.h}` };
+  return run('window', { hwnd: target.hwnd, targetPid: target.pid, ...args });
+}
+
+/** Mouse wheel over a chosen element. Negative notches scroll down. */
+export async function scroll(
+  target: { hwnd: number; pid: number },
+  notches: number,
+  sel: Selector = {},
+): Promise<{ notches: number; element: ElementInfo }> {
+  return run('scroll', { hwnd: target.hwnd, targetPid: target.pid, ...sel, index: notches });
+}
+
+/** Read the clipboard. Whatever the operator last copied — do not persist it. */
+export async function readClipboard(): Promise<string> {
+  const r = await run<{ text: string }>('clipboard');
+  return r.text;
+}
+
+/** Write the clipboard and confirm it took. */
+export async function writeClipboard(text: string): Promise<{ chars: number; verified: boolean }> {
+  return run('clipboard', { text });
 }
 
 /** Literal typing (SendKeys grammar). For chords use {@link hotkey} — SendKeys drops modifiers. */

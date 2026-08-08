@@ -41,6 +41,9 @@ param(
   [string]$Text = '',
   [string]$Keys = '',
   [string]$OutFile = '',
+  [string]$Bounds = '',
+  [string]$Button = 'left',
+  [switch]$Double,
   [int]$Index = 0,
   [int]$Depth = 4,
   [int]$TimeoutMs = 10000,
@@ -78,6 +81,7 @@ public static class AtlasDesk {
   [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint a, uint b, bool attach);
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
   [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
+  [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr hWnd, int x, int y, int w, int h, bool repaint);
   [DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
   [DllImport("user32.dll")] public static extern short VkKeyScan(char ch);
   [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
@@ -87,8 +91,11 @@ public static class AtlasDesk {
   [StructLayout(LayoutKind.Sequential)]
   public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
 
-  public const uint MOUSEEVENTF_LEFTDOWN = 0x0002;
-  public const uint MOUSEEVENTF_LEFTUP   = 0x0004;
+  public const uint MOUSEEVENTF_LEFTDOWN  = 0x0002;
+  public const uint MOUSEEVENTF_LEFTUP    = 0x0004;
+  public const uint MOUSEEVENTF_RIGHTDOWN = 0x0008;
+  public const uint MOUSEEVENTF_RIGHTUP   = 0x0010;
+  public const uint MOUSEEVENTF_WHEEL     = 0x0800;
 }
 "@
 
@@ -555,13 +562,19 @@ switch ($Action.ToLowerInvariant()) {
     }
     $cx = [int]($r.X + $r.Width / 2)
     $cy = [int]($r.Y + $r.Height / 2)
+    $down = if ($Button -eq 'right') { [AtlasDesk]::MOUSEEVENTF_RIGHTDOWN } else { [AtlasDesk]::MOUSEEVENTF_LEFTDOWN }
+    $up = if ($Button -eq 'right') { [AtlasDesk]::MOUSEEVENTF_RIGHTUP } else { [AtlasDesk]::MOUSEEVENTF_LEFTUP }
     [void][AtlasDesk]::SetCursorPos($cx, $cy)
     Start-Sleep -Milliseconds 60
-    [AtlasDesk]::mouse_event([AtlasDesk]::MOUSEEVENTF_LEFTDOWN, 0, 0, 0, [UIntPtr]::Zero)
-    Start-Sleep -Milliseconds 40
-    [AtlasDesk]::mouse_event([AtlasDesk]::MOUSEEVENTF_LEFTUP, 0, 0, 0, [UIntPtr]::Zero)
+    $presses = if ($Double) { 2 } else { 1 }
+    for ($i = 0; $i -lt $presses; $i++) {
+      [AtlasDesk]::mouse_event($down, 0, 0, 0, [UIntPtr]::Zero)
+      Start-Sleep -Milliseconds 40
+      [AtlasDesk]::mouse_event($up, 0, 0, 0, [UIntPtr]::Zero)
+      if ($i -lt $presses - 1) { Start-Sleep -Milliseconds 60 }
+    }
     Start-Sleep -Milliseconds 120
-    Emit @{ ok = $true; pid = $owner; element = (Element-Info $el $false); point = @{ x = $cx; y = $cy } }
+    Emit @{ ok = $true; pid = $owner; element = (Element-Info $el $false); point = @{ x = $cx; y = $cy }; button = $Button; presses = $presses }
   }
 
   'keys' {
@@ -574,6 +587,91 @@ switch ($Action.ToLowerInvariant()) {
     [System.Windows.Forms.SendKeys]::SendWait($Keys)
     Start-Sleep -Milliseconds 200
     Emit @{ ok = $true; pid = $owner; hwnd = [int64]$h; sent = $Keys.Length }
+  }
+
+  'window' {
+    # Move / resize / minimise / maximise / restore. Geometry is verified by reading the
+    # rectangle back: a window can refuse a size (minimum tracking size, snap layouts,
+    # DPI rounding) and MoveWindow still returns true, so its return value proves nothing.
+    $h = Resolve-Hwnd $Hwnd
+    $owner = Assert-WindowPid $h $TargetPid
+    $before = Get-WindowBounds $h
+    $state = $Text.ToLowerInvariant()
+    switch ($state) {
+      'minimize' { [void][AtlasDesk]::ShowWindow($h, 6) }
+      'maximize' { [void][AtlasDesk]::ShowWindow($h, 3) }
+      'restore'  { [void][AtlasDesk]::ShowWindow($h, 9) }
+      ''         {
+        if ($Bounds -notmatch '^\-?\d+,\-?\d+,\d+,\d+$') {
+          Fail 'bounds_required' 2 @{ hint = 'pass -Text minimize|maximize|restore, or -Bounds "x,y,w,h"' }
+        }
+        $p = $Bounds.Split(',')
+        [void][AtlasDesk]::MoveWindow($h, [int]$p[0], [int]$p[1], [int]$p[2], [int]$p[3], $true)
+      }
+      default { Fail 'unknown_window_state' 2 @{ given = $state; known = @('minimize', 'maximize', 'restore') } }
+    }
+    Start-Sleep -Milliseconds 300
+    $after = Get-WindowBounds $h
+    $minimized = [bool][AtlasDesk]::IsIconic($h)
+    if ($state -eq 'minimize' -and -not $minimized) { Fail 'window_state_verify_failed' 7 @{ wanted = 'minimize'; minimized = $minimized } }
+    $constrained = $false
+    if ($state -eq '' -and $after) {
+      $p = $Bounds.Split(',')
+      # Tolerance covers the invisible resize border Windows keeps outside the frame.
+      $off = ([Math]::Abs($after.w - [int]$p[2]) -gt 24) -or ([Math]::Abs($after.h - [int]$p[3]) -gt 24)
+      $moved = ($null -eq $before) -or ($after.x -ne $before.x) -or ($after.y -ne $before.y) -or
+               ($after.w -ne $before.w) -or ($after.h -ne $before.h)
+      # An application may enforce a minimum tracking size — Calculator refused a 900px
+      # height and settled at 1014 while honouring the position and width. That is the
+      # app exercising its own rules, not a failed call, so it is reported rather than
+      # thrown. A window that did not move AT ALL is a genuine failure.
+      if ($off -and -not $moved) {
+        Fail 'window_geometry_unchanged' 7 @{ wanted = @{ w = [int]$p[2]; h = [int]$p[3] }; got = $after }
+      }
+      $constrained = $off
+    }
+    Emit @{
+      ok = $true; pid = $owner; hwnd = [int64]$h
+      before = $before; after = $after; minimized = $minimized; constrained = $constrained
+    }
+  }
+
+  'scroll' {
+    # Wheel notches land where the cursor is, so the cursor is parked over the target
+    # element first — scrolling "the window" without saying where lands in whatever
+    # pane the mouse was already over.
+    $h = Resolve-Hwnd $Hwnd
+    $owner = Assert-WindowPid $h $TargetPid
+    [void](Focus-Window $h)
+    $root = Get-UiaRoot $h
+    $el = if ($AutomationId -or $Name -or $ControlType) { Find-Element $root } else { $root }
+    $r = $el.Current.BoundingRectangle
+    if ([double]::IsInfinity($r.X)) { Fail 'element_not_scrollable' 7 @{ element = (Element-Info $el $false) } }
+    [void][AtlasDesk]::SetCursorPos([int]($r.X + $r.Width / 2), [int]($r.Y + $r.Height / 2))
+    Start-Sleep -Milliseconds 60
+    $notches = if ($Index -ne 0) { $Index } else { -3 }
+    # Scrolling down is a NEGATIVE delta, and [uint32](-360) throws in PowerShell rather
+    # than wrapping. Reinterpret the bits instead of converting the value.
+    $delta = [System.BitConverter]::ToUInt32([System.BitConverter]::GetBytes([int]($notches * 120)), 0)
+    [AtlasDesk]::mouse_event([AtlasDesk]::MOUSEEVENTF_WHEEL, 0, 0, $delta, [UIntPtr]::Zero)
+    Start-Sleep -Milliseconds 200
+    Emit @{ ok = $true; pid = $owner; notches = $notches; element = (Element-Info $el $false) }
+  }
+
+  'clipboard' {
+    # Reading the clipboard is a read of whatever the operator last copied, so it is
+    # returned but never logged elsewhere, and it is capped like any other text read.
+    if ($Text) {
+      Set-Clipboard -Value $Text
+      Start-Sleep -Milliseconds 120
+      $back = Get-Clipboard -Raw
+      if ($back -ne $Text) { Fail 'clipboard_verify_failed' 7 @{ expectedChars = $Text.Length } }
+      Emit @{ ok = $true; mode = 'set'; chars = $Text.Length; verified = $true }
+    }
+    $v = Get-Clipboard -Raw
+    if ($null -eq $v) { $v = '' }
+    if ($v.Length -gt $MaxChars) { $v = $v.Substring(0, $MaxChars) }
+    Emit @{ ok = $true; mode = 'get'; text = $v; chars = $v.Length }
   }
 
   'hotkey' {
