@@ -32,6 +32,8 @@ phase's DoD closes.
 | M-2026-08-10-02 | AtlasLocalWatchdog re-enabled (was Disabled, local automation not running) | DONE | CEO (executed) / Fable (verified) | task Status=Ready with a future Next Run Time; CLAUDE.md's "live automation" description is accurate again | `memory/atlas/decisions/ATLAS-DECISION-2026-08-10-watchdog-re-enabled.md` — schtasks query after enable: Status=Ready, Next Run=8/10/2026 9:30:00 PM | state entered 2026-08-10 |
 | M-2026-08-10-03 | Hermes M1D — Windows T1 isolation assessment | DONE | Fable (Opus seat) | verdict NOT_READY: no isolated identity, no secret/ACL boundary, unrestricted egress, self-writable policy, no Atlas proxy, no action broker | `C:\Projects\ATLAS\data\HERMES-M1D-T1-WINDOWS-ISOLATION-CARD-2026-08-10.md` | state entered 2026-08-10 |
 | M-2026-08-10-04 | Hermes C5A + C5A-V + C5A-R1 — Atlas model broker, audited and remediated | DONE | Fable (built, audited, remediated) | broker enforces loopback-only upstream, authorization before forwarding, redirect/expiry/request-id all fail closed; 28/28 tests, live P1-P4 proof, redirect target 0 hits | `C:\Projects\ATLAS\data\HERMES-C5A-R1-SECURITY-REMEDIATION-RECEIPT-2026-08-10.md` | state entered 2026-08-10 |
+| M-2026-08-11-01 | C5A work committed (was 8 files living only in a working tree) | DONE | Fable | broker + tests + integration proof are in git history, not just on disk | ANUS `80cec2a` on `codex/atlas-cost-router-design` (unpushed); ATLAS `a8f887d` carries the M1 arc receipts, migrator scripts and the `data/archive/2026-06/` move | state entered 2026-08-11 |
+| M-2026-08-11-02 | Hermes C5B — Windows identity, ACL deny, egress containment, immutable config | BLOCKED-DECISION | ATLAS (design) + CEO (elevated shell) | the six M1D T1 checks pass live: read of a secret-bearing path denied, direct provider connection blocked, broker request logged, broker down → connection refused, config write denied, denied toolset structurally unavailable | none | **open fork: does the first Hermes chat wait for C5B, or does C5B gate only the first dangerous toolset?** External CTO consult drafted: `C:\Projects\ATLAS\data\KIMI-K3-CTO-CONSULT-NEXT-STEP-PROMPT-2026-08-11.md` |
 
 ---
 
@@ -82,6 +84,7 @@ P0's blocking scope to the non-key items: the $980 Azure ownership question
 | DEBT-6 | Delete dead OpenManus path in `src/operator/action-lane.ts` (OpenManus rejected per `docs/REPO-ASSET-AUDIT.md`, not on disk) | ATLAS | OPEN |
 | DEBT-7 | Push `C:\Projects\_backup\volaura-mirror-2026-06-28.git` branches to origin, then reclaim 5.7GB (100 of 115 branches exist nowhere else — never delete first) | CEO/ATLAS | OPEN |
 | DEBT-8 | Fresh console check of Google billing `014883-4DBCC6-5D40F9` (data from 2026-06-10) | CEO-only | OPEN — **blocks P0** |
+| DEBT-9 | ANUS cannot be installed from its own lockfile: `npm ci` fails ERESOLVE — `ollama-ai-provider@1.2.0` pins `zod@^3.25.76`, tree carries `zod@4.3.6` via `@ai-sdk/anthropic@3.0.71`. Every "tests green" claim therefore depends on one machine's stale `node_modules` and cannot be reproduced from a clean clone | ATLAS | OPEN — found 2026-08-11 while trying to independently re-run the C5A suite |
 
 ---
 
