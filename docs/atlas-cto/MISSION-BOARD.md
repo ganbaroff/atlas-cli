@@ -19,17 +19,50 @@ phase's DoD closes.
 
 | id | title | state | owner | DoD (one line) | receipt | blocked-by |
 |---|---|---|---|---|---|---|
-| P0 | Gate: $980 Azure ownership, 460 AZN debt, Google billing re-check, voice-ladder ruling, 2027-Q1 gate ruling | BLOCKED-CEO | CEO | all five CEO rulings recorded; no phase below starts before this closes | none yet | CEO decision on the 5 open items (key-rotation portion no longer blocks — see Standing Debts) |
-| P1 | Hands safety + courier kill (runner safety envelope to standard; retire Cursor paste-relay) | QUEUED | ATLAS | autonomous change made/verified/rolled back with zero human paste; restart-durable spend cap; `/pause`+PANIC halt a live run; 0 human relays for one full mission; sandboxed change proven in an isolated Integronix worktree, prod untouched | none | P0 |
+| P0 | Money gate: $980 Azure ownership, Google billing re-check, voice-ladder ruling, 2027-Q1 gate ruling | BLOCKED-CEO | CEO | the four CEO rulings recorded | none yet | CEO decision on the 4 open items. **This phase no longer blocks technical work** — see CEO ruling 2026-08-07 below. |
+| P1 | Hands safety + courier kill (runner safety envelope to standard; retire Cursor paste-relay) | RUNNING | ATLAS | autonomous change made/verified/rolled back with zero human paste; restart-durable spend cap; `/pause`+PANIC halt a live run; 0 human relays for one full mission; sandboxed change proven in an isolated Integronix worktree, prod untouched | P1-A wave 1 `45b303e` (18/18) + wave 2 `ad5153f` (40/40 focused twice, full suite +22 pass / 0 new fail, tsc 0 new errors) on `codex/p1a-work-orders`, unpushed; handoff `docs/atlas-cto/CURSOR-HANDOFF.md` | nothing — unblocked 2026-08-07 |
 | P2 | Autonomy spine (`PlanContract` spec, `MISSION-BOARD.md`+`ORCHESTRATOR-STATE.md`, hard verification middleware, durable scheduled wake, memory-canon backup+restore) | QUEUED | ATLAS | one full goal→plan→execute→verify→board cycle with zero CEO actions, including one honest REJECT of a defect planted by a separate agent; restore-from-zero of memory canon demonstrated | none | P1; also blocked on M3→M4 cutover per §0 dependency (below) |
 | P3 | First contract: Integronix (auth, D1 schema, admin, customer-facing AI agent) | QUEUED | ATLAS | Atlas runs the whole mission with CEO approving only milestones M1-M6; zero task-level CEO involvement; production untouched outside an approved milestone; rollback demonstrated before first production write; agent refuses out-of-licence claims in a red-team test | none | P2; inherits P2's board+verifier; also blocked on M3→M4 cutover; **first action still outstanding: CEO acceptance receipt for `C:\Projects\INTEGRONIX` as canon repo** (megaplan §4 P3) |
 | P4 | Multi-project brain (name the per-repo lock primitive; run 2 more projects as customers) | QUEUED | ATLAS | two projects progressed in one night with a deliberate collision attempt correctly refused and logged; board is the CEO's single control surface; courier-actions/week = 0 | none | P3; also blocked on M3→M4 cutover |
 | P5 | Voice daily organ (digest→TTS→Telegram voice note; STT questions back; free-first fallback ladder enforced in code) | QUEUED | ATLAS | CEO receives the voice report on 5 consecutive days AND the board shows every attempted day including failures, human-interaction counter 0 each day | none | P4 |
 | P6 | Emotional memory live (decay-weighted retrieval on real content signal) | QUEUED | ATLAS | N≥10 pre-registered paired blind trials vs. a recency baseline, win threshold declared in advance, CEO genuinely blinded at judgment time | none | P5 |
 | P7 | Mission gate 2027-Q1 (personal OS vs. sellable agent OS) — decision, not build | QUEUED | CEO | decision recorded; client site/orders proceed only after this gate | none | P6 |
-| DESKTOP-SLICE-V0 | Windows Notepad read-only hands | VERIFY | ATLAS | 15/15 focused tests + sealed evidence + tamper REJECT, independently re-run by orchestrator | evidence pack `desktop-slice-v0-live-2026-08-06f` | awaiting CEO receipt |
+| DESKTOP-SLICE-V0 | Windows Notepad read-only hands | VERIFY | ATLAS | 15/15 focused tests + sealed evidence + tamper REJECT, independently re-run by orchestrator | **Claude read-only audit 2026-08-07: 15/15 re-run green (exit 0) on `codex/desktop-slice-v0` @ `2eb4868`; 20 files / +2322 lines; receipt `...-06f` `verdict.status=VERIFIED`, `rawCoordinatesEnabled=false`, cleanup `closed=true` on owned pid only, no secret values; tamper fixture differs solely at `lineRead.firstLine="TAMPERED"` with `evidenceHash` unchanged — a correct fail-closed input; negative packs `-06c` (`first_line_mismatch`) and `-06d` (`tts_adapter_failure`) prove honest REJECT** | **NOT the CEO's receipt — one acceptance item is genuinely open: all five live packs have `transcript.source="typed"` and `audioHash=null`. The spec's live proof requires a real spoken command with no CEO paste. Both adapters are up (`127.0.0.1:8765` and `:8766` → HTTP 200 on 2026-08-07), so closing it needs one spoken run, nothing more.** |
+| M-2026-08-10-01 | Hermes M1C — config-only live migration to schema v33 | DONE | Codex SOL (executed) / Fable (independently re-verified) | `C:\Projects\ATLAS\data\HERMES-M1C-CONFIG-ONLY-LIVE-MIGRATION-CARD-2026-08-10.md` | `C:\Projects\ATLAS\data\HERMES-M1C-CONFIG-ONLY-LIVE-MIGRATION-RECEIPT-2026-08-10.md` | state entered 2026-08-10 |
+| M-2026-08-10-02 | AtlasLocalWatchdog re-enabled (was Disabled, local automation not running) | DONE | CEO (executed) / Fable (verified) | task Status=Ready with a future Next Run Time; CLAUDE.md's "live automation" description is accurate again | `memory/atlas/decisions/ATLAS-DECISION-2026-08-10-watchdog-re-enabled.md` — schtasks query after enable: Status=Ready, Next Run=8/10/2026 9:30:00 PM | state entered 2026-08-10 |
+| M-2026-08-10-03 | Hermes M1D — Windows T1 isolation assessment | DONE | Fable (Opus seat) | verdict NOT_READY: no isolated identity, no secret/ACL boundary, unrestricted egress, self-writable policy, no Atlas proxy, no action broker | `C:\Projects\ATLAS\data\HERMES-M1D-T1-WINDOWS-ISOLATION-CARD-2026-08-10.md` | state entered 2026-08-10 |
+| M-2026-08-10-04 | Hermes C5A + C5A-V + C5A-R1 — Atlas model broker, audited and remediated | DONE | Fable (built, audited, remediated) | broker enforces loopback-only upstream, authorization before forwarding, redirect/expiry/request-id all fail closed; 28/28 tests, live P1-P4 proof, redirect target 0 hits | `C:\Projects\ATLAS\data\HERMES-C5A-R1-SECURITY-REMEDIATION-RECEIPT-2026-08-10.md` | state entered 2026-08-10 |
 
 ---
+
+## CEO RULING 2026-08-07 — money gates do not block engineering
+
+CEO verbatim: **«не должен блокировать твоя работа атлас а не долг. что за
+хуйню придумал ты блокируешь сам себя»**, and, on the technical-authority
+question: he confirmed he has never prohibited technical work. Standing grants
+found in the memory canon and re-affirmed:
+`auto-memory-snapshot-2026-04-17/handoff_prompt_for_other_chats.md:24`
+(«CEO решает ТОЛЬКО стратегию … Не спрашивай CEO»),
+`archive/DEBT-MAP-2026-04-15.md:896` («работать итерациями … Меня не
+спрашивайте»), `ATLAS/data/HANDOFF-GPT-CTO-2026-08-06.md:13` («это твоя
+работа»), ADR-0011 («перо твоё, начинай»).
+
+Effect on this board:
+
+1. **DEBT-4 (460 AZN) is removed from P0's blocking set.** It may block new
+   paid spend; it does not block code, tests, local commits, or phase start.
+2. **P0 no longer gates P1-P7 for technical work.** P0's remaining items are
+   money/strategy rulings. A phase whose DoD needs new spend still waits; a
+   phase that needs only engineering does not.
+3. The `MISSION-BOARD.md` file is a **manual mirror, not an authority** — on
+   any disagreement with the exec-graph ledger, the ledger wins. Making the
+   board a generated read-only projection of the ledger is a P2 deliverable
+   (external review #3 BLOCKER 5), gated on M3D→M4 because the ledger is not
+   yet durable in cloud.
+4. Atlas's own self-imposed constraint set is under external review:
+   `C:\Projects\ATLAS-SELF-IMPOSED-CONSTRAINTS-REVIEW-REQUEST-2026-08-07.md`
+   (ids S1-S18). Constraints proven self-imposed and unjustified are to be
+   deleted, not re-litigated.
 
 ## STANDING DEBTS
 
@@ -44,7 +77,7 @@ P0's blocking scope to the non-key items: the $980 Azure ownership question
 | DEBT-1 | Rotate 22 keys exposed via `апи.txt` 2026-08-05 (OpenAI, Clerk, Vercel x2, Cloudflare x3, Turso x2, ElevenLabs, Fish, Kling, Pexels, Coverr, Upstash, Telegram bots) | CEO-only | WAIVED-BY-CEO 2026-08-05 |
 | DEBT-2 | Supabase `sbp_` token hardcoded in `VOLAURA/.mcp.json` | CEO-only | WAIVED-BY-CEO 2026-08-05 |
 | DEBT-3 | 4 older leaked keys (`for-ceo/tasks/2026-07-19-resource-control-sh2.md`) + the $980 Azure ownership question | CEO-only | rotation component WAIVED-BY-CEO 2026-08-05; **$980 Azure ownership question OPEN — blocks P0** |
-| DEBT-4 | 460 AZN credited-pending (`atlas-debts-to-ceo.md`) | CEO closes | OPEN — **blocks P0** |
+| DEBT-4 | 460 AZN credited-pending (`atlas-debts-to-ceo.md`) | CEO closes | OPEN — **no longer blocks P0 or any phase** (CEO ruling 2026-08-07); may block new paid spend only |
 | DEBT-5 | Refresh stale `ATLAS-STATE-NOW.md` / `ATLAS-MASTER-PLAN.md` against 08-03..08-05 receipts | ATLAS | OPEN |
 | DEBT-6 | Delete dead OpenManus path in `src/operator/action-lane.ts` (OpenManus rejected per `docs/REPO-ASSET-AUDIT.md`, not on disk) | ATLAS | OPEN |
 | DEBT-7 | Push `C:\Projects\_backup\volaura-mirror-2026-06-28.git` branches to origin, then reclaim 5.7GB (100 of 115 branches exist nowhere else — never delete first) | CEO/ATLAS | OPEN |
