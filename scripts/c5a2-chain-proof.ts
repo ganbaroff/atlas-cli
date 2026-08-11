@@ -183,7 +183,7 @@ async function main(): Promise<void> {
     expiresAt: new Date(Date.now() - 60_000).toISOString(),
   }));
   const c2 = await callChain(brokerPort, authorizedHeaders(expired));
-  assertTrue(c2.status === 403, `C2: expected 403, got ${c2.status}`);
+  assertTrue(c2.status === 409, `C2: expected 409, got ${c2.status}`);
   assertTrue(c2.json?.error?.code === 'expired', `C2: expected expired, got ${c2.json?.error?.code}`);
   assertTrue(providerHits === 1, `C2: provider was called on a denied authority (hits ${providerHits})`);
   console.log(`C2 PASS  expired authority denied at the broker, provider hits still ${providerHits}`);

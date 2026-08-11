@@ -61,17 +61,40 @@ function sendJson(res: ServerResponse, status: number, body: unknown): void {
 }
 
 /**
- * unknown_operation (bad route, or an envelope authorizing a different
- * operation) is the one 404; upstream_redirect is a 502 (broker-side upstream
- * failure, not a client authorization defect); every other deny — including
- * the C5A-R2/R3 expiry and request-id reasons — is 403, the same class as
- * the other authorization denials.
+ * C5A-R4 — NO AUTH-SHAPED DENIALS. An Atlas policy refusal must never look
+ * like a bad provider credential.
+ *
+ * Hermes' auxiliary router treats an auth error as "this backend is broken":
+ * `agent/auxiliary_client.py:4660-4673` marks the provider unhealthy and
+ * continues into the next fallback layer, while non-auth errors raise. So a
+ * broker answering 401/403 converts a deliberate Atlas DENY into a direct
+ * provider bypass — the refusal itself triggers the escape. That is a
+ * fail-closed defect we introduced by integrating, and it is repaired here at
+ * the status map rather than argued about downstream.
+ *
+ * 409 Conflict is the deny class: the request conflicts with Atlas authority
+ * state (expired, replayed, mismatched, unsigned). It carries no credential
+ * semantics, so no fallback chain reads it as a dead backend.
+ *
+ * The two exceptions are not authority decisions at all: unknown_operation is
+ * a routing miss (404), and upstream_redirect is a broker-side upstream
+ * failure (502).
+ *
+ * INVARIANT, asserted by a regression test over every BrokerDenyReason: this
+ * function never returns 401 or 403.
  */
-function statusForDeny(reason: AuthorizationOutcome['reason']): number {
+export function statusForDeny(reason: AuthorizationOutcome['reason']): number {
   if (reason === 'unknown_operation') return 404;
   if (reason === 'upstream_redirect') return 502;
-  return 403;
+  return 409;
 }
+
+/**
+ * Statuses Hermes' fallback logic reads as "this backend's credential is
+ * dead", which is the trigger for walking to the next provider. Exported so
+ * the invariant is stated once and asserted, not restated in prose.
+ */
+export const AUTH_SHAPED_STATUSES: readonly number[] = [401, 403, 407];
 
 function resolveBrokerRequestId(req: IncomingMessage): string {
   const header = req.headers['x-atlas-request-id'];

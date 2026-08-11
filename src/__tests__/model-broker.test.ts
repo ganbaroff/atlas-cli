@@ -23,10 +23,10 @@ import { hmacSigner, canonicalizeWorkOrder } from '../atlas/work-order/sign.js';
 import { WORK_ORDER_SIGNATURE_ALGORITHM } from '../atlas/work-order/types.js';
 import { createWorkOrderReplayStore, type WorkOrderReplayStore } from '../atlas/work-order/replay.js';
 
-import { createBrokerServer } from '../atlas/model-broker/server.js';
+import { createBrokerServer, statusForDeny, AUTH_SHAPED_STATUSES } from '../atlas/model-broker/server.js';
 import { createMockUpstream, type MockUpstream } from '../atlas/model-broker/mock-upstream.js';
 import { assertLoopbackUpstream, UpstreamNotLoopbackError } from '../atlas/model-broker/upstream-policy.js';
-import type { BrokerConfig, ModelWorkOrder } from '../atlas/model-broker/types.js';
+import type { BrokerConfig, BrokerDenyReason, ModelWorkOrder } from '../atlas/model-broker/types.js';
 import { readLedgerEntries } from '../evidence/ledger.js';
 
 const TEST_KEY = 'test-fake-model-broker-signing-key-not-real-do-not-use';
@@ -229,7 +229,7 @@ describe('model-broker (C5A)', () => {
     const mock = await newMock();
     const { port } = await startBroker({ upstreamUrl: mock.url });
     const { status, json } = await sendChatCompletion(port, { body: { model: APPROVED_MODEL } });
-    expect(status).toBe(403);
+    expect(status).toBe(409);
     expect(json).toMatchObject({ error: { code: 'missing_authorization' } });
     expect(mock.hits()).toBe(0);
   });
@@ -243,7 +243,7 @@ describe('model-broker (C5A)', () => {
       headers: { 'x-atlas-work-order': encodeHeader(tampered) },
       body: { model: APPROVED_MODEL },
     });
-    expect(status).toBe(403);
+    expect(status).toBe(409);
     expect(json).toMatchObject({ error: { code: 'invalid_signature' } });
     expect(mock.hits()).toBe(0);
   });
@@ -256,7 +256,7 @@ describe('model-broker (C5A)', () => {
       headers: { 'x-atlas-work-order': headerValue },
       body: { model: APPROVED_MODEL },
     });
-    expect(status).toBe(403);
+    expect(status).toBe(409);
     expect(json).toMatchObject({ error: { code: 'malformed_authorization' } });
     expect(mock.hits()).toBe(0);
   });
@@ -268,7 +268,7 @@ describe('model-broker (C5A)', () => {
       headers: { 'x-atlas-work-order': encodeHeader({ foo: 'bar' }) },
       body: { model: APPROVED_MODEL },
     });
-    expect(status).toBe(403);
+    expect(status).toBe(409);
     expect(json).toMatchObject({ error: { code: 'malformed_authorization' } });
     expect(mock.hits()).toBe(0);
   });
@@ -281,7 +281,7 @@ describe('model-broker (C5A)', () => {
       headers: authorizedHeaders(envelope),
       body: { model: APPROVED_MODEL },
     });
-    expect(status).toBe(403);
+    expect(status).toBe(409);
     expect(json).toMatchObject({ error: { code: 'provider_mismatch' } });
     expect(mock.hits()).toBe(0);
   });
@@ -294,7 +294,7 @@ describe('model-broker (C5A)', () => {
       headers: authorizedHeaders(envelope),
       body: { model: APPROVED_MODEL },
     });
-    expect(status).toBe(403);
+    expect(status).toBe(409);
     expect(json).toMatchObject({ error: { code: 'model_mismatch' } });
     expect(mock.hits()).toBe(0);
   });
@@ -307,7 +307,7 @@ describe('model-broker (C5A)', () => {
       headers: authorizedHeaders(envelope),
       body: { model: 'body-says-different-model' },
     });
-    expect(status).toBe(403);
+    expect(status).toBe(409);
     expect(json).toMatchObject({ error: { code: 'model_mismatch' } });
     expect(mock.hits()).toBe(0);
   });
@@ -494,7 +494,7 @@ describe('model-broker (C5A)', () => {
       headers: authorizedHeaders(envelope),
       body: { model: APPROVED_MODEL },
     });
-    expect(status).toBe(403);
+    expect(status).toBe(409);
     expect(json).toMatchObject({ error: { code: 'expired' } });
     expect(mock.hits()).toBe(0);
   });
@@ -507,7 +507,7 @@ describe('model-broker (C5A)', () => {
       headers: authorizedHeaders(envelope),
       body: { model: APPROVED_MODEL },
     });
-    expect(status).toBe(403);
+    expect(status).toBe(409);
     expect(json).toMatchObject({ error: { code: 'expiry_malformed' } });
     expect(mock.hits()).toBe(0);
   });
@@ -534,7 +534,7 @@ describe('model-broker (C5A)', () => {
       headers: { 'x-atlas-work-order': encodeHeader(envelope) },
       body: { model: APPROVED_MODEL },
     });
-    expect(status).toBe(403);
+    expect(status).toBe(409);
     expect(json).toMatchObject({ error: { code: 'missing_request_id' } });
     expect(mock.hits()).toBe(0);
   });
@@ -547,7 +547,7 @@ describe('model-broker (C5A)', () => {
       headers: { 'x-atlas-work-order': encodeHeader(envelope), 'x-atlas-request-id': `${envelope.requestId}-different` },
       body: { model: APPROVED_MODEL },
     });
-    expect(status).toBe(403);
+    expect(status).toBe(409);
     expect(json).toMatchObject({ error: { code: 'request_id_mismatch' } });
     expect(mock.hits()).toBe(0);
   });
@@ -563,4 +563,80 @@ describe('model-broker (C5A)', () => {
     expect(status).toBe(200);
     expect(mock.hits()).toBe(1);
   });
+
+  it('C5A-R4 never emits an auth-shaped status on the wire for a real denied call', async () => {
+    const mock = await newMock();
+    const { port } = await startBroker({ upstreamUrl: mock.url });
+
+    const expired = signEnvelope(baseEnvelope({
+      issuedAt: new Date(Date.now() - 120_000).toISOString(),
+      expiresAt: new Date(Date.now() - 60_000).toISOString(),
+    }));
+    const denied = await sendChatCompletion(port, {
+      headers: authorizedHeaders(expired),
+      body: { model: APPROVED_MODEL },
+    });
+    expect(denied.status).toBe(409);
+    expect(AUTH_SHAPED_STATUSES).not.toContain(denied.status);
+
+    const unsigned = await sendChatCompletion(port, { body: { model: APPROVED_MODEL } });
+    expect(AUTH_SHAPED_STATUSES).not.toContain(unsigned.status);
+
+    // Nothing left the machine on either refusal.
+    expect(mock.hits()).toBe(0);
+  });
+
+});
+
+/**
+ * C5A-R4 — no Atlas denial may wear the shape of a dead provider credential.
+ *
+ * Hermes' auxiliary router marks a backend unhealthy and walks to the next
+ * provider when it sees an auth error, while non-auth errors raise
+ * (agent/auxiliary_client.py:4660-4673). A broker answering 401/403 therefore
+ * turns a deliberate Atlas DENY into a direct-provider bypass: the refusal
+ * causes the escape. These tests pin the status map so that cannot regress.
+ */
+describe('C5A-R4 deny statuses never look like an auth failure', () => {
+  const ALL_DENY_REASONS: BrokerDenyReason[] = [
+    'missing_authorization',
+    'malformed_authorization',
+    'invalid_signature',
+    'expired',
+    'expiry_malformed',
+    'missing_request_id',
+    'request_id_mismatch',
+    'replayed',
+    'provider_mismatch',
+    'model_mismatch',
+    'unknown_operation',
+    'upstream_not_loopback',
+    'upstream_unavailable',
+    'upstream_bad_response',
+    'upstream_redirect',
+  ];
+
+  it('maps every deny reason to a non-auth status', () => {
+    for (const reason of ALL_DENY_REASONS) {
+      const status = statusForDeny(reason);
+      expect(AUTH_SHAPED_STATUSES).not.toContain(status);
+    }
+  });
+
+  it('uses 409 Conflict for authority and policy denials', () => {
+    const authorityReasons: BrokerDenyReason[] = [
+      'missing_authorization', 'malformed_authorization', 'invalid_signature',
+      'expired', 'expiry_malformed', 'missing_request_id', 'request_id_mismatch',
+      'replayed', 'provider_mismatch', 'model_mismatch',
+    ];
+    for (const reason of authorityReasons) {
+      expect(statusForDeny(reason)).toBe(409);
+    }
+  });
+
+  it('keeps routing and upstream failures in their own classes', () => {
+    expect(statusForDeny('unknown_operation')).toBe(404);
+    expect(statusForDeny('upstream_redirect')).toBe(502);
+  });
+
 });

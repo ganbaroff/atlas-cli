@@ -202,7 +202,7 @@ async function main() {
   });
   const p2AHits = a.hits();
   const p2Reason = (p2Resp.json as any)?.error?.code;
-  assertTrue(p2Resp.status === 403, `P2: expected 403, got ${p2Resp.status}`);
+  assertTrue(p2Resp.status === 409, `P2: expected 409, got ${p2Resp.status}`);
   assertTrue(p2Reason === 'expired', `P2: expected reason expired, got ${p2Reason}`);
   assertTrue(p2AHits === p1AHits, `P2: expected A hits unchanged at ${p1AHits}, got ${p2AHits}`);
 
@@ -214,7 +214,7 @@ async function main() {
   });
   const p3AHits = a.hits();
   const p3Reason = (p3Resp.json as any)?.error?.code;
-  assertTrue(p3Resp.status === 403, `P3: expected 403, got ${p3Resp.status}`);
+  assertTrue(p3Resp.status === 409, `P3: expected 409, got ${p3Resp.status}`);
   assertTrue(p3Reason === 'request_id_mismatch', `P3: expected reason request_id_mismatch, got ${p3Reason}`);
   assertTrue(p3AHits === p2AHits, `P3: expected A hits unchanged at ${p2AHits}, got ${p3AHits}`);
 
